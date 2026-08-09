@@ -1,0 +1,13 @@
+{
+  "name": "auto",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal Telegram bridge + agent status debug console",
+  "scripts": {
+    "start": "node scripts/debug-server.mjs --host=0.0.0.0 --port=4331",
+    "debug": "node scripts/debug-server.mjs --host=0.0.0.0 --port=4331",
+    "send": "node scripts/send.mjs",
+    "listen": "node scripts/listen.mjs --once --timeout=25"
+  }
+}

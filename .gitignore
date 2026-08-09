@@ -1,0 +1,10 @@
+auth.json
+bot-token.txt
+offset.json
+events.jsonl
+pending-queue.json
+session-state.json
+inbox/
+*.log
+node_modules/
+.DS_Store
