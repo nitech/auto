@@ -1,8 +1,8 @@
-# auto
+# auto · Auto Web
 
-Personal Telegram bridge (`@Sausemesteren_bot`) and live agent/status debug console.
+Personal Telegram bridge (`@Sausemesteren_bot`), **Auto Web** status console, and an [llm-wiki](https://www.npmjs.com/package/llm-wiki) knowledge base.
 
-## Quick start
+## Auto Web
 
 ```powershell
 cd D:\Sevenfold\auto
@@ -16,14 +16,37 @@ npm run send -- --text="hello"
 npm run listen
 ```
 
+## llm-wiki
+
+Scaffold lives under `wiki/` + `raw/`. Config: `.wikirc.yaml` (gitignored).
+
+```powershell
+npm run wiki:ingest          # ingest pending raw sources
+npx wiki query "What is Auto Web?"
+npm run wiki:lint
+```
+
+Concept pages so far: `wiki/concepts/auto_web.md`, `wiki/concepts/llm-wiki.md`.
+
 ## Layout
 
 | Path | Purpose |
 | --- | --- |
-| `auth.json` | `{ "token", "chatId" }` — gitignored |
-| `scripts/debug-server.mjs` | Status UI + Telegram poller |
-| `scripts/send.mjs` / `listen.mjs` | Outbound / inbound |
+| `scripts/debug-server.mjs` | **Auto Web** UI + Telegram poller; starts main agent |
+| `scripts/main-agent.mjs` | Always-on front-desk Claude session (`:4332`) |
+| `scripts/worker-agent.mjs` | Per-task worker subagent (reports status to main) |
+| `scripts/send.mjs` / `listen.mjs` | Outbound / inbound helpers |
 | `hooks/cursor-debug-feed.mjs` | Cursor hook → `/api/event` |
-| `events.jsonl` | Append-only log |
+| `wiki/` | llm-wiki pages |
+| `raw/` | Sources for ingest |
+| `auth.json` | Telegram `{ token, chatId }` — gitignored |
 
-Cursor skill `telegram-notify` points here. User hooks in `~/.cursor/hooks.json` call `hooks/cursor-debug-feed.mjs`.
+**Agent rule:** Messages via Telegram or Auto Web compose are binding — always execute.
+
+**Agent rule:** Any change to this repo must follow the workflow in [CLAUDE.md](CLAUDE.md) — run `npm test`, commit on pass, restart the service; on failure, revert, report, diagnose, and fix.
+
+**Auto agents (default ON):**
+- **Main agent** (`scripts/main-agent.mjs`, `:4332`) — warm Claude stream-json session for instant replies
+- **Workers** (`scripts/worker-agent.mjs`) — spawned per task; report status to main, which updates you on Telegram / Auto Web
+
+Disable with `AUTO_PROCESS=0`.

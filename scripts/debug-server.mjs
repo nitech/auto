@@ -5,6 +5,7 @@
  *   node debug-server.mjs --host=0.0.0.0 --port=4331
  */
 import { createServer } from 'node:http';
+import { spawn } from 'node:child_process';
 import {
   readFileSync,
   writeFileSync,
@@ -12,7 +13,8 @@ import {
   existsSync,
   mkdirSync,
 } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join, basename, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   arg,
   loadAuth,
@@ -25,7 +27,15 @@ import {
   EVENTS_PATH,
   QUEUE_PATH,
   DEBUG_PORT,
+  normalizeFsPath,
 } from './lib.mjs';
+
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const MAIN_AGENT = join(SCRIPT_DIR, 'main-agent.mjs');
+const JOBS_DIR = join(SKILL_ROOT, 'jobs');
+const AUTO_PROCESS = process.env.AUTO_PROCESS !== '0';
+const MAIN_PORT = Number(process.env.AUTO_MAIN_PORT || 4332) || 4332;
+const MAIN_URL = `http://127.0.0.1:${MAIN_PORT}`;
 
 const STATE_PATH = join(SKILL_ROOT, 'session-state.json');
 const host = arg('host', '0.0.0.0');
@@ -38,8 +48,28 @@ if (!token) {
 
 const allowedChat = chatId != null ? Number(chatId) : null;
 const sseClients = new Set();
-let queue = loadQueue();
+/** @deprecated drain queue — messages are auto-processed; kept empty */
+let queue = [];
 let state = loadState();
+const processedIds = new Set();
+/** @type {import('node:child_process').ChildProcess | null} */
+let mainAgentProc = null;
+let agentsSnapshot = {
+  main: { ready: false, sessionId: null, pid: null },
+  workers: [],
+  maxWorkers: 4,
+};
+let processorStatus = {
+  enabled: AUTO_PROCESS,
+  busy: false,
+  pending: 0,
+  mode: 'main+workers',
+  lastMessageId: null,
+  lastStartedAt: null,
+  lastFinishedAt: null,
+  lastCode: null,
+  mainReady: false,
+};
 
 function loadQueue() {
   if (!existsSync(QUEUE_PATH)) return [];
@@ -51,7 +81,196 @@ function loadQueue() {
 }
 
 function saveQueue() {
-  writeFileSync(QUEUE_PATH, JSON.stringify(queue, null, 2) + '\n');
+  // Keep file empty — we no longer accumulate a drain backlog
+  writeFileSync(QUEUE_PATH, '[]\n');
+}
+
+function broadcastProcessor() {
+  const activeWorkers = (agentsSnapshot.workers || []).filter(
+    (w) => w.phase !== 'done' && w.phase !== 'error',
+  ).length;
+  processorStatus.pending = activeWorkers;
+  processorStatus.busy = activeWorkers > 0;
+  processorStatus.mainReady = Boolean(agentsSnapshot.main?.ready);
+  broadcast({
+    type: 'processor',
+    silent: true,
+    processor: { ...processorStatus, agents: agentsSnapshot },
+    agents: agentsSnapshot,
+  });
+}
+
+async function mainAgentUp() {
+  try {
+    const res = await fetch(`${MAIN_URL}/health`, {
+      signal: AbortSignal.timeout(800),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    agentsSnapshot = {
+      main: data.main || data,
+      workers: data.workers || [],
+      maxWorkers: data.maxWorkers || 4,
+    };
+    broadcastProcessor();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function ensureMainAgent() {
+  if (!AUTO_PROCESS) return;
+  if (mainAgentProc && !mainAgentProc.killed) return;
+  console.log(`Starting main agent on :${MAIN_PORT}…`);
+  mainAgentProc = spawn(
+    process.execPath,
+    [
+      MAIN_AGENT,
+      `--port=${MAIN_PORT}`,
+      `--debug-port=${port}`,
+    ],
+    {
+      cwd: SKILL_ROOT,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        TELEGRAM_DEBUG_PORT: String(port),
+        AUTO_MAIN_PORT: String(MAIN_PORT),
+        PATH: process.env.PATH,
+      },
+    },
+  );
+  mainAgentProc.stdout.on('data', (d) => {
+    const s = d.toString().trim();
+    if (s) console.log(`[main] ${s}`);
+  });
+  mainAgentProc.stderr.on('data', (d) => {
+    const s = d.toString().trim();
+    if (s) console.error(`[main] ${s}`);
+  });
+  mainAgentProc.on('exit', (code) => {
+    console.error(`[main] exited code=${code} — restarting in 1s`);
+    mainAgentProc = null;
+    agentsSnapshot.main = { ready: false, sessionId: null, pid: null };
+    broadcastProcessor();
+    setTimeout(() => ensureMainAgent(), 1000);
+  });
+  mainAgentProc.on('error', (e) => {
+    console.error(`[main] spawn error: ${e.message}`);
+    mainAgentProc = null;
+  });
+  // Poll until healthy
+  let tries = 0;
+  const t = setInterval(async () => {
+    tries++;
+    if (await mainAgentUp() || tries > 30) clearInterval(t);
+  }, 500);
+}
+
+/** Hand job to always-on main agent → instant ack + worker subagent. */
+function acceptInstruction(msg) {
+  const text = String(msg.text || msg.caption || '').trim();
+  const hasMedia = Boolean(msg.hasPhoto || msg.localPath || (msg.images && msg.images.length));
+  if (!text && !hasMedia) return;
+
+  const messageId = String(msg.messageId || `job-${Date.now()}`);
+  if (processedIds.has(messageId)) {
+    logEvent({
+      dir: 'sys',
+      sessionId: msg.sessionId || state.activeId,
+      note: 'auto: skipped duplicate',
+      text: text.slice(0, 120) || messageId,
+    });
+    return;
+  }
+  processedIds.add(messageId);
+  if (processedIds.size > 2000) {
+    const drop = [...processedIds].slice(0, 500);
+    for (const id of drop) processedIds.delete(id);
+  }
+
+  if (!AUTO_PROCESS) {
+    logEvent({
+      dir: 'sys',
+      sessionId: msg.sessionId || state.activeId,
+      note: 'AUTO_PROCESS=0 — instruction not executed',
+      text: text.slice(0, 120),
+    });
+    return;
+  }
+
+  const folder = normalizeFsPath(
+    getSession(msg.sessionId || state.activeId)?.folder ||
+      state.folder ||
+      SKILL_ROOT,
+  );
+  const job = {
+    text: text || '[photo]',
+    from: msg.from || null,
+    messageId,
+    sessionId: msg.sessionId || state.activeId,
+    folder: folder || SKILL_ROOT,
+    images: (msg.images ||
+      (msg.localPath
+        ? [{ localPath: msg.localPath, previewUrl: msg.previewUrl }]
+        : [])
+    ).map((img) =>
+      typeof img === 'string'
+        ? normalizeFsPath(img)
+        : {
+            ...img,
+            localPath: normalizeFsPath(img.localPath),
+          },
+    ),
+    source: msg.source || 'telegram',
+  };
+
+  processorStatus.lastMessageId = messageId;
+  processorStatus.lastStartedAt = new Date().toISOString();
+  logEvent({
+    dir: 'sys',
+    sessionId: job.sessionId,
+    note: 'auto: handed to main agent → worker',
+    text: job.text.slice(0, 160),
+  });
+  broadcastProcessor();
+  ensureMainAgent();
+
+  (async () => {
+    for (let i = 0; i < 20; i++) {
+      if (await mainAgentUp()) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    try {
+      const res = await fetch(`${MAIN_URL}/job`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(job),
+        signal: AbortSignal.timeout(30_000),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `main HTTP ${res.status}`);
+      logEvent({
+        dir: 'sys',
+        sessionId: job.sessionId,
+        note: `auto: worker ${data.workerId || '?'} dispatched`,
+        text: job.text.slice(0, 120),
+      });
+      await mainAgentUp();
+    } catch (e) {
+      logEvent({
+        dir: 'sys',
+        sessionId: job.sessionId,
+        note: `auto: main-agent error — ${e.message}`,
+        text: job.text.slice(0, 120),
+      });
+      processorStatus.lastCode = 1;
+      processorStatus.lastFinishedAt = new Date().toISOString();
+      broadcastProcessor();
+    }
+  })();
 }
 
 function emptyTokens() {
@@ -64,15 +283,18 @@ function slugId(folder) {
 }
 
 function makeSession(partial = {}) {
-  const folder = partial.folder || null;
+  const folder = normalizeFsPath(partial.folder || null);
   const id = partial.id || (folder ? slugId(folder) : 'default');
   const now = new Date().toISOString();
+  const workspaces = (
+    Array.isArray(partial.workspaces) ? partial.workspaces : folder ? [folder] : []
+  ).map((w) => normalizeFsPath(w));
   return {
     id,
     label: partial.label || partial.project || (folder ? basename(folder) : id),
     project: partial.project || (folder ? basename(String(folder).replace(/[\\/]+$/, '')) : null),
     folder,
-    workspaces: Array.isArray(partial.workspaces) ? partial.workspaces : folder ? [folder] : [],
+    workspaces,
     tokens: { ...emptyTokens(), ...(partial.tokens || {}) },
     createdAt: partial.createdAt || now,
     updatedAt: partial.updatedAt || now,
@@ -194,7 +416,7 @@ function getSession(id) {
 }
 
 function ensureSession(patch = {}) {
-  const folder = patch.folder || patch.cwd || null;
+  const folder = normalizeFsPath(patch.folder || patch.cwd || null);
   const id = patch.id || (folder ? slugId(folder) : state.activeId || 'default');
   let s = state.sessions[id];
   if (!s) {
@@ -262,7 +484,7 @@ function isSilentEvent(ev) {
   return false;
 }
 
-function readEvents(limit = 800, sessionId = null) {
+function readEvents(limit = 800, sessionId = null, workerId = null) {
   if (!existsSync(EVENTS_PATH)) return [];
   const lines = readFileSync(EVENTS_PATH, 'utf8').split(/\r?\n/).filter(Boolean);
   return lines
@@ -276,6 +498,9 @@ function readEvents(limit = 800, sessionId = null) {
     })
     .filter((ev) => !isSilentEvent(ev))
     .filter((ev) => {
+      // Worker detail view: everything tagged with this workerId, regardless
+      // of which session it belongs to.
+      if (workerId) return String(ev.workerId || '') === String(workerId);
       if (!sessionId) return true;
       // legacy events without sessionId → show on active only when requested
       if (!ev.sessionId) return sessionId === state.activeId;
@@ -318,8 +543,8 @@ const HTML = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Agent · Telegram debug</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Auto Web</title>
   <style>
     :root {
       --bg: #0b0f0d;
@@ -336,16 +561,22 @@ const HTML = `<!doctype html>
       font-family: "Segoe UI", system-ui, sans-serif;
     }
     * { box-sizing: border-box; }
-    html, body { height: 100%; }
+    html, body {
+      height: 100%;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
     body {
       margin: 0;
       background: var(--bg);
       color: var(--ink);
       height: 100vh;
+      height: 100dvh;
       overflow: hidden;
       display: grid;
       grid-template-rows: auto auto 1fr auto;
-      grid-template-areas: "head" "tabs" "log" "foot";
+      grid-template-areas: "head" "tabs" "log" "compose";
     }
     header {
       grid-area: head;
@@ -367,7 +598,9 @@ const HTML = `<!doctype html>
     }
     .pill.live { background: rgba(61,139,110,.2); color: #7dcea0; }
     .pill.dead { background: rgba(164,112,63,.2); color: #d4a574; }
-    .head-actions { display: flex; align-items: center; gap: 8px; }
+    .pill.work { background: rgba(212,165,116,.22); color: #e0b37a; animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: .55; } }
+    .head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
     button.menu-btn, button.linkish {
       appearance: none; border: 1px solid var(--line); background: transparent;
       color: var(--ink); border-radius: 999px; padding: 4px 10px;
@@ -447,27 +680,103 @@ const HTML = `<!doctype html>
       margin-top: 6px; max-width: min(100%, 280px); border-radius: 8px;
       border: 1px solid var(--line); display: block;
     }
-    footer {
-      grid-area: foot; display: flex; flex-wrap: wrap; align-items: center;
-      justify-content: space-between; gap: 10px 16px;
-      padding: 8px 12px; border-top: 1px solid var(--line);
-      background: #101512; color: var(--muted); font-size: 11px;
+    #compose {
+      grid-area: compose;
+      flex-shrink: 0;
+      padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+      background: linear-gradient(180deg, transparent, var(--bg) 28%);
+      position: relative;
+      z-index: 4;
+      width: 100%;
+      max-width: 100%;
     }
-    .tok-bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; }
-    .tok-bar .total {
-      font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 650; color: var(--ink);
+    .composer {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+      max-width: 48rem;
+      margin: 0 auto;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: #1a211e;
+      box-shadow: 0 8px 28px rgba(0,0,0,.35);
     }
+    .composer.drag { border-color: rgba(125,206,160,.55); background: #1e2a24; }
+    .composer-previews {
+      display: none;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .composer-previews.has { display: flex; }
+    .composer-previews .shot {
+      position: relative;
+      width: 64px; height: 64px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+    }
+    .composer-previews .shot img {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+    .composer-previews .shot button {
+      position: absolute; top: 2px; right: 2px;
+      width: 20px; height: 20px; border: 0; border-radius: 999px;
+      background: rgba(0,0,0,.65); color: #fff; font-size: 12px; cursor: pointer;
+      line-height: 1;
+    }
+    .composer-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      width: 100%;
+    }
+    .composer-row textarea {
+      flex: 1 1 auto;
+      min-width: 0;
+      width: 100%;
+      min-height: 24px;
+      max-height: 160px;
+      resize: none;
+      border: 0;
+      outline: none;
+      background: transparent;
+      color: var(--ink);
+      /* 16px prevents iOS focus zoom */
+      font: inherit;
+      font-size: 16px;
+      line-height: 1.45;
+      padding: 6px 2px;
+      field-sizing: content;
+    }
+    .composer-row textarea::placeholder { color: var(--muted); }
+    .icon-btn {
+      appearance: none;
+      flex: 0 0 auto;
+      width: 36px; height: 36px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .icon-btn:hover { color: var(--ink); background: rgba(232,235,230,.06); }
+    #compose-file { display: none; }
   </style>
 </head>
 <body>
   <header>
     <div>
-      <h1>Agent · Telegram</h1>
+      <h1>Auto Web</h1>
       <div class="meta" id="active-label">—</div>
     </div>
     <div class="head-actions">
+      <span id="proc" class="pill dead" title="Auto processor">auto idle</span>
       <span id="status" class="pill dead">connecting</span>
-      <span class="meta" id="count"></span>
+      <span class="meta" id="count" hidden></span>
       <button class="menu-btn" id="stats-btn" type="button" aria-expanded="false">Stats</button>
     </div>
     <div class="stats-panel" id="stats-panel" role="dialog" aria-label="Stats">
@@ -475,8 +784,12 @@ const HTML = `<!doctype html>
       <div class="stats-grid">
         <div>
           <div class="k">Active session tokens</div>
-          <div class="v num" id="st-active-tok">0</div>
-          <div class="v" id="st-active-split">in 0 · out 0</div>
+          <div class="v num" id="tok-total">0</div>
+          <div class="v" id="tok-detail">in 0 · out 0</div>
+          <div class="v meta" id="tok-est"></div>
+          <div class="v num" id="st-active-tok" style="display:none">0</div>
+          <div class="v" id="st-active-split" style="display:none">in 0 · out 0</div>
+          <button class="linkish" id="tok-reset" type="button" style="margin-top:8px">Reset tokens</button>
         </div>
         <div>
           <div class="k">All sessions tokens</div>
@@ -500,16 +813,26 @@ const HTML = `<!doctype html>
   </header>
   <div id="tabs"></div>
   <div id="log"></div>
-  <footer>
-    <div class="tok-bar">
-      <span class="meta">session tokens</span>
-      <span class="total" id="tok-total">0</span>
-      <span id="tok-detail">in 0 · out 0</span>
-      <span id="tok-est" class="meta"></span>
-      <button class="linkish" id="tok-reset" type="button">Reset</button>
+  <form id="compose" autocomplete="off">
+    <div class="composer" id="composer">
+      <div class="composer-previews" id="compose-previews"></div>
+      <div class="composer-row">
+        <button class="icon-btn" type="button" id="compose-attach" title="Attach image" aria-label="Attach image">+</button>
+        <textarea
+          id="compose-text"
+          rows="1"
+          placeholder="Message…"
+          enterkeyhint="send"
+          inputmode="text"
+          autocomplete="off"
+          autocorrect="on"
+          autocapitalize="sentences"
+          spellcheck="true"
+        ></textarea>
+      </div>
     </div>
-    <div class="meta">newest on top · you right · bot/agent left</div>
-  </footer>
+  </form>
+  <input id="compose-file" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true" />
   <script>
     const log = document.getElementById('log');
     const tabsEl = document.getElementById('tabs');
@@ -520,6 +843,9 @@ const HTML = `<!doctype html>
     const CAP = 320;
     let state = null;
     let viewSessionId = null;
+    let viewMode = 'session'; // 'session' | 'workers' | 'worker-detail'
+    let viewWorkerId = null;
+    let agentsInfo = { workers: [], maxWorkers: 4 };
     let n = 0;
     const seen = new Set();
 
@@ -577,12 +903,23 @@ const HTML = `<!doctype html>
 
     function renderTabs() {
       if (!state) return;
-      const list = state.sessionList || Object.values(state.sessions || {});
       tabsEl.innerHTML = '';
+
+      const activeWorkers = (agentsInfo.workers || []).filter(
+        (w) => w.phase !== 'done' && w.phase !== 'error',
+      ).length;
+      const wb = document.createElement('button');
+      wb.type = 'button';
+      wb.className = 'tab workers-tab' + (viewMode !== 'session' ? ' active' : '');
+      wb.innerHTML = 'Workers' + (activeWorkers ? '<span class="tok">' + activeWorkers + '</span>' : '');
+      wb.onclick = () => showWorkers();
+      tabsEl.appendChild(wb);
+
+      const list = state.sessionList || Object.values(state.sessions || {});
       for (const s of list) {
         const b = document.createElement('button');
         b.type = 'button';
-        b.className = 'tab' + (s.id === viewSessionId ? ' active' : '');
+        b.className = 'tab' + (viewMode === 'session' && s.id === viewSessionId ? ' active' : '');
         b.innerHTML = escapeHtml(s.label || s.id) +
           '<span class="tok">' + fmt(s.tokens?.total || 0) + '</span>';
         b.onclick = () => switchSession(s.id);
@@ -591,7 +928,10 @@ const HTML = `<!doctype html>
     }
 
     async function switchSession(id) {
+      viewMode = 'session';
+      viewWorkerId = null;
       viewSessionId = id;
+      document.getElementById('compose').style.display = '';
       fetch('/api/session/active', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -600,6 +940,7 @@ const HTML = `<!doctype html>
       log.innerHTML = '';
       seen.clear();
       n = 0;
+      renderTabs();
       const list = await fetch('/api/events?session=' + encodeURIComponent(id)).then((r) => r.json());
       // API returns oldest→newest; prepend each so newest ends on top
       list.forEach((ev) => add(ev, { skipScroll: true }));
@@ -609,13 +950,124 @@ const HTML = `<!doctype html>
       log.scrollTop = 0;
     }
 
+    function workerPhasePill(phase) {
+      if (phase === 'done') return 'live';
+      if (phase === 'error') return 'dead';
+      return 'work';
+    }
+
+    function showWorkers() {
+      viewMode = 'workers';
+      viewWorkerId = null;
+      document.getElementById('active-label').textContent = 'Workers';
+      document.getElementById('compose').style.display = 'none';
+      renderTabs();
+      renderWorkersList();
+    }
+
+    function renderWorkersList() {
+      log.innerHTML = '';
+      seen.clear();
+      n = 0;
+      const workers = (agentsInfo.workers || [])
+        .slice()
+        .sort((a, b) => String(b.updatedAt || b.startedAt || '').localeCompare(String(a.updatedAt || a.startedAt || '')));
+      countEl.textContent = workers.length + ' workers';
+      if (!workers.length) {
+        const empty = document.createElement('div');
+        empty.className = 'wrap center';
+        empty.innerHTML = '<div class="bubble sys">No workers yet.</div>';
+        log.appendChild(empty);
+        return;
+      }
+      for (const w of workers) {
+        const wrap = document.createElement('div');
+        wrap.className = 'wrap them';
+        wrap.style.cursor = 'pointer';
+        wrap.innerHTML =
+          '<div class="bubble agent">' +
+          '<div class="meta-line"><span>' + escapeHtml(w.workerId || '') +
+          '</span><span class="pill ' + workerPhasePill(w.phase) + '">' + escapeHtml(w.phase || '') + '</span></div>' +
+          '<div class="body">' + escapeHtml(w.text || '(no task text)') + '</div>' +
+          '<div class="hint">' + escapeHtml(shortTime(w.startedAt)) +
+          (w.sessionId ? ' · ' + escapeHtml(w.sessionId) : '') + ' · tap for live stream</div>' +
+          '</div>';
+        wrap.addEventListener('click', () => showWorkerDetail(w.workerId));
+        log.appendChild(wrap);
+      }
+    }
+
+    async function showWorkerDetail(workerId) {
+      viewMode = 'worker-detail';
+      viewWorkerId = workerId;
+      const w = (agentsInfo.workers || []).find((x) => x.workerId === workerId);
+      document.getElementById('active-label').textContent =
+        'Worker · ' + workerId + (w ? ' · ' + (w.phase || '') : '');
+      document.getElementById('compose').style.display = 'none';
+      renderTabs();
+      log.innerHTML = '';
+      seen.clear();
+      n = 0;
+      const list = await fetch('/api/events?worker=' + encodeURIComponent(workerId)).then((r) => r.json());
+      // Chronological, oldest first — appended top-to-bottom like a log tail
+      list.forEach((ev) => add(ev, { skipScroll: true }));
+      countEl.textContent = n + ' events';
+      log.scrollTop = log.scrollHeight;
+    }
+
     function isFileOp(ev) {
       const tool = String(ev.tool || '');
       return !!(ev.path || /^(Write|StrReplace|Delete|EditNotebook|Read|Grep|Glob)$/i.test(tool));
     }
 
+    function applyProcessor(p) {
+      if (!p) return;
+      const agents = p.agents || {};
+      agentsInfo = { workers: agents.workers || [], maxWorkers: agents.maxWorkers || 4 };
+      renderTabs();
+      if (viewMode === 'workers') renderWorkersList();
+      if (viewMode === 'worker-detail') {
+        const w = agentsInfo.workers.find((x) => x.workerId === viewWorkerId);
+        if (w) {
+          document.getElementById('active-label').textContent =
+            'Worker · ' + viewWorkerId + (w.phase ? ' · ' + w.phase : '');
+        }
+      }
+      const el = document.getElementById('proc');
+      if (!el) return;
+      const mainReady = p.mainReady || (agents.main && agents.main.ready);
+      const workers = (agents.workers || []).filter(function (w) {
+        return w.phase !== 'done' && w.phase !== 'error';
+      });
+      if (p.enabled === false) {
+        el.textContent = 'auto off';
+        el.className = 'pill dead';
+        el.title = 'Set AUTO_PROCESS=1 (default) and restart';
+        return;
+      }
+      if (workers.length > 0) {
+        el.textContent = 'workers ' + workers.length;
+        el.className = 'pill work';
+        el.title = workers.map(function (w) {
+          return (w.workerId || '') + ' · ' + (w.phase || '') + ' · ' + (w.text || '');
+        }).join('\\n');
+      } else if (!mainReady) {
+        el.textContent = 'main starting';
+        el.className = 'pill work';
+        el.title = 'Warming front-desk Claude session';
+      } else {
+        el.textContent = 'main ready';
+        el.className = 'pill live';
+        el.title = 'Front-desk agent online — workers spawn on each message';
+      }
+    }
+
     function shouldSkip(ev) {
       if (!ev) return true;
+      if (ev.type === 'processor' || ev.type === 'agents') {
+        applyProcessor(Object.assign({}, ev.processor || {}, { agents: ev.agents || (ev.processor && ev.processor.agents) }));
+        return true;
+      }
       if (ev.silent || ev.type === 'state') return true;
       if (ev.state && !ev.text && !ev.note && !ev.tool && !ev.path) return true;
       return false;
@@ -630,8 +1082,13 @@ const HTML = `<!doctype html>
         if (ev && ev.state) applyState(ev.state);
         return;
       }
-      const sid = ev.sessionId || (state && state.activeId);
-      if (viewSessionId && sid && sid !== viewSessionId) return;
+      if (viewMode === 'workers') return; // list view is driven by renderWorkersList, not the raw event stream
+      if (viewMode === 'worker-detail') {
+        if (String(ev.workerId || '') !== String(viewWorkerId)) return;
+      } else {
+        const sid = ev.sessionId || (state && state.activeId);
+        if (viewSessionId && sid && sid !== viewSessionId) return;
+      }
       const key = eventKey(ev);
       if (seen.has(key)) return;
       seen.add(key);
@@ -695,10 +1152,15 @@ const HTML = `<!doctype html>
         wrap.querySelector('.bubble').appendChild(img);
       }
 
-      // newest on top
-      if (opts && opts.append) log.appendChild(wrap);
-      else log.prepend(wrap);
-      if (!(opts && opts.skipScroll)) log.scrollTop = 0;
+      if (viewMode === 'worker-detail') {
+        // chronological log tail — oldest on top, newest at bottom
+        log.appendChild(wrap);
+        if (!(opts && opts.skipScroll)) log.scrollTop = log.scrollHeight;
+      } else {
+        // newest on top
+        log.prepend(wrap);
+        if (!(opts && opts.skipScroll)) log.scrollTop = 0;
+      }
     }
 
     statsBtn.onclick = (e) => {
@@ -722,10 +1184,128 @@ const HTML = `<!doctype html>
       });
     };
 
+    const composeForm = document.getElementById('compose');
+    const composeText = document.getElementById('compose-text');
+    const composer = document.getElementById('composer');
+    const composeFile = document.getElementById('compose-file');
+    const composePreviews = document.getElementById('compose-previews');
+    const pendingImages = [];
+
+    function renderPreviews() {
+      composePreviews.innerHTML = '';
+      composePreviews.classList.toggle('has', pendingImages.length > 0);
+      pendingImages.forEach((img, i) => {
+        const el = document.createElement('div');
+        el.className = 'shot';
+        el.innerHTML = '<img alt="" /><button type="button" aria-label="Remove">×</button>';
+        el.querySelector('img').src = img.dataUrl;
+        el.querySelector('button').onclick = () => {
+          pendingImages.splice(i, 1);
+          renderPreviews();
+        };
+        composePreviews.appendChild(el);
+      });
+    }
+
+    function addImageFile(file) {
+      if (!file || !String(file.type || '').startsWith('image/')) return;
+      if (pendingImages.length >= 6) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        pendingImages.push({
+          name: file.name || 'image.jpg',
+          type: file.type || 'image/jpeg',
+          dataUrl: String(reader.result),
+        });
+        renderPreviews();
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function sendChat() {
+      const text = composeText.value.trim();
+      if (!text && !pendingImages.length) return;
+      const images = pendingImages.map((x) => ({
+        name: x.name,
+        type: x.type,
+        dataUrl: x.dataUrl,
+      }));
+      composeText.disabled = true;
+      applyProcessor({ busy: true, pending: 0 });
+      add({
+        dir: 'sys',
+        note: 'auto: processing now…',
+        text: text || '[photo]',
+        ts: new Date().toISOString(),
+        sessionId: viewSessionId,
+      });
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, sessionId: viewSessionId, images }),
+        });
+        if (!res.ok) throw new Error('chat HTTP ' + res.status);
+        composeText.value = '';
+        pendingImages.length = 0;
+        renderPreviews();
+      } catch (err) {
+        add({
+          dir: 'sys',
+          note: 'auto: send failed — ' + String(err && err.message || err),
+          ts: new Date().toISOString(),
+        });
+        applyProcessor({ busy: false, pending: 0 });
+      } finally {
+        composeText.disabled = false;
+        composeText.focus({ preventScroll: true });
+      }
+    }
+
+    composeForm.addEventListener('submit', (e) => { e.preventDefault(); sendChat(); });
+    composeText.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendChat();
+      }
+    });
+    document.getElementById('compose-attach').onclick = () => composeFile.click();
+    composeFile.addEventListener('change', () => {
+      Array.from(composeFile.files || []).forEach(addImageFile);
+      composeFile.value = '';
+    });
+    composeText.addEventListener('paste', (e) => {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type && item.type.startsWith('image/')) {
+          const f = item.getAsFile();
+          if (f) addImageFile(f);
+        }
+      }
+    });
+    ;['dragenter','dragover'].forEach((ev) => {
+      composer.addEventListener(ev, (e) => {
+        e.preventDefault();
+        composer.classList.add('drag');
+      });
+    });
+    ;['dragleave','drop'].forEach((ev) => {
+      composer.addEventListener(ev, (e) => {
+        e.preventDefault();
+        composer.classList.remove('drag');
+        if (ev === 'drop') {
+          Array.from(e.dataTransfer.files || []).forEach(addImageFile);
+        }
+      });
+    });
+
     Promise.all([
       fetch('/api/session').then((r) => r.json()),
-    ]).then(async ([sess]) => {
+      fetch('/api/processor').then((r) => r.json()).catch(() => null),
+    ]).then(async ([sess, proc]) => {
       applyState(sess);
+      applyProcessor(proc);
       viewSessionId = sess.activeId;
       const list = await fetch('/api/events?session=' + encodeURIComponent(viewSessionId)).then((r) => r.json());
       list.forEach((ev) => add(ev, { skipScroll: true }));
@@ -743,7 +1323,8 @@ const HTML = `<!doctype html>
 
     setInterval(() => {
       fetch('/api/session').then((r) => r.json()).then(applyState).catch(() => {});
-    }, 5000);
+      fetch('/api/processor').then((r) => r.json()).then(applyProcessor).catch(() => {});
+    }, 3000);
   </script>
 </body>
 </html>`;
@@ -786,7 +1367,41 @@ const server = createServer(async (req, res) => {
   }
 
   if (url.pathname === '/api/health') {
-    sendJson(res, 200, { ok: true, port, queue: queue.length, state: publicState() });
+    const activeWorkers = (agentsSnapshot.workers || []).filter(
+      (w) => w.phase !== 'done' && w.phase !== 'error',
+    ).length;
+    sendJson(res, 200, {
+      ok: true,
+      port,
+      mainPort: MAIN_PORT,
+      queue: 0,
+      autoProcess: AUTO_PROCESS,
+      processor: {
+        ...processorStatus,
+        pending: activeWorkers,
+        busy: activeWorkers > 0,
+        mainReady: Boolean(agentsSnapshot.main?.ready),
+      },
+      agents: agentsSnapshot,
+      state: publicState(),
+    });
+    return;
+  }
+
+  if (url.pathname === '/api/processor' || url.pathname === '/api/agents') {
+    const activeWorkers = (agentsSnapshot.workers || []).filter(
+      (w) => w.phase !== 'done' && w.phase !== 'error',
+    ).length;
+    sendJson(res, 200, {
+      ok: true,
+      enabled: AUTO_PROCESS,
+      ...processorStatus,
+      pending: activeWorkers,
+      busy: activeWorkers > 0,
+      mainReady: Boolean(agentsSnapshot.main?.ready),
+      agents: agentsSnapshot,
+      mainUrl: MAIN_URL,
+    });
     return;
   }
 
@@ -835,7 +1450,8 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === '/api/events') {
     const sid = url.searchParams.get('session');
-    sendJson(res, 200, readEvents(800, sid || null));
+    const wid = url.searchParams.get('worker');
+    sendJson(res, 200, readEvents(800, sid || null, wid || null));
     return;
   }
 
@@ -856,16 +1472,125 @@ const server = createServer(async (req, res) => {
   }
 
   if (url.pathname === '/api/drain' && req.method === 'GET') {
-    const out = queue;
+    // No backlog — instructions are auto-processed on arrival
     queue = [];
     saveQueue();
-    sendJson(res, 200, { count: out.length, messages: out });
+    sendJson(res, 200, {
+      count: 0,
+      messages: [],
+      autoProcess: AUTO_PROCESS,
+      note: 'Messages are executed immediately by auto processor; drain is always empty.',
+    });
+    return;
+  }
+
+  // Chat from the debug UI → log + auto-process (no drain queue)
+  if (url.pathname === '/api/chat' && req.method === 'POST') {
+    try {
+      const body = await readBody(req);
+      const text = String(body.text || '').trim();
+      const images = Array.isArray(body.images) ? body.images : [];
+      if (!text && !images.length) {
+        sendJson(res, 400, { ok: false, error: 'empty' });
+        return;
+      }
+      const sessionId = body.sessionId || state.activeId;
+      if (body.sessionId) {
+        try {
+          setActiveSession(body.sessionId);
+        } catch {
+          /* keep current */
+        }
+      }
+
+      const saved = [];
+      mkdirSync(join(SKILL_ROOT, 'inbox'), { recursive: true });
+      for (let i = 0; i < images.length && i < 6; i++) {
+        const img = images[i] || {};
+        const dataUrl = String(img.dataUrl || '');
+        const m = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(dataUrl);
+        if (!m) continue;
+        const mime = m[1];
+        const ext = mime.includes('png')
+          ? 'png'
+          : mime.includes('webp')
+            ? 'webp'
+            : mime.includes('gif')
+              ? 'gif'
+              : 'jpg';
+        const messageId = `ui-${Date.now()}-${i}`;
+        const dest = join(SKILL_ROOT, 'inbox', `${messageId}.${ext}`);
+        writeFileSync(dest, Buffer.from(m[2], 'base64'));
+        saved.push({
+          messageId,
+          previewUrl: `/inbox/${messageId}.${ext}`,
+          localPath: dest,
+        });
+      }
+
+      const primary = saved[0] || null;
+      const messageId = primary?.messageId || `ui-${Date.now()}`;
+      const ev = logEvent({
+        dir: 'in',
+        sessionId,
+        from: 'ui',
+        text: text || (saved.length ? '[photo]' : ''),
+        hasPhoto: saved.length > 0,
+        messageId,
+        source: 'debug-ui',
+        previewUrl: primary?.previewUrl || null,
+        localPath: primary?.localPath || null,
+        images: saved.map((s) => s.previewUrl),
+      });
+      // Extra images as follow-up log rows
+      for (let i = 1; i < saved.length; i++) {
+        logEvent({
+          dir: 'in',
+          sessionId,
+          from: 'ui',
+          text: '',
+          hasPhoto: true,
+          messageId: saved[i].messageId,
+          source: 'debug-ui',
+          previewUrl: saved[i].previewUrl,
+          localPath: saved[i].localPath,
+        });
+      }
+      acceptInstruction({
+        text: text || (saved.length ? '[photo]' : ''),
+        from: 'ui',
+        hasPhoto: saved.length > 0,
+        messageId,
+        sessionId,
+        source: 'debug-ui',
+        previewUrl: primary?.previewUrl || null,
+        localPath: primary?.localPath || null,
+        images: saved.map((s) => ({
+          previewUrl: s.previewUrl,
+          localPath: s.localPath,
+        })),
+      });
+      sendJson(res, 200, {
+        ok: true,
+        messageId,
+        images: saved.length,
+        processed: AUTO_PROCESS,
+      });
+    } catch (e) {
+      sendJson(res, 400, { ok: false, error: String(e) });
+    }
     return;
   }
 
   if (url.pathname === '/api/event' && req.method === 'POST') {
     try {
       const ev = await readBody(req);
+      if (ev.type === 'agents' || ev.agents) {
+        agentsSnapshot = ev.agents || agentsSnapshot;
+        broadcastProcessor();
+        sendJson(res, 200, { ok: true, silent: true });
+        return;
+      }
       let session = null;
       if (ev.cwd || ev.folder || ev.workspaces || ev.project || ev.sessionId) {
         session = ensureSession({
@@ -922,8 +1647,16 @@ const server = createServer(async (req, res) => {
       return;
     }
     const buf = readFileSync(path);
+    const lower = name.toLowerCase();
+    const type = lower.endsWith('.png')
+      ? 'image/png'
+      : lower.endsWith('.webp')
+        ? 'image/webp'
+        : lower.endsWith('.gif')
+          ? 'image/gif'
+          : 'image/jpeg';
     res.writeHead(200, {
-      'Content-Type': 'image/jpeg',
+      'Content-Type': type,
       'Cache-Control': 'no-store',
     });
     res.end(buf);
@@ -965,7 +1698,7 @@ async function pollLoop() {
           }
         }
 
-        const ev = logEvent({
+        logEvent({
           dir: 'in',
           sessionId: state.activeId,
           from: msg.from,
@@ -975,10 +1708,18 @@ async function pollLoop() {
           updateId: msg.updateId,
           previewUrl,
           localPath: msg.localPath || null,
+          source: 'telegram',
         });
 
-        queue.push({ ...msg, previewUrl, loggedAt: ev.ts });
-        saveQueue();
+        acceptInstruction({
+          ...msg,
+          sessionId: state.activeId,
+          previewUrl,
+          source: 'telegram',
+          images: msg.localPath
+            ? [{ localPath: msg.localPath, previewUrl }]
+            : [],
+        });
       }
       saveOffset(offset);
     } catch (err) {
@@ -1008,5 +1749,27 @@ if (!Object.keys(state.sessions || {}).length) {
 server.listen(port, host, () => {
   console.log(`Debug UI: http://127.0.0.1:${port}/`);
   console.log(`          bind ${host}:${port}`);
+  console.log(
+    `          auto-process: ${AUTO_PROCESS ? 'ON (main + workers)' : 'OFF'}`,
+  );
+  console.log(`          main-agent: ${MAIN_URL}`);
+
+  ensureMainAgent();
+
+  // Flush any legacy drain backlog into the processor, then clear it
+  const backlog = loadQueue();
+  saveQueue();
+  for (const msg of backlog) {
+    acceptInstruction({
+      ...msg,
+      sessionId: msg.sessionId || state.activeId,
+      source: msg.source || 'backlog',
+    });
+  }
+
+  setInterval(() => {
+    mainAgentUp().catch(() => {});
+  }, 4000);
+
   pollLoop();
 });

@@ -3,11 +3,27 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Personal Telegram bridge + agent status debug console",
+  "description": "Auto Web — Telegram bridge, agent console, and llm-wiki",
   "scripts": {
     "start": "node scripts/debug-server.mjs --host=0.0.0.0 --port=4331",
     "debug": "node scripts/debug-server.mjs --host=0.0.0.0 --port=4331",
+    "main": "node scripts/main-agent.mjs --port=4332",
+    "worker": "node scripts/worker-agent.mjs",
     "send": "node scripts/send.mjs",
-    "listen": "node scripts/listen.mjs --once --timeout=25"
+    "send:whatsapp": "node scripts/send-whatsapp.mjs",
+    "listen": "node scripts/listen.mjs --once --timeout=25",
+    "process": "node scripts/process-instruction.mjs",
+    "test": "node scripts/test.mjs",
+    "wiki": "wiki",
+    "wiki:ingest": "wiki ingest --all -y",
+    "wiki:query": "wiki query",
+    "wiki:lint": "wiki lint --skip-llm"
+  },
+  "dependencies": {
+    "llm-wiki": "^0.1.3",
+    "@whiskeysockets/baileys": "^6.7.18",
+    "pino": "^9.6.0",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0"
   }
 }

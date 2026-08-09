@@ -16,6 +16,7 @@ export const PROJECT_ROOT = join(HERE, '..');
 export const SKILL_ROOT = PROJECT_ROOT;
 export const AUTH_PATH = join(PROJECT_ROOT, 'auth.json');
 export const TOKEN_PATH = join(PROJECT_ROOT, 'bot-token.txt');
+export const WHATSAPP_AUTH_DIR = join(PROJECT_ROOT, 'whatsapp-auth');
 export const OFFSET_PATH = join(PROJECT_ROOT, 'offset.json');
 export const EVENTS_PATH = join(PROJECT_ROOT, 'events.jsonl');
 export const QUEUE_PATH = join(PROJECT_ROOT, 'pending-queue.json');
@@ -32,6 +33,16 @@ const LEGACY_AUTH_CANDIDATES = [
 export function arg(name, fallback = '') {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
   return hit ? hit.slice(name.length + 3) : fallback;
+}
+
+/** Normalize Cursor/hook paths like `/D:/foo` → `D:\foo` on Windows. */
+export function normalizeFsPath(p) {
+  if (p == null || p === '') return p;
+  let s = String(p).trim();
+  s = s.replace(/^\/([A-Za-z]):\//, '$1:/');
+  s = s.replace(/^\/([A-Za-z]):\\/, '$1:\\');
+  if (/^[A-Za-z]:\//.test(s)) s = s.replace(/\//g, '\\');
+  return s;
 }
 
 export function hasFlag(name) {
