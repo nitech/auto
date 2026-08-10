@@ -587,6 +587,14 @@ function broadcast(event) {
   }
 }
 
+// Heartbeat: keeps SSE connections alive through proxies/NAT timeouts and
+// gives the client a liveness signal — the UI watchdog force-reconnects if
+// nothing (event or ping) has arrived for a while. Marked `silent` so the
+// UI never renders it.
+setInterval(() => {
+  broadcast({ type: 'ping', silent: true, ts: Date.now() });
+}, 25000).unref();
+
 const HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -1490,14 +1498,17 @@ const HTML = `<!doctype html>
     });
 
     let es = null;
+    let lastEventAt = Date.now();
     function connectStream() {
       if (es && es.readyState !== EventSource.CLOSED) es.close();
       status.textContent = 'connecting';
       status.className = 'pill dead';
+      lastEventAt = Date.now();
       es = new EventSource('/api/stream');
-      es.onopen = () => { status.textContent = 'live'; status.className = 'pill live'; };
+      es.onopen = () => { status.textContent = 'live'; status.className = 'pill live'; lastEventAt = Date.now(); };
       es.onerror = () => { status.textContent = 'reconnecting'; status.className = 'pill dead'; };
       es.onmessage = (e) => {
+        lastEventAt = Date.now();
         try {
           const ev = JSON.parse(e.data);
           add(ev);
@@ -1531,21 +1542,28 @@ const HTML = `<!doctype html>
 
     // iOS Safari (and other mobile browsers) freeze/kill the SSE connection
     // and any in-flight fetches when the tab is backgrounded, without ever
-    // firing onerror — so the page is left stuck on whatever it showed at
-    // the moment it was backgrounded. Re-sync and reconnect on resume.
+    // firing onerror or changing readyState — a frozen stream can still
+    // report readyState OPEN while delivering nothing. So on resume, always
+    // re-sync and force-reconnect, regardless of the reported state.
+    function resync() {
+      refreshAll();
+      if (es) { try { es.close(); } catch {} es = null; }
+      connectStream();
+    }
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState !== 'visible') return;
-      if (!es || es.readyState !== EventSource.OPEN) {
-        refreshAll();
-        connectStream();
-      }
+      if (document.visibilityState === 'visible') resync();
     });
     window.addEventListener('pageshow', (e) => {
-      if (e.persisted && (!es || es.readyState !== EventSource.OPEN)) {
-        refreshAll();
-        connectStream();
-      }
+      if (e.persisted) resync();
     });
+    // Safety net: the server heartbeats every 25s, so a healthy stream
+    // always delivers something. If we've seen nothing for 70s while the
+    // page is visible, the stream is silently dead — force a reconnect.
+    setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      if (!es || es.readyState === EventSource.CLOSED) { connectStream(); return; }
+      if (Date.now() - lastEventAt > 70000) resync();
+    }, 10000);
   </script>
 </body>
 </html>`;
