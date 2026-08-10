@@ -972,8 +972,7 @@ const HTML = `<!doctype html>
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'tab' + (viewMode === 'session' && s.id === viewSessionId ? ' active' : '');
-        b.innerHTML = escapeHtml(s.label || s.id) +
-          '<span class="tok">' + fmt(s.tokens?.total || 0) + '</span>';
+        b.innerHTML = escapeHtml(s.label || s.id);
         b.onclick = () => switchSession(s.id);
         if (list.length > 1) {
           const x = document.createElement('span');
