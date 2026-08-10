@@ -222,28 +222,39 @@ export const AUTO_PROVIDER_INFO = applyAutoProvider();
 /**
  * Refresh Kimi Code OAuth (if needed) and re-apply provider env.
  * Call from long-lived entrypoints before spawning Claude.
+ * @param {{ force?: boolean }} [opts]
+ * @returns {Promise<typeof AUTO_PROVIDER_INFO & { changed: boolean }>}
  */
-export async function ensureAutoProviderAuth() {
+export async function ensureAutoProviderAuth(opts = {}) {
   const provider = String(process.env.AUTO_PROVIDER || '')
     .toLowerCase()
     .trim();
-  if (provider !== 'kimi' && provider !== 'moonshot') return AUTO_PROVIDER_INFO;
+  if (provider !== 'kimi' && provider !== 'moonshot') {
+    return Object.assign(AUTO_PROVIDER_INFO, { changed: false });
+  }
   const mode = String(process.env.AUTO_KIMI_MODE || 'coding')
     .toLowerCase()
     .trim();
-  if (mode !== 'coding' && mode !== 'subscription') return AUTO_PROVIDER_INFO;
+  if (mode !== 'coding' && mode !== 'subscription') {
+    return Object.assign(AUTO_PROVIDER_INFO, { changed: false });
+  }
 
+  const prevKey = process.env.ANTHROPIC_API_KEY || '';
   const { ensureKimiAuthForProvider } = await import('./kimi-oauth.mjs');
   try {
-    const r = await ensureKimiAuthForProvider();
+    const r = await ensureKimiAuthForProvider(opts);
     if (r.warning) {
       console.error(`[provider] WARNING: ${r.warning}`);
     }
+    const nextKey = process.env.ANTHROPIC_API_KEY || '';
     Object.assign(AUTO_PROVIDER_INFO, {
       ready: true,
       auth: r.source || 'oauth',
       warning: r.warning || null,
       mode: 'coding',
+    });
+    return Object.assign(AUTO_PROVIDER_INFO, {
+      changed: Boolean(nextKey && nextKey !== prevKey),
     });
   } catch (e) {
     Object.assign(AUTO_PROVIDER_INFO, {
@@ -251,8 +262,8 @@ export async function ensureAutoProviderAuth() {
       warning: e.message,
     });
     console.error(`[provider] WARNING: ${e.message}`);
+    return Object.assign(AUTO_PROVIDER_INFO, { changed: false });
   }
-  return AUTO_PROVIDER_INFO;
 }
 
 

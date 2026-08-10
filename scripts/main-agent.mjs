@@ -80,9 +80,17 @@ let claude = null;
 let sessionId = loadSessionId();
 let claudeReady = false;
 let startingClaude = false;
+/** API key baked into the currently running Claude process env. */
+let claudeSpawnApiKey = '';
+/** @type {Promise<boolean> | null} */
+let authRefreshInFlight = null;
+let lastAuthRestartAt = 0;
 const pendingInjects = [];
 const workers = new Map(); // workerId -> meta
 let stdoutBuf = '';
+
+const AUTH_FAIL_RE =
+  /Failed to authenticate|API Error:\s*401|API Key appears to be invalid|may have expired/i;
 
 // Worker display names — drawn from The Simpsons instead of "w-<messageId>".
 const SIMPSONS_NAMES = [
@@ -273,6 +281,49 @@ function extractAssistantText(msg) {
     .trim();
 }
 
+/**
+ * Keep Kimi OAuth fresh. Access tokens last ~15m; Claude keeps the key from
+ * spawn env, so a rotate must kill+respawn Claude with the new token.
+ * @param {{ force?: boolean, reason?: string }} [opts]
+ */
+async function refreshProviderAuth(opts = {}) {
+  if (AUTO_PROVIDER_INFO.provider !== 'kimi') return false;
+  if (AUTO_PROVIDER_INFO.mode && AUTO_PROVIDER_INFO.mode !== 'coding') {
+    return false;
+  }
+  if (authRefreshInFlight) return authRefreshInFlight;
+  authRefreshInFlight = (async () => {
+    const info = await ensureAutoProviderAuth({ force: Boolean(opts.force) });
+    const next = process.env.ANTHROPIC_API_KEY || '';
+    const mismatch = Boolean(
+      claude && !claude.killed && next && next !== claudeSpawnApiKey,
+    );
+    const shouldRestart = Boolean(
+      opts.force || info.changed || mismatch,
+    );
+    if (shouldRestart && claude && !claude.killed) {
+      const now = Date.now();
+      if (now - lastAuthRestartAt < 5000) return true;
+      lastAuthRestartAt = now;
+      log(
+        `[main] kimi auth refresh${opts.reason ? ` (${opts.reason})` : ''} — restarting claude`,
+      );
+      resumeNext = true;
+      try {
+        claude.kill();
+      } catch {
+        /* ignore */
+      }
+    }
+    return Boolean(info.changed || mismatch || opts.force);
+  })();
+  try {
+    return await authRefreshInFlight;
+  } finally {
+    authRefreshInFlight = null;
+  }
+}
+
 function handleClaudeLine(line) {
   let ev;
   try {
@@ -295,6 +346,12 @@ function handleClaudeLine(line) {
     if (text) {
       // Stream finals only on result; keep partials for log
       log(`[main] assistant partial: ${text.slice(0, 120)}`);
+      if (AUTH_FAIL_RE.test(text)) {
+        refreshProviderAuth({
+          force: true,
+          reason: '401 from assistant',
+        }).catch((e) => log(`[main] auth refresh failed: ${e.message}`));
+      }
     }
   }
   if (ev.type === 'result') {
@@ -304,11 +361,22 @@ function handleClaudeLine(line) {
       '';
     if (text) {
       log(`[main] result: ${text.slice(0, 160)}`);
-      // Ignore warm-up handshake and bare "on it"-style filler — the bridge
-      // already sent an instant ack, so this would just be noisy repetition.
-      const isFiller = /^\s*(on it|starting( the)? worker|working on it|got it)[.…!]*\s*$/i.test(text);
-      if (!/^\s*READY\s*$/i.test(text) && !isFiller) {
-        replyUser(text, { note: 'main-agent' });
+      if (AUTH_FAIL_RE.test(text)) {
+        // Don't spam Telegram with expired-key noise — refresh and retry path.
+        refreshProviderAuth({
+          force: true,
+          reason: '401 from result',
+        }).catch((e) => log(`[main] auth refresh failed: ${e.message}`));
+      } else {
+        // Ignore warm-up handshake and bare "on it"-style filler — the bridge
+        // already sent an instant ack, so this would just be noisy repetition.
+        const isFiller =
+          /^\s*(on it|starting( the)? worker|working on it|got it)[.…!]*\s*$/i.test(
+            text,
+          );
+        if (!/^\s*READY\s*$/i.test(text) && !isFiller) {
+          replyUser(text, { note: 'main-agent' });
+        }
       }
     }
     claudeReady = true;
@@ -443,6 +511,7 @@ function ensureClaude() {
     env: { ...process.env },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
+  claudeSpawnApiKey = process.env.ANTHROPIC_API_KEY || '';
   startingClaude = false;
 
   claude.stdout.on('data', (buf) => {
@@ -501,7 +570,10 @@ function activeWorkerCount() {
   return n;
 }
 
-function spawnWorker(job) {
+async function spawnWorker(job) {
+  // Workers inherit ANTHROPIC_* from us — refresh first so they don't get a dead token.
+  await refreshProviderAuth({ reason: 'pre-worker' });
+
   mkdirSync(JOBS_DIR, { recursive: true });
   const workerId = generateWorkerId();
   const jobFile = join(JOBS_DIR, `${workerId}.json`);
@@ -554,6 +626,8 @@ function spawnWorker(job) {
 }
 
 async function handleJob(job) {
+  await refreshProviderAuth({ reason: 'pre-job' });
+
   const text = String(job.text || '').trim() || '[photo]';
   const messageId = String(job.messageId || `job-${Date.now()}`);
   const folder =
@@ -588,7 +662,7 @@ async function handleJob(job) {
     await new Promise((r) => setTimeout(r, 1000));
   }
 
-  const worker = spawnWorker(fullJob);
+  const worker = await spawnWorker(fullJob);
 
   ensureClaude();
   injectUserText(
@@ -712,7 +786,16 @@ function sendJson(res, code, obj) {
 
 mkdirSync(RUNS_DIR, { recursive: true });
 mkdirSync(JOBS_DIR, { recursive: true });
+await refreshProviderAuth({ reason: 'startup' });
 ensureClaude();
+
+// Kimi OAuth access tokens expire ~15 minutes — refresh ahead of that and
+// restart Claude when the key rotates so the warm session keeps working.
+setInterval(() => {
+  refreshProviderAuth({ reason: 'periodic' }).catch((e) =>
+    log(`[main] periodic auth refresh failed: ${e.message}`),
+  );
+}, 60_000);
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://127.0.0.1:${port}`);

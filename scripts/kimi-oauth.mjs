@@ -27,7 +27,7 @@ export const KIMI_HOME = join(homedir(), '.kimi');
 export const KIMI_CRED_PATH = join(KIMI_HOME, 'credentials', 'kimi-code.json');
 export const KIMI_DEVICE_ID_PATH = join(KIMI_HOME, 'device_id');
 
-const REFRESH_SKEW_SEC = 120;
+const REFRESH_SKEW_SEC = 180;
 
 function deviceHeaders() {
   return {
@@ -143,21 +143,24 @@ export async function refreshKimiOAuth(creds = loadKimiOAuthCreds()) {
 
 /**
  * Ensure a usable access token is on disk (refresh if needed).
+ * @param {{ force?: boolean }} [opts] force=true always refreshes OAuth
  * @returns {Promise<{ access_token: string, source: 'oauth'|'env', warning: string|null }>}
  */
-export async function ensureKimiCodingToken() {
-  const envKey = String(
-    process.env.KIMI_CODE_API_KEY || process.env.KIMI_API_KEY || '',
-  ).trim();
+export async function ensureKimiCodingToken(opts = {}) {
+  const force = Boolean(opts.force);
+  const envKey = String(process.env.KIMI_CODE_API_KEY || '').trim();
   // Prefer explicit coding console key when set and auth mode isn't forced oauth-only.
   const authMode = String(process.env.AUTO_KIMI_AUTH || 'oauth')
     .toLowerCase()
     .trim();
-  if (authMode === 'key' && envKey) {
-    return { access_token: envKey, source: 'env', warning: null };
-  }
-  if (authMode !== 'oauth' && envKey && !loadKimiOAuthCreds()) {
-    return { access_token: envKey, source: 'env', warning: null };
+  if (authMode === 'key') {
+    const key = envKey || String(process.env.KIMI_API_KEY || '').trim();
+    if (!key) {
+      throw new Error(
+        'AUTO_KIMI_AUTH=key but KIMI_CODE_API_KEY is missing — set it or run npm run kimi:login',
+      );
+    }
+    return { access_token: key, source: 'env', warning: null };
   }
 
   let creds = loadKimiOAuthCreds();
@@ -167,14 +170,14 @@ export async function ensureKimiCodingToken() {
         access_token: envKey,
         source: 'env',
         warning:
-          'Using KIMI_API_KEY/KIMI_CODE_API_KEY — for subscription OAuth run: npm run kimi:login',
+          'Using KIMI_CODE_API_KEY — for subscription OAuth run: npm run kimi:login',
       };
     }
     throw new Error(
       'No Kimi Code subscription login. Run: npm run kimi:login',
     );
   }
-  if (oauthTokenExpired(creds)) {
+  if (force || oauthTokenExpired(creds)) {
     try {
       creds = await refreshKimiOAuth(creds);
     } catch (e) {
@@ -182,7 +185,7 @@ export async function ensureKimiCodingToken() {
         return {
           access_token: envKey,
           source: 'env',
-          warning: `OAuth refresh failed (${e.message}); fell back to env key`,
+          warning: `OAuth refresh failed (${e.message}); fell back to KIMI_CODE_API_KEY`,
         };
       }
       throw new Error(
@@ -261,8 +264,9 @@ export function applyCodingTokenToEnv(accessToken) {
 /**
  * Refresh OAuth if needed and stamp Claude Code env for subscription.
  * No-op unless AUTO_PROVIDER=kimi and AUTO_KIMI_MODE=coding (default).
+ * @param {{ force?: boolean }} [opts]
  */
-export async function ensureKimiAuthForProvider() {
+export async function ensureKimiAuthForProvider(opts = {}) {
   const provider = String(process.env.AUTO_PROVIDER || '')
     .toLowerCase()
     .trim();
@@ -275,7 +279,7 @@ export async function ensureKimiAuthForProvider() {
   if (mode !== 'coding' && mode !== 'subscription') {
     return { skipped: true, mode };
   }
-  const tok = await ensureKimiCodingToken();
+  const tok = await ensureKimiCodingToken(opts);
   applyCodingTokenToEnv(tok.access_token);
   return { skipped: false, mode: 'coding', ...tok };
 }
