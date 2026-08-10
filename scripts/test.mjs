@@ -7,10 +7,11 @@
  * Checks:
  *   1. Every .mjs script under scripts/ parses (node --check).
  *   2. lib.mjs's exports actually import and are the expected type.
+ *   2b. Every skill under .claude/skills/ has valid SKILL.md frontmatter.
  *   3. If the service is already running, its /health endpoints respond.
  */
 import { spawnSync } from 'node:child_process';
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -100,6 +101,39 @@ try {
   if (!failed) ok('kimi-oauth.mjs exports present');
 } catch (e) {
   fail(`import kimi-oauth.mjs: ${e.message}`);
+}
+
+// 2b. Auto's own skills: every .claude/skills/<name>/SKILL.md must have valid
+// frontmatter (name matching the directory, non-empty description).
+const SKILLS_DIR = join(ROOT, '.claude', 'skills');
+if (existsSync(SKILLS_DIR)) {
+  const NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+  for (const dir of readdirSync(SKILLS_DIR, { withFileTypes: true })) {
+    if (!dir.isDirectory()) continue;
+    const before = failed;
+    const mdPath = join(SKILLS_DIR, dir.name, 'SKILL.md');
+    if (!existsSync(mdPath)) {
+      fail(`skill ${dir.name}: missing SKILL.md`);
+      continue;
+    }
+    const text = readFileSync(mdPath, 'utf8');
+    const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (!fm) {
+      fail(`skill ${dir.name}: no frontmatter block`);
+      continue;
+    }
+    const name = fm[1].match(/^name:\s*(.+)$/m)?.[1]?.trim();
+    const desc = fm[1].match(/^description:\s*(.+)$/m)?.[1]?.trim();
+    if (!name) fail(`skill ${dir.name}: frontmatter missing name`);
+    else if (name !== dir.name) {
+      fail(`skill ${dir.name}: name "${name}" != directory name`);
+    } else if (!NAME_RE.test(name) || name.length > 64) {
+      fail(`skill ${dir.name}: invalid name format "${name}"`);
+    }
+    if (!desc) fail(`skill ${dir.name}: frontmatter missing description`);
+    else if (desc.length > 1024) fail(`skill ${dir.name}: description too long`);
+    if (failed === before) ok(`skill: ${dir.name}`);
+  }
 }
 
 // 3. If the debug server / main agent are already running, hit /health.

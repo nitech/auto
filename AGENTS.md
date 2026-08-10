@@ -2,8 +2,9 @@
 
 > This is Auto's real instruction doc. `CLAUDE.md` in this repo is only a
 > stub that imports this file — the harness auto-loads that fixed filename,
-> but keeping the content in `AUTO.md` reflects that the behavior here is
-> provider-agnostic (see "Agent independence" below).
+> but the content lives in `AGENTS.md` (the cross-tool convention for agent
+> instructions) because the behavior here is provider-agnostic (see
+> "Agent independence" below).
 
 Auto is Simon's own always-on Telegram/Auto-Web bridge (`scripts/main-agent.mjs`
 + `scripts/worker-agent.mjs`, fronted by `scripts/debug-server.mjs`). Any agent

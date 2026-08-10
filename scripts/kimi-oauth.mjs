@@ -9,6 +9,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  renameSync,
   writeFileSync,
   openSync,
   closeSync,
@@ -86,7 +87,12 @@ export function saveKimiOAuthCreds(token) {
     const prev = loadKimiOAuthCreds();
     if (prev?.refresh_token) out.refresh_token = prev.refresh_token;
   }
-  writeFileSync(KIMI_CRED_PATH, JSON.stringify(out, null, 2) + '\n', 'utf8');
+  // Atomic write (tmp + rename): main agent and workers share this file, and
+  // a reader catching a half-written file would parse-fail and treat us as
+  // logged out.
+  const tmp = `${KIMI_CRED_PATH}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(out, null, 2) + '\n', 'utf8');
+  renameSync(tmp, KIMI_CRED_PATH);
   return out;
 }
 
@@ -178,19 +184,37 @@ export async function ensureKimiCodingToken(opts = {}) {
     );
   }
   if (force || oauthTokenExpired(creds)) {
-    try {
-      creds = await refreshKimiOAuth(creds);
-    } catch (e) {
-      if (envKey) {
-        return {
-          access_token: envKey,
-          source: 'env',
-          warning: `OAuth refresh failed (${e.message}); fell back to KIMI_CODE_API_KEY`,
-        };
+    // Main agent and workers share this file and all refresh around the same
+    // expiry — re-read before burning a refresh, and prefer fresh disk creds
+    // a sibling process may have just saved.
+    const onDisk = loadKimiOAuthCreds();
+    if (!force && onDisk && !oauthTokenExpired(onDisk)) {
+      creds = onDisk;
+    } else {
+      try {
+        creds = await refreshKimiOAuth(
+          onDisk && Number(onDisk.expires_at) > Number(creds.expires_at)
+            ? onDisk
+            : creds,
+        );
+      } catch (e) {
+        // A concurrent refresh can rotate/invalidate the refresh token we just
+        // tried — the winner saved fresh creds, so re-read once before failing.
+        const again = loadKimiOAuthCreds();
+        if (again && !oauthTokenExpired(again)) {
+          creds = again;
+        } else if (envKey) {
+          return {
+            access_token: envKey,
+            source: 'env',
+            warning: `OAuth refresh failed (${e.message}); fell back to KIMI_CODE_API_KEY`,
+          };
+        } else {
+          throw new Error(
+            `${e.message}. Re-login with: npm run kimi:login`,
+          );
+        }
       }
-      throw new Error(
-        `${e.message}. Re-login with: npm run kimi:login`,
-      );
     }
   }
   return {

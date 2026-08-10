@@ -15,7 +15,7 @@ import { spawn } from 'node:child_process';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { arg, SKILL_ROOT, appendEvent, normalizeFsPath, ensureAutoProviderAuth, autoAgentIdentity } from './lib.mjs';
+import { arg, SKILL_ROOT, appendEvent, normalizeFsPath, ensureAutoProviderAuth, autoAgentIdentity, installSkills } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
@@ -24,7 +24,11 @@ const MAIN_URL = (
   process.env.AUTO_MAIN_URL || 'http://127.0.0.1:4332'
 ).replace(/\/$/, '');
 
-await ensureAutoProviderAuth();
+await ensureAutoProviderAuth().catch(() => {});
+
+// Junction Auto's own skills into ~/.claude/skills so this session loads them
+// no matter which folder the job runs in. Idempotent, fast, self-healing.
+for (const w of installSkills().warnings) console.error(`[skills] ${w}`);
 
 function loadJob() {
   const file = arg('file', '');
@@ -235,6 +239,14 @@ function jobSafeName() {
   return String(Date.now()).slice(-6);
 }
 
+/** 401 / auth rejection from the spawned claude process. */
+function looksLikeAuthFailure(result) {
+  const s = `${result.text || ''}\n${result.stderr || ''}`;
+  return /401|Failed to authenticate|API Key appears to be invalid|authentication_error/i.test(
+    s,
+  );
+}
+
 async function replyTelegram(text) {
   if (process.env.AUTO_REPLY_TELEGRAM === '0') return;
   const send = join(HERE, 'send.mjs');
@@ -266,6 +278,18 @@ if (!job) {
   process.exit(2);
 }
 
+// Never spawn claude with credentials we already know are bad — that surfaces
+// as an opaque 401 from the harness. Refresh (forced once), and if auth still
+// isn't ready, fail the job with the real reason instead.
+let auth = await ensureAutoProviderAuth();
+if (!auth.ready) auth = await ensureAutoProviderAuth({ force: true });
+if (!auth.ready) {
+  const msg = `Provider auth failed: ${auth.warning || 'unknown reason'}`;
+  console.error(`[worker] ${msg}`);
+  await reportStatus(job, 'error', msg, { code: 1 });
+  process.exit(1);
+}
+
 const cwd =
   normalizeFsPath(
     process.env.AUTO_CWD || job.folder || job.cwd || SKILL_ROOT || ROOT,
@@ -285,7 +309,17 @@ await reportStatus(job, 'started', `Worker started in ${cwd}`);
 
 const prompt = buildPrompt(job);
 const promptFile = join(RUNS, `${runId}.prompt.txt`);
-const result = await runClaude(prompt, cwd, promptFile, job);
+let result = await runClaude(prompt, cwd, promptFile, job);
+
+// The shared Kimi OAuth token rotates every ~15 min; a token that passed the
+// pre-spawn check can still be rejected (expired mid-setup, raced refresh).
+// Force a refresh and retry the job once instead of reporting a bare 401.
+if (result.code !== 0 && looksLikeAuthFailure(result)) {
+  console.error('[worker] claude rejected credentials — forcing token refresh and retrying once');
+  await reportStatus(job, 'started', 'Credentials were rejected (401) — refreshing the Kimi token and retrying…');
+  await ensureAutoProviderAuth({ force: true });
+  result = await runClaude(prompt, cwd, promptFile, job);
+}
 
 const summary =
   result.text?.slice(0, 3500) ||

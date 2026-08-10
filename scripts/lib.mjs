@@ -4,8 +4,13 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
+  lstatSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 
@@ -21,6 +26,84 @@ export const OFFSET_PATH = join(PROJECT_ROOT, 'offset.json');
 export const EVENTS_PATH = join(PROJECT_ROOT, 'events.jsonl');
 export const QUEUE_PATH = join(PROJECT_ROOT, 'pending-queue.json');
 export const ENV_PATH = join(PROJECT_ROOT, '.env');
+
+/**
+ * Auto's own skills. The repo's `.claude/skills/` is the source of truth;
+ * `installSkills()` junctions each skill into `~/.claude/skills/` so they are
+ * also loaded in sessions whose cwd is a different repo (the harness only
+ * discovers project skills from the primary cwd, not from --add-dir dirs —
+ * verified 2026-08-10). Sessions in this repo see the project skills directly.
+ */
+export const SKILLS_DIR = join(PROJECT_ROOT, '.claude', 'skills');
+export const PERSONAL_SKILLS_DIR = join(homedir(), '.claude', 'skills');
+
+function normPath(p) {
+  return String(p || '').replace(/[\\/]+$/, '').toLowerCase();
+}
+
+/**
+ * Junction every repo skill into the personal skills dir, and remove stale
+ * junctions whose repo skill was deleted. Idempotent; junctions need no
+ * admin rights on Windows. Never touches real (non-junction) entries.
+ * @returns {{ installed: string[], removed: string[], warnings: string[] }}
+ */
+export function installSkills() {
+  const installed = [];
+  const removed = [];
+  const warnings = [];
+  let names = [];
+  try {
+    names = readdirSync(SKILLS_DIR, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+  } catch {
+    return { installed, removed, warnings };
+  }
+  mkdirSync(PERSONAL_SKILLS_DIR, { recursive: true });
+
+  for (const name of names) {
+    const target = join(SKILLS_DIR, name);
+    const link = join(PERSONAL_SKILLS_DIR, name);
+    try {
+      const st = lstatSync(link, { throwIfNoEntry: false });
+      if (st) {
+        if (!st.isSymbolicLink()) {
+          warnings.push(`${name}: ${link} exists (not a junction) — left untouched`);
+          continue;
+        }
+        if (normPath(readlinkSync(link)) === normPath(target)) {
+          installed.push(name);
+          continue;
+        }
+        rmSync(link, { force: true }); // stale junction → recreate below
+      }
+      symlinkSync(target, link, 'junction');
+      installed.push(name);
+    } catch (e) {
+      warnings.push(`${name}: ${e.message}`);
+    }
+  }
+
+  // Remove junctions pointing into our skills dir whose repo skill is gone.
+  for (const entry of readdirSync(PERSONAL_SKILLS_DIR, { withFileTypes: true })) {
+    if (names.includes(entry.name)) continue;
+    const link = join(PERSONAL_SKILLS_DIR, entry.name);
+    try {
+      const st = lstatSync(link, { throwIfNoEntry: false });
+      if (!st || !st.isSymbolicLink()) continue;
+      const pointsHere = normPath(readlinkSync(link)).startsWith(
+        normPath(SKILLS_DIR) + sep,
+      );
+      if (pointsHere) {
+        rmSync(link, { force: true });
+        removed.push(entry.name);
+      }
+    } catch (e) {
+      warnings.push(`${entry.name}: cleanup failed: ${e.message}`);
+    }
+  }
+  return { installed, removed, warnings };
+}
 
 /**
  * Load KEY=VALUE pairs from `.env` into process.env.
