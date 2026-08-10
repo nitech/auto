@@ -1,9 +1,24 @@
 # Auto — agent instructions
 
 Auto is Simon's own always-on Telegram/Auto-Web bridge (`scripts/main-agent.mjs`
-+ `scripts/worker-agent.mjs`, fronted by `scripts/debug-server.mjs`). Any
-Claude Code session working in this repo — main agent, worker, or a manual
-session — follows the rule below when it edits files in this repo.
++ `scripts/worker-agent.mjs`, fronted by `scripts/debug-server.mjs`). Any agent
+session working in this repo — main agent, worker, or a manual session —
+follows the rule below when it edits files in this repo.
+
+## Agent independence (memory & behavior)
+
+Auto's docs and wiki are provider-agnostic and must stay that way. The model
+behind a session can be Claude, Kimi, or any future provider (selected via
+`AUTO_PROVIDER` in `.env`), but the *behavior* described in this file,
+`README.md`, `wiki/`, and `raw/` never changes with it. Rules:
+
+- Never write a model/provider name (Claude, Kimi, …) into these docs when
+  describing what an agent *is* or *does* — say "the agent" instead. Naming
+  the harness CLI (`claude`) or provider config (`AUTO_PROVIDER=kimi`) as
+  setup/config documentation is fine.
+- Which model is actually answering is injected at runtime, per session, by
+  `autoAgentIdentity()` in `scripts/lib.mjs` — docs must not duplicate or
+  contradict that.
 
 ## Mandatory workflow for changes to this repo
 
@@ -58,7 +73,7 @@ There is one global "active session" (`debug-server.mjs`, persisted to
 `session-state.json`) whose `folder` becomes the `job.folder` for every
 Telegram/Auto-Web message: `main-agent.mjs` gets it as the `folder:` line
 in each injected `USER_MESSAGE`, and `worker-agent.mjs` gets it as
-`AUTO_CWD` (its spawned Claude's `cwd`) and as "Preferred working folder"
+`AUTO_CWD` (its spawned agent's `cwd`) and as "Preferred working folder"
 in its prompt. Named sessions (`auto`, `setto-agent`, …) already exist in
 `session-state.json` for repos used regularly.
 
