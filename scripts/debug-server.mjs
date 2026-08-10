@@ -926,8 +926,7 @@ const HTML = `<!doctype html>
       }
       const active = s.sessions[viewSessionId] || s.active || {};
       document.getElementById('active-label').textContent =
-        (active.label || active.project || viewSessionId || '—') +
-        (active.folder ? ' · ' + active.folder : '');
+        (active.label || active.project || viewSessionId || '—');
 
       const t = active.tokens || {};
       document.getElementById('tok-total').textContent = fmt(t.total || 0);
