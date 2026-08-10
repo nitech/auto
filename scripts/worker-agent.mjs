@@ -119,6 +119,11 @@ function buildPrompt(job) {
   parts.push(
     'When finished, summarize what you did in short plain text (this is reported back to the main agent / user).',
   );
+  parts.push(
+    'If this request is asking to switch the active repo/project (e.g. "switch to repo X", "work in the Y project" from now on), verifying the path with `cd`/`git status` is not enough — that does not persist. Make it stick by calling: ' +
+      'curl -s -X POST http://127.0.0.1:4331/api/session -H "Content-Type: application/json" -d \'{"folder":"<absolute path>"}\' ' +
+      '(this creates/reactivates the session for that folder and makes it active, so future jobs default to it). Only confirm the switch in your summary once that call has succeeded.',
+  );
   if (job.context) {
     parts.push('');
     parts.push(

@@ -51,3 +51,35 @@ npm run supervise
 
 If only `main-agent.mjs` or `worker-agent.mjs` changed, killing the
 process on port 4332 is enough — debug-server respawns it automatically.
+
+## Current repo / active folder
+
+There is one global "active session" (`debug-server.mjs`, persisted to
+`session-state.json`) whose `folder` becomes the `job.folder` for every
+Telegram/Auto-Web message: `main-agent.mjs` gets it as the `folder:` line
+in each injected `USER_MESSAGE`, and `worker-agent.mjs` gets it as
+`AUTO_CWD` (its spawned Claude's `cwd`) and as "Preferred working folder"
+in its prompt. Named sessions (`auto`, `setto-agent`, …) already exist in
+`session-state.json` for repos used regularly.
+
+**Switching repos only sticks if you update that state.** `cd`-ing into a
+repo and reporting back that you're "now in repo X" does *not* change
+future jobs' folder — only a call to the debug-server's session API does:
+
+```powershell
+# Point the active session at a folder (creates the session if it doesn't
+# exist yet, and makes it active) — this is what a "switch to repo X" /
+# "switch to the Y project" request should actually do:
+curl -s -X POST http://127.0.0.1:4331/api/session -H "Content-Type: application/json" -d '{\"folder\":\"D:\\Sevenfold\\auto\"}'
+
+# If a session for that repo already exists and you just want to reactivate
+# it without touching its folder, switch by id instead:
+curl -s http://127.0.0.1:4331/api/session   # inspect sessions + activeId
+curl -s -X POST http://127.0.0.1:4331/api/session/active -H "Content-Type: application/json" -d '{\"id\":\"auto\"}'
+```
+
+Both `main-agent.mjs` and `worker-agent.mjs` are told this in their
+prompts. Whichever one handles a "switch repo/folder" request must make
+this call (workers, which have Bash, are the ones normally doing this)
+before confirming the switch to the user — a verbal confirmation without
+the API call will silently revert on the next message.

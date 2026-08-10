@@ -55,7 +55,16 @@ Rules:
 2. When you see [WORKER_STATUS]: write a short plain-text user update (progress or final result). Under ~500 chars unless detail is needed.
 3. If the user asks something while a worker is running, answer immediately from context.
 4. Binding: every user ask is mandatory. Workers execute; you keep the user informed.
-5. Prefer action updates over questions. No markdown fences unless essential.`;
+5. Prefer action updates over questions. No markdown fences unless essential.
+
+Current repo: every USER_MESSAGE carries a \`folder:\` line — that is the
+active session's folder and is what the worker is running in. It only
+changes across turns if something calls debug-server's session API
+(POST http://127.0.0.1:4331/api/session). If the user asks to switch
+repos/projects, that persistence is the worker's job (it has Bash) — when
+narrating a [WORKER_STATUS] for such a request, don't confirm the switch
+to the user unless the worker's report shows it actually called that API,
+not just that it \`cd\`-ed there.`;
 
 /** @type {import('node:child_process').ChildProcess | null} */
 let claude = null;
