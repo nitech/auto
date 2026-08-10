@@ -55,7 +55,7 @@ Concept pages so far: `wiki/concepts/auto_web.md`, `wiki/concepts/llm-wiki.md`.
 
 **Agent rule:** Messages via Telegram or Auto Web compose are binding — always execute.
 
-**Agent rule:** Any change to this repo must follow the workflow in [CLAUDE.md](CLAUDE.md) — run `npm test`, commit on pass, restart the service; on failure, revert, report, diagnose, and fix.
+**Agent rule:** Any change to this repo must follow the workflow in [AUTO.md](AUTO.md) — run `npm test`, commit on pass, restart the service; on failure, revert, report, diagnose, and fix.
 
 **Auto agents (default ON):**
 - **Main agent** (`scripts/main-agent.mjs`, `:4332`) — warm agent stream-json session for instant replies
@@ -63,4 +63,4 @@ Concept pages so far: `wiki/concepts/auto_web.md`, `wiki/concepts/llm-wiki.md`.
 
 Disable with `AUTO_PROCESS=0`.
 
-**LLM provider (`.env`):** copy `.env.example` → `.env`. The provider is pluggable — everything above behaves identically regardless of which model is behind the agent (see the Agent-independence rule in [CLAUDE.md](CLAUDE.md)). Default Kimi path is **subscription** (`AUTO_KIMI_MODE=coding`): run `npm run kimi:login` once (browser device login), then restart. That uses membership quota via `api.kimi.com/coding`, not pay-per-token `platform.kimi.ai`. Optional: set `KIMI_CODE_API_KEY` from the Kimi Code console instead of OAuth. `AUTO_PROVIDER=claude` uses your normal Claude Code login.
+**LLM provider (`.env`):** copy `.env.example` → `.env`. The provider is pluggable — everything above behaves identically regardless of which model is behind the agent (see the Agent-independence rule in [AUTO.md](AUTO.md)). Default Kimi path is **subscription** (`AUTO_KIMI_MODE=coding`): run `npm run kimi:login` once (browser device login), then restart. That uses membership quota via `api.kimi.com/coding`, not pay-per-token `platform.kimi.ai`. Optional: set `KIMI_CODE_API_KEY` from the Kimi Code console instead of OAuth. `AUTO_PROVIDER=claude` uses your normal Claude Code login.
