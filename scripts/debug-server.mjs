@@ -123,6 +123,15 @@ function ensureMainAgent() {
   if (!AUTO_PROCESS) return;
   if (mainAgentProc && !mainAgentProc.killed) return;
   console.log(`Starting main agent on :${MAIN_PORT}…`);
+  // AUTO_REPLY_TELEGRAM=0 is set by main-agent.mjs for the *worker* children
+  // it spawns (so the worker doesn't double-text while main narrates). If
+  // debug-server itself is ever started from a shell/process that inherited
+  // that flag (e.g. a worker restarting the service per the repo's
+  // test/commit/restart workflow), blindly spreading process.env would carry
+  // it into main-agent and silently disable all Telegram replies. Strip it so
+  // main-agent always defaults to sending unless explicitly configured here.
+  const mainAgentEnv = { ...process.env };
+  delete mainAgentEnv.AUTO_REPLY_TELEGRAM;
   mainAgentProc = spawn(
     process.execPath,
     [
@@ -135,7 +144,7 @@ function ensureMainAgent() {
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
-        ...process.env,
+        ...mainAgentEnv,
         TELEGRAM_DEBUG_PORT: String(port),
         AUTO_MAIN_PORT: String(MAIN_PORT),
         PATH: process.env.PATH,
