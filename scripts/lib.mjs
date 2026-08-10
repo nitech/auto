@@ -59,17 +59,18 @@ export function loadDotEnv(filePath = ENV_PATH) {
 }
 
 /**
- * Point Claude Code at Kimi (Moonshot) via Anthropic-compatible env vars.
- * See https://platform.kimi.ai/docs/guide/claude-code-kimi
+ * Point Claude Code at Kimi via Anthropic-compatible env vars.
  *
  * AUTO_PROVIDER=kimi|claude (default: claude)
- * AUTO_KIMI_MODE=platform|coding (default: platform)
- *   platform → api.moonshot.ai + ANTHROPIC_AUTH_TOKEN + kimi-k3[1m]
- *   coding   → api.kimi.com/coding + ANTHROPIC_API_KEY + k3[1m]
- * KIMI_API_KEY / MOONSHOT_API_KEY — API key for the chosen mode
+ * AUTO_KIMI_MODE=coding|platform (default: coding = Kimi Code subscription)
+ *   coding   → api.kimi.com/coding + membership (OAuth or Kimi Code console key)
+ *   platform → api.moonshot.ai + pay-per-token Open Platform key
+ * AUTO_KIMI_AUTH=oauth|key (coding mode; default oauth → ~/.kimi credentials)
+ * KIMI_CODE_API_KEY — optional Kimi Code console key (subscription quota)
+ * KIMI_API_KEY / MOONSHOT_API_KEY — platform pay-per-token key (mode=platform)
  * AUTO_MODEL — optional model id override
  *
- * @returns {{ provider: string, mode: string|null, model: string|null, ready: boolean, warning: string|null }}
+ * @returns {{ provider: string, mode: string|null, model: string|null, ready: boolean, warning: string|null, auth?: string|null }}
  */
 export function applyAutoProvider() {
   const provider = String(process.env.AUTO_PROVIDER || 'claude')
@@ -82,52 +83,111 @@ export function applyAutoProvider() {
       model: null,
       ready: true,
       warning: null,
+      auth: null,
     };
   }
 
-  const mode = String(process.env.AUTO_KIMI_MODE || 'platform')
+  let mode = String(process.env.AUTO_KIMI_MODE || 'coding')
     .toLowerCase()
     .trim();
-  const key = String(
-    process.env.KIMI_API_KEY ||
-      process.env.MOONSHOT_API_KEY ||
+  if (mode === 'subscription') mode = 'coding';
+
+  const authMode = String(process.env.AUTO_KIMI_AUTH || 'oauth')
+    .toLowerCase()
+    .trim();
+
+  let oauthAccess = '';
+  if (mode === 'coding' && authMode !== 'key') {
+    try {
+      const credPath = join(homedir(), '.kimi', 'credentials', 'kimi-code.json');
+      if (existsSync(credPath)) {
+        const j = JSON.parse(readFileSync(credPath, 'utf8'));
+        if (j?.access_token) oauthAccess = String(j.access_token);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const codingKey = String(
+    process.env.KIMI_CODE_API_KEY ||
+      (authMode === 'key' ? process.env.KIMI_API_KEY : '') ||
+      '',
+  ).trim();
+  const platformKey = String(
+    process.env.MOONSHOT_API_KEY ||
       process.env.ANTHROPIC_AUTH_TOKEN ||
-      process.env.ANTHROPIC_API_KEY ||
+      (mode === 'platform' ? process.env.KIMI_API_KEY : '') ||
       '',
   ).trim();
 
-  const defaultModel = mode === 'coding' ? 'k3[1m]' : 'kimi-k3[1m]';
+  const defaultModel = mode === 'coding' ? 'k3-256k' : 'kimi-k3[1m]';
   const model = String(
     process.env.AUTO_MODEL || process.env.ANTHROPIC_MODEL || defaultModel,
   ).trim();
 
-  const ready = Boolean(key);
-  if (!ready) {
+  if (mode === 'coding') {
+    const key = codingKey || oauthAccess;
+    if (!key) {
+      return {
+        provider: 'kimi',
+        mode,
+        model,
+        ready: false,
+        auth: authMode,
+        warning:
+          'AUTO_PROVIDER=kimi (subscription) — run `npm run kimi:login` or set KIMI_CODE_API_KEY',
+      };
+    }
+    process.env.ANTHROPIC_BASE_URL =
+      process.env.ANTHROPIC_BASE_URL || 'https://api.kimi.com/coding/';
+    process.env.ANTHROPIC_API_KEY = key;
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
+
+    process.env.ANTHROPIC_MODEL = model;
+    process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = model;
+    process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = model;
+    process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = model;
+    process.env.ANTHROPIC_DEFAULT_FABLE_MODEL = model;
+    process.env.CLAUDE_CODE_SUBAGENT_MODEL = model;
+    if (!process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) {
+      process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = '262144';
+    }
+    if (!process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS) {
+      process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = '262144';
+    }
+    if (!process.env.CLAUDE_CODE_EFFORT_LEVEL) {
+      process.env.CLAUDE_CODE_EFFORT_LEVEL = 'high';
+    }
+    if (!process.env.ENABLE_TOOL_SEARCH) {
+      process.env.ENABLE_TOOL_SEARCH = 'false';
+    }
+
+    return {
+      provider: 'kimi',
+      mode,
+      model,
+      ready: true,
+      auth: codingKey ? 'key' : 'oauth',
+      warning: null,
+    };
+  }
+
+  if (!platformKey) {
     return {
       provider: 'kimi',
       mode,
       model,
       ready: false,
+      auth: 'key',
       warning:
-        'AUTO_PROVIDER=kimi but KIMI_API_KEY (or MOONSHOT_API_KEY) is missing in .env — not rewriting Anthropic env until a key is set',
+        'AUTO_KIMI_MODE=platform but MOONSHOT_API_KEY / KIMI_API_KEY is missing',
     };
   }
-
-  if (mode === 'coding') {
-    if (!process.env.ANTHROPIC_BASE_URL) {
-      process.env.ANTHROPIC_BASE_URL = 'https://api.kimi.com/coding/';
-    }
-    process.env.ANTHROPIC_API_KEY = key;
-    // Coding endpoint uses API_KEY; AUTH_TOKEN would conflict.
-    delete process.env.ANTHROPIC_AUTH_TOKEN;
-  } else {
-    if (!process.env.ANTHROPIC_BASE_URL) {
-      process.env.ANTHROPIC_BASE_URL = 'https://api.moonshot.ai/anthropic';
-    }
-    process.env.ANTHROPIC_AUTH_TOKEN = key;
-    // Platform docs: AUTH_TOKEN and API_KEY conflict — prefer AUTH_TOKEN.
-    delete process.env.ANTHROPIC_API_KEY;
-  }
+  process.env.ANTHROPIC_BASE_URL =
+    process.env.ANTHROPIC_BASE_URL || 'https://api.moonshot.ai/anthropic';
+  process.env.ANTHROPIC_AUTH_TOKEN = platformKey;
+  delete process.env.ANTHROPIC_API_KEY;
 
   process.env.ANTHROPIC_MODEL = model;
   process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = model;
@@ -145,12 +205,56 @@ export function applyAutoProvider() {
     process.env.ENABLE_TOOL_SEARCH = 'false';
   }
 
-  return { provider: 'kimi', mode, model, ready: true, warning: null };
+  return {
+    provider: 'kimi',
+    mode,
+    model,
+    ready: true,
+    auth: 'key',
+    warning: null,
+  };
 }
 
 // Load .env before any port/env defaults so TELEGRAM_DEBUG_PORT etc. apply.
 loadDotEnv();
 export const AUTO_PROVIDER_INFO = applyAutoProvider();
+
+/**
+ * Refresh Kimi Code OAuth (if needed) and re-apply provider env.
+ * Call from long-lived entrypoints before spawning Claude.
+ */
+export async function ensureAutoProviderAuth() {
+  const provider = String(process.env.AUTO_PROVIDER || '')
+    .toLowerCase()
+    .trim();
+  if (provider !== 'kimi' && provider !== 'moonshot') return AUTO_PROVIDER_INFO;
+  const mode = String(process.env.AUTO_KIMI_MODE || 'coding')
+    .toLowerCase()
+    .trim();
+  if (mode !== 'coding' && mode !== 'subscription') return AUTO_PROVIDER_INFO;
+
+  const { ensureKimiAuthForProvider } = await import('./kimi-oauth.mjs');
+  try {
+    const r = await ensureKimiAuthForProvider();
+    if (r.warning) {
+      console.error(`[provider] WARNING: ${r.warning}`);
+    }
+    Object.assign(AUTO_PROVIDER_INFO, {
+      ready: true,
+      auth: r.source || 'oauth',
+      warning: r.warning || null,
+      mode: 'coding',
+    });
+  } catch (e) {
+    Object.assign(AUTO_PROVIDER_INFO, {
+      ready: false,
+      warning: e.message,
+    });
+    console.error(`[provider] WARNING: ${e.message}`);
+  }
+  return AUTO_PROVIDER_INFO;
+}
+
 
 export const DEBUG_PORT = Number(process.env.TELEGRAM_DEBUG_PORT || 4331);
 export const DEBUG_URL = `http://127.0.0.1:${DEBUG_PORT}`;

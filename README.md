@@ -63,4 +63,4 @@ Concept pages so far: `wiki/concepts/auto_web.md`, `wiki/concepts/llm-wiki.md`.
 
 Disable with `AUTO_PROCESS=0`.
 
-**LLM provider (`.env`):** copy `.env.example` → `.env`. Set `AUTO_PROVIDER=kimi` and `KIMI_API_KEY=…` to run main/workers through [Kimi](https://platform.kimi.ai/docs/guide/claude-code-kimi) (Moonshot Anthropic-compatible endpoint). `AUTO_PROVIDER=claude` uses your normal Claude Code login.
+**LLM provider (`.env`):** copy `.env.example` → `.env`. Default Kimi path is **subscription** (`AUTO_KIMI_MODE=coding`): run `npm run kimi:login` once (browser device login), then restart. That uses membership quota via `api.kimi.com/coding`, not pay-per-token `platform.kimi.ai`. Optional: set `KIMI_CODE_API_KEY` from the Kimi Code console instead of OAuth. `AUTO_PROVIDER=claude` uses your normal Claude Code login.

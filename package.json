@@ -16,6 +16,7 @@
     "send:whatsapp": "node scripts/send-whatsapp.mjs",
     "listen": "node scripts/listen.mjs --once --timeout=25",
     "process": "node scripts/process-instruction.mjs",
+    "kimi:login": "node scripts/kimi-login.mjs",
     "test": "node scripts/test.mjs",
     "wiki": "wiki",
     "wiki:ingest": "wiki ingest --all -y",

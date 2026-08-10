@@ -15,7 +15,7 @@ import { spawn } from 'node:child_process';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { arg, SKILL_ROOT, appendEvent, normalizeFsPath } from './lib.mjs';
+import { arg, SKILL_ROOT, appendEvent, normalizeFsPath, ensureAutoProviderAuth } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
@@ -23,6 +23,8 @@ const RUNS = join(ROOT, 'runs');
 const MAIN_URL = (
   process.env.AUTO_MAIN_URL || 'http://127.0.0.1:4332'
 ).replace(/\/$/, '');
+
+await ensureAutoProviderAuth();
 
 function loadJob() {
   const file = arg('file', '');

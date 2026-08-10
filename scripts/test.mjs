@@ -51,6 +51,7 @@ try {
     'SKILL_ROOT',
     'loadDotEnv',
     'applyAutoProvider',
+    'ensureAutoProviderAuth',
     'AUTO_PROVIDER_INFO',
   ];
   for (const name of required) {
@@ -58,14 +59,36 @@ try {
   }
   if (typeof lib.loadDotEnv !== 'function') fail('loadDotEnv should be a function');
   if (typeof lib.applyAutoProvider !== 'function') fail('applyAutoProvider should be a function');
+  if (typeof lib.ensureAutoProviderAuth !== 'function') {
+    fail('ensureAutoProviderAuth should be a function');
+  }
   if (!lib.AUTO_PROVIDER_INFO || typeof lib.AUTO_PROVIDER_INFO.provider !== 'string') {
     fail('AUTO_PROVIDER_INFO.provider missing');
   } else {
-    ok(`provider: ${lib.AUTO_PROVIDER_INFO.provider}`);
+    ok(
+      `provider: ${lib.AUTO_PROVIDER_INFO.provider}` +
+        (lib.AUTO_PROVIDER_INFO.mode ? `/${lib.AUTO_PROVIDER_INFO.mode}` : ''),
+    );
   }
   if (!failed) ok('lib.mjs exports present');
 } catch (e) {
   fail(`import lib.mjs: ${e.message}`);
+}
+
+// kimi-oauth helpers import cleanly
+try {
+  const oauth = await import('./kimi-oauth.mjs');
+  for (const name of [
+    'ensureKimiCodingToken',
+    'startKimiDeviceLogin',
+    'pollKimiDeviceLogin',
+    'loadKimiOAuthCreds',
+  ]) {
+    if (typeof oauth[name] !== 'function') fail(`kimi-oauth missing ${name}`);
+  }
+  if (!failed) ok('kimi-oauth.mjs exports present');
+} catch (e) {
+  fail(`import kimi-oauth.mjs: ${e.message}`);
 }
 
 // 3. If the debug server / main agent are already running, hit /health.

@@ -18,7 +18,7 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { arg, AUTO_PROVIDER_INFO } from './lib.mjs';
+import { arg, AUTO_PROVIDER_INFO, ensureAutoProviderAuth } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
@@ -231,9 +231,12 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 mkdirSync(ROOT, { recursive: true });
+await ensureAutoProviderAuth();
 log(
   `[supervise] watching Auto on :${port} / main :${mainPort} provider=${AUTO_PROVIDER_INFO.provider}` +
-    (AUTO_PROVIDER_INFO.model ? ` model=${AUTO_PROVIDER_INFO.model}` : ''),
+    (AUTO_PROVIDER_INFO.mode ? `/${AUTO_PROVIDER_INFO.mode}` : '') +
+    (AUTO_PROVIDER_INFO.model ? ` model=${AUTO_PROVIDER_INFO.model}` : '') +
+    (AUTO_PROVIDER_INFO.auth ? ` auth=${AUTO_PROVIDER_INFO.auth}` : ''),
 );
 if (AUTO_PROVIDER_INFO.warning) {
   log(`[supervise] WARNING: ${AUTO_PROVIDER_INFO.warning}`);

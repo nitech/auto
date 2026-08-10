@@ -29,6 +29,7 @@ import {
   DEBUG_PORT,
   normalizeFsPath,
   AUTO_PROVIDER_INFO,
+  ensureAutoProviderAuth,
 } from './lib.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -38,13 +39,16 @@ const AUTO_PROCESS = process.env.AUTO_PROCESS !== '0';
 const MAIN_PORT = Number(process.env.AUTO_MAIN_PORT || 4332) || 4332;
 const MAIN_URL = `http://127.0.0.1:${MAIN_PORT}`;
 
+await ensureAutoProviderAuth();
+
 if (AUTO_PROVIDER_INFO.warning) {
   console.error(`[provider] WARNING: ${AUTO_PROVIDER_INFO.warning}`);
 } else {
   console.log(
     `[provider] ${AUTO_PROVIDER_INFO.provider}` +
       (AUTO_PROVIDER_INFO.mode ? `/${AUTO_PROVIDER_INFO.mode}` : '') +
-      (AUTO_PROVIDER_INFO.model ? ` model=${AUTO_PROVIDER_INFO.model}` : ''),
+      (AUTO_PROVIDER_INFO.model ? ` model=${AUTO_PROVIDER_INFO.model}` : '') +
+      (AUTO_PROVIDER_INFO.auth ? ` auth=${AUTO_PROVIDER_INFO.auth}` : ''),
   );
 }
 

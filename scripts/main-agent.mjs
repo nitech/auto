@@ -26,6 +26,7 @@ import {
   normalizeFsPath,
   DEBUG_PORT,
   AUTO_PROVIDER_INFO,
+  ensureAutoProviderAuth,
 } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -44,6 +45,8 @@ const debugPort =
 const DEBUG_URL = `http://127.0.0.1:${debugPort}`;
 const MAX_WORKERS = Math.max(1, Number(process.env.AUTO_MAX_WORKERS || 4) || 4);
 const SKIP_PERMS = process.env.AUTO_SKIP_PERMS !== '0';
+
+await ensureAutoProviderAuth();
 
 if (AUTO_PROVIDER_INFO.warning) {
   console.error(`[provider] WARNING: ${AUTO_PROVIDER_INFO.warning}`);
