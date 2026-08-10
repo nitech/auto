@@ -27,9 +27,10 @@ Whenever you change any file in this repo (not just docs):
 1. **Run tests**: `npm test`. This syntax-checks every script under
    `scripts/`, sanity-checks `lib.mjs`'s exports, and — if the service is
    already running — hits its `/health` / `/api/health` endpoints.
-2. **If tests pass**: `git add -A` the relevant files and commit with a
-   short message describing the change, then restart the service (see
-   below) so the fix actually takes effect.
+2. **If tests pass**: `git add -A` the relevant files, commit with a
+   short message describing the change, and **push** (`git push`) —
+   every commit must be pushed, not left local-only. Then restart the
+   service (see below) so the fix actually takes effect.
 3. **If tests fail**: revert your change (`git checkout -- <files>` or
    `git stash` for uncommitted work), then tell the user which check
    failed and why. Do not leave the repo in a broken, uncommitted state.
@@ -38,7 +39,8 @@ Whenever you change any file in this repo (not just docs):
 
 Do not skip the commit — uncommitted fixes are invisible to anyone
 restarting the service later, which has caused fixes to silently not
-apply before.
+apply before. Do not skip the push either — an unpushed commit exists
+only on this machine.
 
 ## Restarting the service
 
