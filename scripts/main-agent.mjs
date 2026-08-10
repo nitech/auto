@@ -66,6 +66,33 @@ const pendingInjects = [];
 const workers = new Map(); // workerId -> meta
 let stdoutBuf = '';
 
+// Worker display names — drawn from The Simpsons instead of "w-<messageId>".
+const SIMPSONS_NAMES = [
+  'Homer', 'Marge', 'Bart', 'Lisa', 'Maggie', 'Abe', 'Patty', 'Selma',
+  'Ned', 'Maude', 'Rod', 'Todd', 'Milhouse', 'Kirk', 'Luann',
+  'Nelson', 'Ralph', 'Wiggum', 'Moe', 'Barney', 'Lenny', 'Carl',
+  'Krusty', 'Sideshow-Bob', 'Burns', 'Smithers', 'Otto', 'Skinner',
+  'Edna', 'Apu', 'Manjula', 'Comic-Book-Guy', 'Kent-Brockman',
+  'Troy-McClure', 'Lionel-Hutz', 'Fat-Tony', 'Snake', 'Duffman',
+  'Disco-Stu', 'Cletus', 'Gil', 'Frink', 'Martin', 'Uter', 'Sherri',
+  'Terri', 'Jimbo', 'Dolph', 'Kearney', 'Wolfcastle', 'Willie',
+  'Moleman', 'Flanders', 'Quimby', 'Hibbert', 'Nick-Riviera',
+];
+
+/** Random unused Simpsons name for a new worker; disambiguated with -2, -3, … on collision. */
+function generateWorkerId() {
+  const active = new Set(workers.keys());
+  const free = SIMPSONS_NAMES.filter((n) => !active.has(n));
+  const pool = free.length ? free : SIMPSONS_NAMES;
+  const base = pool[Math.floor(Math.random() * pool.length)];
+  let id = base;
+  let n = 2;
+  while (workers.has(id)) {
+    id = `${base}-${n++}`;
+  }
+  return id;
+}
+
 function log(...args) {
   const line = `[${new Date().toISOString()}] ${args.map(String).join(' ')}\n`;
   try {
@@ -417,7 +444,7 @@ function activeWorkerCount() {
 
 function spawnWorker(job) {
   mkdirSync(JOBS_DIR, { recursive: true });
-  const workerId = `w-${job.messageId}`.replace(/[^\w.-]+/g, '_');
+  const workerId = generateWorkerId();
   const jobFile = join(JOBS_DIR, `${workerId}.json`);
   const payload = { ...job, workerId };
   writeFileSync(jobFile, JSON.stringify(payload, null, 2) + '\n');

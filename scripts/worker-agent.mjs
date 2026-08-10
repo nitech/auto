@@ -111,7 +111,10 @@ function buildPrompt(job) {
   const parts = [];
   parts.push('You are an Auto worker subagent.');
   parts.push(
-    'Do exactly what the user asked. Prefer action over questions. Do not treat it as optional.',
+    'Do exactly what the user asked, in full. Prefer action over questions — do not stop to ask for confirmation or clarification unless truly blocked (e.g. missing credentials, or a destructive/irreversible action beyond what was asked). Treat the ask as mandatory, not optional.',
+  );
+  parts.push(
+    'Finish the entire task before reporting back. Do not stop partway, leave TODOs, or hand back a partial result with "let me know if you want me to continue" — keep going until the ask is fully done.',
   );
   parts.push(
     'When finished, summarize what you did in short plain text (this is reported back to the main agent / user).',
