@@ -715,6 +715,17 @@ const HTML = `<!doctype html>
     }
     .wrap.expandable { cursor: pointer; }
     .wrap.expanded .body.clamp { -webkit-line-clamp: unset; max-height: none; overflow: visible; }
+    .body code { font-family: ui-monospace, Consolas, monospace; font-size: .92em; background: rgba(255,255,255,.08); border-radius: 4px; padding: .05em .35em; }
+    .body pre.md-pre { margin: 6px 0; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,.06); border: 1px solid var(--line); overflow: auto; white-space: pre; }
+    .body pre.md-pre code { background: none; padding: 0; font-size: .88em; }
+    .body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+    .body strong { font-weight: 700; }
+    .body em { font-style: italic; }
+    .body ul.md-list, .body ol.md-list { margin: 2px 0; padding-left: 1.3em; }
+    .body .md-h { font-weight: 700; margin: 4px 0 2px; }
+    .body .md-h1 { font-size: 1.15em; }
+    .body .md-h2 { font-size: 1.08em; }
+    .body .md-h3, .body .md-h4 { font-size: 1em; }
     .hint { margin-top: 3px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
     img.thumb {
       margin-top: 6px; max-width: min(100%, 280px); border-radius: 8px;
@@ -907,6 +918,61 @@ const HTML = `<!doctype html>
     function escapeHtml(s) {
       return String(s)
         .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+    function renderMarkdown(text) {
+      const CODE_MARK = String.fromCharCode(0xE000);
+      const INLINE_MARK = String.fromCharCode(0xE001);
+      const codeBlocks = [];
+      let src = escapeHtml(text).replace(/\`\`\`[a-zA-Z0-9_+-]*\n?([\s\S]*?)\`\`\`/g, (_, code) => {
+        const idx = codeBlocks.push('<pre class="md-pre"><code>' + code.replace(/\n$/, '') + '</code></pre>') - 1;
+        return CODE_MARK + idx + CODE_MARK;
+      });
+
+      const inlineCode = [];
+      src = src.replace(/\`([^\`\n]+)\`/g, (_, code) => {
+        const idx = inlineCode.push('<code>' + code + '</code>') - 1;
+        return INLINE_MARK + idx + INLINE_MARK;
+      });
+
+      function inline(s) {
+        return s
+          .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+          .replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
+          .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>')
+          .replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>')
+          .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+      }
+
+      const lines = src.split('\n');
+      const out = [];
+      let listType = null;
+      function closeList() {
+        if (listType) { out.push('</' + listType + '>'); listType = null; }
+      }
+      for (const line of lines) {
+        const h = line.match(/^(#{1,6})\s+(.*)$/);
+        const ul = line.match(/^\s*[-*]\s+(.*)$/);
+        const ol = line.match(/^\s*\d+\.\s+(.*)$/);
+        if (h) {
+          closeList();
+          out.push('<div class="md-h md-h' + Math.min(h[1].length, 4) + '">' + inline(h[2]) + '</div>');
+        } else if (ul) {
+          if (listType !== 'ul') { closeList(); out.push('<ul class="md-list">'); listType = 'ul'; }
+          out.push('<li>' + inline(ul[1]) + '</li>');
+        } else if (ol) {
+          if (listType !== 'ol') { closeList(); out.push('<ol class="md-list">'); listType = 'ol'; }
+          out.push('<li>' + inline(ol[1]) + '</li>');
+        } else {
+          closeList();
+          out.push(inline(line));
+        }
+      }
+      closeList();
+
+      let html = out.join('\n');
+      html = html.replace(new RegExp(INLINE_MARK + '(\\d+)' + INLINE_MARK, 'g'), (_, i) => inlineCode[Number(i)]);
+      html = html.replace(new RegExp(CODE_MARK + '(\\d+)' + CODE_MARK, 'g'), (_, i) => codeBlocks[Number(i)]);
+      return html;
     }
     function eventKey(ev) {
       return ev.ts + '|' + (ev.messageId || '') + '|' + (ev.text || ev.note || '').slice(0, 40) + '|' + (ev.tool || '');
@@ -1242,7 +1308,7 @@ const HTML = `<!doctype html>
           (ev.tool ? ' · ' + escapeHtml(ev.tool) : '') +
           '</span><span>' + escapeHtml(shortTime(ev.ts)) + '</span></div>' +
           '<div class="body' + (text ? (long ? ' clamp' : '') : '') + '">' +
-          escapeHtml(text || '—') + '</div>' +
+          (text ? renderMarkdown(text) : escapeHtml('—')) + '</div>' +
           (long ? '<div class="hint">tap to expand</div>' : '') +
           '</div>';
         if (long) {
