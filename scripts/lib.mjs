@@ -220,6 +220,33 @@ loadDotEnv();
 export const AUTO_PROVIDER_INFO = applyAutoProvider();
 
 /**
+ * Identity blurb injected into main/worker prompts so the model knows what
+ * it actually is: the harness is always Claude Code, but the model behind it
+ * is Kimi when AUTO_PROVIDER=kimi and Claude otherwise. Without this the
+ * model answers "Claude" even when Kimi is generating the replies.
+ * @param {typeof AUTO_PROVIDER_INFO} [info]
+ * @returns {string}
+ */
+export function autoAgentIdentity(info = AUTO_PROVIDER_INFO) {
+  const provider = String(info?.provider || 'claude').toLowerCase();
+  if (provider === 'kimi' || provider === 'moonshot') {
+    const model = info.model || 'k3-256k';
+    const host =
+      info.mode === 'platform' ? 'api.moonshot.ai' : 'api.kimi.com/coding';
+    return (
+      `Model identity: you are Kimi (model ${model}) by Moonshot AI, ` +
+      `served through the Claude Code harness via Kimi's Anthropic-compatible API (${host}). ` +
+      'The harness branding and system text say "Claude", but the model generating your replies is Kimi. ' +
+      `If the user asks which model or AI you are, answer truthfully: Kimi (${model}), running inside the Claude Code harness.`
+    );
+  }
+  return (
+    'Model identity: you are Claude by Anthropic, running in the Claude Code harness. ' +
+    'If the user asks which model or AI you are, answer truthfully: Claude.'
+  );
+}
+
+/**
  * Refresh Kimi Code OAuth (if needed) and re-apply provider env.
  * Call from long-lived entrypoints before spawning Claude.
  * @param {{ force?: boolean }} [opts]
