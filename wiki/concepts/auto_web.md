@@ -16,6 +16,7 @@ Auto Web is the browser UI for the Auto project at D:\Sevenfold\auto (port 4331)
 - hooks/cursor-debug-feed.mjs — Cursor hooks → /api/event
 
 ## Related
+- Improvement plan / backlog: wiki/concepts/auto_web_ui_plan.md
 - llm-wiki installed as npm dependency for a local knowledge wiki under wiki/
 - Cursor skill telegram-notify points here
 
