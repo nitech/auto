@@ -42,9 +42,26 @@ for (const f of files) {
 // 2. lib.mjs exports import cleanly.
 try {
   const lib = await import('./lib.mjs');
-  const required = ['arg', 'PROJECT_ROOT', 'normalizeFsPath', 'DEBUG_PORT', 'appendEvent', 'SKILL_ROOT'];
+  const required = [
+    'arg',
+    'PROJECT_ROOT',
+    'normalizeFsPath',
+    'DEBUG_PORT',
+    'appendEvent',
+    'SKILL_ROOT',
+    'loadDotEnv',
+    'applyAutoProvider',
+    'AUTO_PROVIDER_INFO',
+  ];
   for (const name of required) {
     if (!(name in lib)) fail(`lib.mjs missing export: ${name}`);
+  }
+  if (typeof lib.loadDotEnv !== 'function') fail('loadDotEnv should be a function');
+  if (typeof lib.applyAutoProvider !== 'function') fail('applyAutoProvider should be a function');
+  if (!lib.AUTO_PROVIDER_INFO || typeof lib.AUTO_PROVIDER_INFO.provider !== 'string') {
+    fail('AUTO_PROVIDER_INFO.provider missing');
+  } else {
+    ok(`provider: ${lib.AUTO_PROVIDER_INFO.provider}`);
   }
   if (!failed) ok('lib.mjs exports present');
 } catch (e) {

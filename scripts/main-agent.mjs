@@ -25,6 +25,7 @@ import {
   PROJECT_ROOT,
   normalizeFsPath,
   DEBUG_PORT,
+  AUTO_PROVIDER_INFO,
 } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -33,6 +34,7 @@ const WORKER = join(HERE, 'worker-agent.mjs');
 const JOBS_DIR = join(ROOT, 'jobs');
 const RUNS_DIR = join(ROOT, 'runs');
 const SESSION_PATH = join(ROOT, 'main-session.json');
+const PROVIDER_STAMP_PATH = join(ROOT, 'provider-stamp.json');
 const LOG_PATH = join(ROOT, 'main-agent.log');
 
 const port = Number(arg('port', process.env.AUTO_MAIN_PORT || '4332')) || 4332;
@@ -42,6 +44,10 @@ const debugPort =
 const DEBUG_URL = `http://127.0.0.1:${debugPort}`;
 const MAX_WORKERS = Math.max(1, Number(process.env.AUTO_MAX_WORKERS || 4) || 4);
 const SKIP_PERMS = process.env.AUTO_SKIP_PERMS !== '0';
+
+if (AUTO_PROVIDER_INFO.warning) {
+  console.error(`[provider] WARNING: ${AUTO_PROVIDER_INFO.warning}`);
+}
 
 const SYSTEM_PROMPT = `You are Auto's always-on front-desk agent for Simon (Telegram + Auto Web).
 You keep this chat session open so you can reply instantly.
@@ -226,6 +232,12 @@ function publicAgents() {
       sessionId,
       pid: claude?.pid || null,
     },
+    provider: {
+      name: AUTO_PROVIDER_INFO.provider,
+      mode: AUTO_PROVIDER_INFO.mode,
+      model: AUTO_PROVIDER_INFO.model,
+      ready: AUTO_PROVIDER_INFO.ready,
+    },
     workers: [...workers.values()],
     maxWorkers: MAX_WORKERS,
   };
@@ -353,11 +365,46 @@ function flushInjects() {
 let resumeNext = true;
 let restartDelayMs = 800;
 
+/** If AUTO_PROVIDER/model changed since last run, mint a fresh Claude session. */
+function rotateSessionIfProviderChanged() {
+  const stamp = {
+    provider: AUTO_PROVIDER_INFO.provider,
+    mode: AUTO_PROVIDER_INFO.mode,
+    model: AUTO_PROVIDER_INFO.model,
+  };
+  let prev = null;
+  try {
+    if (existsSync(PROVIDER_STAMP_PATH)) {
+      prev = JSON.parse(readFileSync(PROVIDER_STAMP_PATH, 'utf8'));
+    }
+  } catch {
+    prev = null;
+  }
+  const changed =
+    prev &&
+    (prev.provider !== stamp.provider ||
+      prev.mode !== stamp.mode ||
+      prev.model !== stamp.model);
+  if (changed) {
+    resumeNext = false;
+    saveSessionId(randomUUID());
+    log(
+      `[main] provider changed ${prev.provider}/${prev.model} → ${stamp.provider}/${stamp.model}; new session=${sessionId}`,
+    );
+  }
+  try {
+    writeFileSync(PROVIDER_STAMP_PATH, JSON.stringify(stamp, null, 2) + '\n');
+  } catch {
+    /* ignore */
+  }
+}
+
 function ensureClaude() {
   if (claude && !claude.killed) return;
   if (startingClaude) return;
   startingClaude = true;
   claudeReady = false;
+  rotateSessionIfProviderChanged();
 
   const args = [
     '-p',
@@ -383,7 +430,7 @@ function ensureClaude() {
   if (SKIP_PERMS) args.push('--dangerously-skip-permissions');
 
   log(
-    `[main] starting claude ${resumeNext ? 'resume' : 'new'}=${sessionId}`,
+    `[main] starting claude ${resumeNext ? 'resume' : 'new'}=${sessionId} provider=${AUTO_PROVIDER_INFO.provider}${AUTO_PROVIDER_INFO.model ? ` model=${AUTO_PROVIDER_INFO.model}` : ''}`,
   );
   let errText = '';
   claude = spawn('claude', args, {

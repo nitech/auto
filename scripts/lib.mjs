@@ -20,6 +20,138 @@ export const WHATSAPP_AUTH_DIR = join(PROJECT_ROOT, 'whatsapp-auth');
 export const OFFSET_PATH = join(PROJECT_ROOT, 'offset.json');
 export const EVENTS_PATH = join(PROJECT_ROOT, 'events.jsonl');
 export const QUEUE_PATH = join(PROJECT_ROOT, 'pending-queue.json');
+export const ENV_PATH = join(PROJECT_ROOT, '.env');
+
+/**
+ * Load KEY=VALUE pairs from `.env` into process.env.
+ * Does not override variables already set in the environment.
+ * @param {string} [filePath]
+ * @returns {Record<string, string>}
+ */
+export function loadDotEnv(filePath = ENV_PATH) {
+  /** @type {Record<string, string>} */
+  const loaded = {};
+  if (!existsSync(filePath)) return loaded;
+  let text = '';
+  try {
+    text = readFileSync(filePath, 'utf8');
+  } catch {
+    return loaded;
+  }
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
+    let val = line.slice(eq + 1).trim();
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+    loaded[key] = val;
+    if (process.env[key] === undefined) process.env[key] = val;
+  }
+  return loaded;
+}
+
+/**
+ * Point Claude Code at Kimi (Moonshot) via Anthropic-compatible env vars.
+ * See https://platform.kimi.ai/docs/guide/claude-code-kimi
+ *
+ * AUTO_PROVIDER=kimi|claude (default: claude)
+ * AUTO_KIMI_MODE=platform|coding (default: platform)
+ *   platform → api.moonshot.ai + ANTHROPIC_AUTH_TOKEN + kimi-k3[1m]
+ *   coding   → api.kimi.com/coding + ANTHROPIC_API_KEY + k3[1m]
+ * KIMI_API_KEY / MOONSHOT_API_KEY — API key for the chosen mode
+ * AUTO_MODEL — optional model id override
+ *
+ * @returns {{ provider: string, mode: string|null, model: string|null, ready: boolean, warning: string|null }}
+ */
+export function applyAutoProvider() {
+  const provider = String(process.env.AUTO_PROVIDER || 'claude')
+    .toLowerCase()
+    .trim();
+  if (provider !== 'kimi' && provider !== 'moonshot') {
+    return {
+      provider: provider || 'claude',
+      mode: null,
+      model: null,
+      ready: true,
+      warning: null,
+    };
+  }
+
+  const mode = String(process.env.AUTO_KIMI_MODE || 'platform')
+    .toLowerCase()
+    .trim();
+  const key = String(
+    process.env.KIMI_API_KEY ||
+      process.env.MOONSHOT_API_KEY ||
+      process.env.ANTHROPIC_AUTH_TOKEN ||
+      process.env.ANTHROPIC_API_KEY ||
+      '',
+  ).trim();
+
+  const defaultModel = mode === 'coding' ? 'k3[1m]' : 'kimi-k3[1m]';
+  const model = String(
+    process.env.AUTO_MODEL || process.env.ANTHROPIC_MODEL || defaultModel,
+  ).trim();
+
+  const ready = Boolean(key);
+  if (!ready) {
+    return {
+      provider: 'kimi',
+      mode,
+      model,
+      ready: false,
+      warning:
+        'AUTO_PROVIDER=kimi but KIMI_API_KEY (or MOONSHOT_API_KEY) is missing in .env — not rewriting Anthropic env until a key is set',
+    };
+  }
+
+  if (mode === 'coding') {
+    if (!process.env.ANTHROPIC_BASE_URL) {
+      process.env.ANTHROPIC_BASE_URL = 'https://api.kimi.com/coding/';
+    }
+    process.env.ANTHROPIC_API_KEY = key;
+    // Coding endpoint uses API_KEY; AUTH_TOKEN would conflict.
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
+  } else {
+    if (!process.env.ANTHROPIC_BASE_URL) {
+      process.env.ANTHROPIC_BASE_URL = 'https://api.moonshot.ai/anthropic';
+    }
+    process.env.ANTHROPIC_AUTH_TOKEN = key;
+    // Platform docs: AUTH_TOKEN and API_KEY conflict — prefer AUTH_TOKEN.
+    delete process.env.ANTHROPIC_API_KEY;
+  }
+
+  process.env.ANTHROPIC_MODEL = model;
+  process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = model;
+  process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = model;
+  process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = model;
+  process.env.ANTHROPIC_DEFAULT_FABLE_MODEL = model;
+  process.env.CLAUDE_CODE_SUBAGENT_MODEL = model;
+  if (!process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) {
+    process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = '1048576';
+  }
+  if (!process.env.CLAUDE_CODE_EFFORT_LEVEL) {
+    process.env.CLAUDE_CODE_EFFORT_LEVEL = 'max';
+  }
+  if (!process.env.ENABLE_TOOL_SEARCH) {
+    process.env.ENABLE_TOOL_SEARCH = 'false';
+  }
+
+  return { provider: 'kimi', mode, model, ready: true, warning: null };
+}
+
+// Load .env before any port/env defaults so TELEGRAM_DEBUG_PORT etc. apply.
+loadDotEnv();
+export const AUTO_PROVIDER_INFO = applyAutoProvider();
+
 export const DEBUG_PORT = Number(process.env.TELEGRAM_DEBUG_PORT || 4331);
 export const DEBUG_URL = `http://127.0.0.1:${DEBUG_PORT}`;
 

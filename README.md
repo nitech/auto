@@ -62,3 +62,5 @@ Concept pages so far: `wiki/concepts/auto_web.md`, `wiki/concepts/llm-wiki.md`.
 - **Workers** (`scripts/worker-agent.mjs`) — spawned per task; report status to main, which updates you on Telegram / Auto Web
 
 Disable with `AUTO_PROCESS=0`.
+
+**LLM provider (`.env`):** copy `.env.example` → `.env`. Set `AUTO_PROVIDER=kimi` and `KIMI_API_KEY=…` to run main/workers through [Kimi](https://platform.kimi.ai/docs/guide/claude-code-kimi) (Moonshot Anthropic-compatible endpoint). `AUTO_PROVIDER=claude` uses your normal Claude Code login.

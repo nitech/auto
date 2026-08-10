@@ -28,6 +28,7 @@ import {
   QUEUE_PATH,
   DEBUG_PORT,
   normalizeFsPath,
+  AUTO_PROVIDER_INFO,
 } from './lib.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -36,6 +37,16 @@ const JOBS_DIR = join(SKILL_ROOT, 'jobs');
 const AUTO_PROCESS = process.env.AUTO_PROCESS !== '0';
 const MAIN_PORT = Number(process.env.AUTO_MAIN_PORT || 4332) || 4332;
 const MAIN_URL = `http://127.0.0.1:${MAIN_PORT}`;
+
+if (AUTO_PROVIDER_INFO.warning) {
+  console.error(`[provider] WARNING: ${AUTO_PROVIDER_INFO.warning}`);
+} else {
+  console.log(
+    `[provider] ${AUTO_PROVIDER_INFO.provider}` +
+      (AUTO_PROVIDER_INFO.mode ? `/${AUTO_PROVIDER_INFO.mode}` : '') +
+      (AUTO_PROVIDER_INFO.model ? ` model=${AUTO_PROVIDER_INFO.model}` : ''),
+  );
+}
 
 const STATE_PATH = join(SKILL_ROOT, 'session-state.json');
 const host = arg('host', '0.0.0.0');
@@ -1474,17 +1485,12 @@ const HTML = `<!doctype html>
       });
     });
 
-    Promise.all([
-      fetch('/api/session').then((r) => r.json()),
-      fetch('/api/processor').then((r) => r.json()).catch(() => null),
-    ]).then(async ([sess, proc]) => {
-      applyState(sess);
-      applyProcessor(proc);
-      viewSessionId = sess.activeId;
-      const list = await fetch('/api/events?session=' + encodeURIComponent(viewSessionId)).then((r) => r.json());
-      list.forEach((ev) => add(ev, { skipScroll: true }));
-      scrollToBottom(false);
-      const es = new EventSource('/api/stream');
+    let es = null;
+    function connectStream() {
+      if (es && es.readyState !== EventSource.CLOSED) es.close();
+      status.textContent = 'connecting';
+      status.className = 'pill dead';
+      es = new EventSource('/api/stream');
       es.onopen = () => { status.textContent = 'live'; status.className = 'pill live'; };
       es.onerror = () => { status.textContent = 'reconnecting'; status.className = 'pill dead'; };
       es.onmessage = (e) => {
@@ -1493,12 +1499,49 @@ const HTML = `<!doctype html>
           add(ev);
         } catch {}
       };
+    }
+
+    async function refreshAll() {
+      try {
+        const sess = await fetch('/api/session').then((r) => r.json());
+        applyState(sess);
+        if (!viewSessionId) viewSessionId = sess.activeId;
+        const proc = await fetch('/api/processor').then((r) => r.json()).catch(() => null);
+        applyProcessor(proc);
+        if (viewMode === 'session') {
+          const list = await fetch('/api/events?session=' + encodeURIComponent(viewSessionId)).then((r) => r.json());
+          list.forEach((ev) => add(ev, { skipScroll: true }));
+        }
+      } catch {}
+    }
+
+    refreshAll().then(() => {
+      scrollToBottom(false);
+      connectStream();
     });
 
     setInterval(() => {
       fetch('/api/session').then((r) => r.json()).then(applyState).catch(() => {});
       fetch('/api/processor').then((r) => r.json()).then(applyProcessor).catch(() => {});
     }, 3000);
+
+    // iOS Safari (and other mobile browsers) freeze/kill the SSE connection
+    // and any in-flight fetches when the tab is backgrounded, without ever
+    // firing onerror — so the page is left stuck on whatever it showed at
+    // the moment it was backgrounded. Re-sync and reconnect on resume.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (!es || es.readyState !== EventSource.OPEN) {
+        refreshAll();
+        connectStream();
+      }
+    });
+    window.addEventListener('pageshow', (e) => {
+      if (e.persisted && (!es || es.readyState !== EventSource.OPEN)) {
+        refreshAll();
+        connectStream();
+      }
+    });
   </script>
 </body>
 </html>`;
@@ -1550,6 +1593,12 @@ const server = createServer(async (req, res) => {
       mainPort: MAIN_PORT,
       queue: 0,
       autoProcess: AUTO_PROCESS,
+      provider: {
+        name: AUTO_PROVIDER_INFO.provider,
+        mode: AUTO_PROVIDER_INFO.mode,
+        model: AUTO_PROVIDER_INFO.model,
+        ready: AUTO_PROVIDER_INFO.ready,
+      },
       processor: {
         ...processorStatus,
         pending: activeWorkers,
