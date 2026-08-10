@@ -152,7 +152,11 @@ const useful =
       String(summary.text).trim(),
     ));
 const skip =
-  /^(sessionStart|stop|afterAgentThought)$/i.test(note) ||
+  // afterFileEdit / afterShellExecution duplicate the postToolUse event that
+  // already fired for the same Edit/Write/Shell call (same path or command,
+  // <1s apart) — without adding new info. Drop them so one tool call = one
+  // debug-console bubble instead of two.
+  /^(sessionStart|stop|afterAgentThought|afterFileEdit|afterShellExecution)$/i.test(note) ||
   (note === 'afterAgentResponse' && !useful);
 if (!skip) {
   await post('/api/event', summary);

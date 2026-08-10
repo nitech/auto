@@ -773,6 +773,9 @@ const HTML = `<!doctype html>
       cursor: pointer;
     }
     .icon-btn:hover { color: var(--ink); background: rgba(232,235,230,.06); }
+    .icon-btn.send { color: var(--accent); }
+    .icon-btn.send:hover { background: rgba(125,206,160,.12); }
+    .icon-btn.send svg { display: block; margin: auto; }
     #compose-file { display: none; }
   </style>
 </head>
@@ -838,6 +841,9 @@ const HTML = `<!doctype html>
           autocapitalize="sentences"
           spellcheck="true"
         ></textarea>
+        <button class="icon-btn send" type="submit" id="compose-send" title="Send" aria-label="Send">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 11.5L21 3l-7.5 18-2.5-7-8-2.5z"/></svg>
+        </button>
       </div>
     </div>
   </form>
@@ -873,6 +879,12 @@ const HTML = `<!doctype html>
     }
     function eventKey(ev) {
       return ev.ts + '|' + (ev.messageId || '') + '|' + (ev.text || ev.note || '').slice(0, 40) + '|' + (ev.tool || '');
+    }
+    function isNearBottom() {
+      return log.scrollHeight - log.scrollTop - log.clientHeight < 120;
+    }
+    function scrollToBottom(smooth) {
+      log.scrollTo({ top: log.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
     }
 
     function applyState(s) {
@@ -951,12 +963,12 @@ const HTML = `<!doctype html>
       n = 0;
       renderTabs();
       const list = await fetch('/api/events?session=' + encodeURIComponent(id)).then((r) => r.json());
-      // API returns oldest→newest; prepend each so newest ends on top
+      // API returns oldest→newest; appended in that order, newest ends at bottom
       list.forEach((ev) => add(ev, { skipScroll: true }));
       const sess = await fetch('/api/session').then((r) => r.json());
       applyState(sess);
       countEl.textContent = n + ' events';
-      log.scrollTop = 0;
+      scrollToBottom(false);
     }
 
     function workerPhasePill(phase) {
@@ -1021,7 +1033,7 @@ const HTML = `<!doctype html>
       // Chronological, oldest first — appended top-to-bottom like a log tail
       list.forEach((ev) => add(ev, { skipScroll: true }));
       countEl.textContent = n + ' events';
-      log.scrollTop = log.scrollHeight;
+      scrollToBottom(false);
     }
 
     function isFileOp(ev) {
@@ -1124,13 +1136,24 @@ const HTML = `<!doctype html>
 
       if (dir === 'agent' && (isFileOp(ev) || ev.command)) {
         bubbleClass += ' compact';
-        const line = ev.command
-          ? ((ev.tool || 'Shell') + ' · ' + String(ev.command).slice(0, 140))
+        const raw = ev.command
+          ? ((ev.tool || 'Shell') + ' · ' + String(ev.command))
           : ((ev.tool || 'edit') + (ev.path ? ' · ' + ev.path : ''));
+        const long = raw.length > CAP || (raw.match(/\\n/g) || []).length >= 4;
+        if (long) wrap.classList.add('expandable');
         wrap.innerHTML =
           '<div class="' + bubbleClass + '">' +
           '<div class="meta-line"><span>' + label + '</span><span>' + escapeHtml(shortTime(ev.ts)) + '</span></div>' +
-          escapeHtml(line) + '</div>';
+          '<div class="body' + (long ? ' clamp' : '') + '">' + escapeHtml(raw) + '</div>' +
+          (long ? '<div class="hint">tap to expand</div>' : '') +
+          '</div>';
+        if (long) {
+          wrap.addEventListener('click', () => {
+            wrap.classList.toggle('expanded');
+            const h = wrap.querySelector('.hint');
+            if (h) h.textContent = wrap.classList.contains('expanded') ? 'tap to collapse' : 'tap to expand';
+          });
+        }
       } else {
         const long = text.length > CAP || (text.match(/\\n/g) || []).length >= 4;
         if (long) wrap.classList.add('expandable');
@@ -1161,14 +1184,12 @@ const HTML = `<!doctype html>
         wrap.querySelector('.bubble').appendChild(img);
       }
 
-      if (viewMode === 'worker-detail') {
-        // chronological log tail — oldest on top, newest at bottom
-        log.appendChild(wrap);
-        if (!(opts && opts.skipScroll)) log.scrollTop = log.scrollHeight;
-      } else {
-        // newest on top
-        log.prepend(wrap);
-        if (!(opts && opts.skipScroll)) log.scrollTop = 0;
+      // Every list is chronological — oldest on top, newest at bottom, like
+      // any chat app. New messages scroll the log down to reveal them.
+      const wasNearBottom = isNearBottom();
+      log.appendChild(wrap);
+      if (!(opts && opts.skipScroll) && (wasNearBottom || dir === 'in')) {
+        scrollToBottom(true);
       }
     }
 
@@ -1318,7 +1339,7 @@ const HTML = `<!doctype html>
       viewSessionId = sess.activeId;
       const list = await fetch('/api/events?session=' + encodeURIComponent(viewSessionId)).then((r) => r.json());
       list.forEach((ev) => add(ev, { skipScroll: true }));
-      log.scrollTop = 0;
+      scrollToBottom(false);
       const es = new EventSource('/api/stream');
       es.onopen = () => { status.textContent = 'live'; status.className = 'pill live'; };
       es.onerror = () => { status.textContent = 'reconnecting'; status.className = 'pill dead'; };
