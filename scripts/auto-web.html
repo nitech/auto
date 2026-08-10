@@ -435,11 +435,11 @@
         'in ' + fmt(tot.input || 0) + ' · out ' + fmt(tot.output || 0);
       document.getElementById('st-folder').textContent = active.folder || '—';
       document.getElementById('st-workspaces').textContent =
-        (active.workspaces && active.workspaces.length) ? active.workspaces.join('\\n') : '—';
+        (active.workspaces && active.workspaces.length) ? active.workspaces.join('\n') : '—';
       const list = s.sessionList || Object.values(s.sessions || {});
       document.getElementById('st-sessions').textContent = list
         .map((x) => (x.label || x.id) + ' (' + fmt(x.tokens?.total || 0) + ' tok)')
-        .join('\\n') || '—';
+        .join('\n') || '—';
 
       renderTabs();
     }
@@ -468,7 +468,7 @@
         if (list.length > 1) {
           const x = document.createElement('span');
           x.className = 'tab-close';
-          x.textContent = '\\u00d7';
+          x.textContent = '×';
           x.title = 'Close session';
           x.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -641,7 +641,7 @@
         el.className = 'pill work';
         el.title = workers.map(function (w) {
           return (w.workerId || '') + ' · ' + (w.phase || '') + ' · ' + (w.text || '');
-        }).join('\\n');
+        }).join('\n');
       } else if (!mainReady) {
         el.textContent = 'main starting';
         el.className = 'pill work';
@@ -709,7 +709,7 @@
         const raw = ev.command
           ? ((ev.tool || 'Shell') + ' · ' + String(ev.command))
           : ((ev.tool || 'edit') + (ev.path ? ' · ' + ev.path : ''));
-        const long = raw.length > CAP || (raw.match(/\\n/g) || []).length >= 4;
+        const long = raw.length > CAP || (raw.match(/\n/g) || []).length >= 4;
         if (long) wrap.classList.add('expandable');
         wrap.innerHTML =
           '<div class="' + bubbleClass + '">' +
@@ -725,7 +725,7 @@
           });
         }
       } else {
-        const long = text.length > CAP || (text.match(/\\n/g) || []).length >= 4;
+        const long = text.length > CAP || (text.match(/\n/g) || []).length >= 4;
         if (long) wrap.classList.add('expandable');
         wrap.innerHTML =
           '<div class="' + bubbleClass + '">' +
