@@ -185,7 +185,7 @@ async function replyUser(text, meta = {}) {
     const send = join(HERE, 'send.mjs');
     await new Promise((resolve) => {
       let err = '';
-      const child = spawn(process.execPath, [send, `--text=${t.slice(0, 3500)}`], {
+      const child = spawn(process.execPath, [send, `--text=${t.slice(0, 3500)}`, '--no-log'], {
         cwd: ROOT,
         windowsHide: true,
         stdio: ['ignore', 'ignore', 'pipe'],

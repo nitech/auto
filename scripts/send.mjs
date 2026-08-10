@@ -2,6 +2,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import {
   arg,
+  hasFlag,
   loadAuth,
   saveAuth,
   api,
@@ -59,11 +60,17 @@ await api(token, 'sendMessage', {
   disable_web_page_preview: false,
 });
 
-appendEvent({
-  dir: 'out',
-  text,
-  chatId,
-  note: 'send.mjs',
-});
+// Callers that already log this same reply to Auto Web themselves (e.g.
+// main-agent.mjs's replyUser, worker-agent.mjs's replyTelegram) pass
+// --no-log so it isn't posted a second time. Callers with no other record
+// of the message (e.g. supervise.mjs's crash alerts) leave logging on.
+if (!hasFlag('no-log')) {
+  appendEvent({
+    dir: 'out',
+    text,
+    chatId,
+    note: 'send.mjs',
+  });
+}
 
 console.log('OK sent');
