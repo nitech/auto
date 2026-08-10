@@ -53,6 +53,7 @@ try {
     'applyAutoProvider',
     'ensureAutoProviderAuth',
     'AUTO_PROVIDER_INFO',
+    'autoAgentIdentity',
   ];
   for (const name of required) {
     if (!(name in lib)) fail(`lib.mjs missing export: ${name}`);
@@ -61,6 +62,16 @@ try {
   if (typeof lib.applyAutoProvider !== 'function') fail('applyAutoProvider should be a function');
   if (typeof lib.ensureAutoProviderAuth !== 'function') {
     fail('ensureAutoProviderAuth should be a function');
+  }
+  if (typeof lib.autoAgentIdentity !== 'function') {
+    fail('autoAgentIdentity should be a function');
+  } else {
+    const id = lib.autoAgentIdentity();
+    if (typeof id !== 'string' || !/Model identity:/.test(id)) {
+      fail('autoAgentIdentity should return a "Model identity:" string');
+    } else {
+      ok(`identity: ${id.split('.')[0]}`);
+    }
   }
   if (!lib.AUTO_PROVIDER_INFO || typeof lib.AUTO_PROVIDER_INFO.provider !== 'string') {
     fail('AUTO_PROVIDER_INFO.provider missing');

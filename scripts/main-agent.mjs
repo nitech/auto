@@ -27,6 +27,7 @@ import {
   DEBUG_PORT,
   AUTO_PROVIDER_INFO,
   ensureAutoProviderAuth,
+  autoAgentIdentity,
 } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -54,6 +55,8 @@ if (AUTO_PROVIDER_INFO.warning) {
 
 const SYSTEM_PROMPT = `You are Auto's always-on front-desk agent for Simon (Telegram + Auto Web).
 You keep this chat session open so you can reply instantly.
+
+${autoAgentIdentity()}
 
 Role split:
 - YOU = chat + status narrator. Stay available. Never do heavy coding, long shell jobs, or multi-file edits yourself.

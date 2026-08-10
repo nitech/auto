@@ -15,7 +15,7 @@ import { spawn } from 'node:child_process';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { arg, SKILL_ROOT, appendEvent, normalizeFsPath, ensureAutoProviderAuth } from './lib.mjs';
+import { arg, SKILL_ROOT, appendEvent, normalizeFsPath, ensureAutoProviderAuth, autoAgentIdentity } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
@@ -112,6 +112,7 @@ function emitToolEvents(ev, job) {
 function buildPrompt(job) {
   const parts = [];
   parts.push('You are an Auto worker subagent.');
+  parts.push(autoAgentIdentity());
   parts.push(
     'Do exactly what the user asked, in full. Prefer action over questions — do not stop to ask for confirmation or clarification unless truly blocked (e.g. missing credentials, or a destructive/irreversible action beyond what was asked). Treat the ask as mandatory, not optional.',
   );
