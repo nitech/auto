@@ -1600,7 +1600,12 @@ const server = createServer(async (req, res) => {
   }
 
   if (url.pathname === '/' || url.pathname === '/index.html') {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    // no-store: iOS Safari caches the UI aggressively and offers no hard
+    // refresh — without this, client fixes never reach already-open devices.
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
     res.end(HTML);
     return;
   }
