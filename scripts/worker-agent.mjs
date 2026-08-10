@@ -228,13 +228,24 @@ async function replyTelegram(text) {
   if (process.env.AUTO_REPLY_TELEGRAM === '0') return;
   const send = join(HERE, 'send.mjs');
   await new Promise((resolve) => {
+    let err = '';
     const child = spawn(process.execPath, [send, `--text=${text}`], {
       cwd: ROOT,
       windowsHide: true,
-      stdio: 'inherit',
+      stdio: ['ignore', 'ignore', 'pipe'],
     });
-    child.on('close', () => resolve());
-    child.on('error', () => resolve());
+    child.stderr.on('data', (d) => {
+      err += d.toString();
+    });
+    const onDone = (code) => {
+      if (code) console.error(`[worker] telegram send failed (code ${code}): ${err.trim().slice(0, 300)}`);
+      resolve();
+    };
+    child.on('close', onDone);
+    child.on('error', (e) => {
+      err = e.message;
+      onDone(1);
+    });
   });
 }
 

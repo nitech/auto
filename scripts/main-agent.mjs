@@ -148,13 +148,34 @@ async function replyUser(text, meta = {}) {
   try {
     const send = join(HERE, 'send.mjs');
     await new Promise((resolve) => {
+      let err = '';
       const child = spawn(process.execPath, [send, `--text=${t.slice(0, 3500)}`], {
         cwd: ROOT,
         windowsHide: true,
-        stdio: 'ignore',
+        stdio: ['ignore', 'ignore', 'pipe'],
       });
-      child.on('close', () => resolve());
-      child.on('error', () => resolve());
+      child.stderr.on('data', (d) => {
+        err += d.toString();
+      });
+      const onDone = (code) => {
+        if (code) {
+          const msg = `telegram send failed (code ${code}): ${err.trim().slice(0, 300)}`;
+          log(`[main] ${msg}`);
+          postDebug({
+            dir: 'sys',
+            note: 'auto: telegram send failed',
+            text: msg,
+            sessionId: meta.sessionId || null,
+            messageId: meta.messageId || null,
+          });
+        }
+        resolve();
+      };
+      child.on('close', onDone);
+      child.on('error', (e) => {
+        err = e.message;
+        onDone(1);
+      });
     });
   } catch {
     /* ignore */
