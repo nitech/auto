@@ -27,17 +27,26 @@ apply before.
 
 ## Restarting the service
 
-`npm start` (`scripts/debug-server.mjs`, port 4331) is the top-level
+Prefer the supervisor (restarts on crash + health fail):
+
+```powershell
+npm run supervise
+# or logon task: npm run autostart:install && Start-ScheduledTask -TaskName AutoSupervise
+```
+
+`npm start` (`scripts/debug-server.mjs`, port 4331) is the bare top-level
 process; it spawns `scripts/main-agent.mjs` (port 4332) as a child and
 auto-restarts that child on crash, but debug-server itself must be
 restarted for changes to `debug-server.mjs` or `lib.mjs` to take effect.
+Do not host Auto only inside a Cursor agent background shell — those get
+killed and take Auto down.
 
 To restart on Windows:
 
 ```powershell
-# find and stop the current listener, then start it again
+# find and stop the current listener, then start it again under supervise
 Get-NetTCPConnection -LocalPort 4331 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
-npm start
+npm run supervise
 ```
 
 If only `main-agent.mjs` or `worker-agent.mjs` changed, killing the
