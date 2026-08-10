@@ -6,10 +6,20 @@ Personal Telegram bridge (`@Sausemesteren_bot`), **Auto Web** status console, an
 
 ```powershell
 cd D:\Sevenfold\auto
-npm start
+npm run supervise          # recommended — auto-restarts on crash
+# or: npm start            # bare server (dies if the shell dies)
 ```
 
 Open: `http://<tailscale-ip>:4331/` (default port **4331**).
+
+**Stay up across reboots / Cursor shell kills:**
+
+```powershell
+npm run autostart:install  # Windows Scheduled Task at logon
+Start-ScheduledTask -TaskName AutoSupervise
+```
+
+Do **not** rely on Cursor agent background terminals to host Auto — those get killed with the agent.
 
 ```powershell
 npm run send -- --text="hello"
@@ -35,6 +45,8 @@ Concept pages so far: `wiki/concepts/auto_web.md`, `wiki/concepts/llm-wiki.md`.
 | `scripts/debug-server.mjs` | **Auto Web** UI + Telegram poller; starts main agent |
 | `scripts/main-agent.mjs` | Always-on front-desk Claude session (`:4332`) |
 | `scripts/worker-agent.mjs` | Per-task worker subagent (reports status to main) |
+| `scripts/supervise.mjs` | Restart + health watchdog (preferred long-run entry) |
+| `scripts/install-autostart.ps1` | Windows logon Scheduled Task for supervise |
 | `scripts/send.mjs` / `listen.mjs` | Outbound / inbound helpers |
 | `hooks/cursor-debug-feed.mjs` | Cursor hook → `/api/event` |
 | `wiki/` | llm-wiki pages |

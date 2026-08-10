@@ -7,6 +7,9 @@
   "scripts": {
     "start": "node scripts/debug-server.mjs --host=0.0.0.0 --port=4331",
     "debug": "node scripts/debug-server.mjs --host=0.0.0.0 --port=4331",
+    "supervise": "node scripts/supervise.mjs",
+    "autostart:install": "powershell -ExecutionPolicy Bypass -File scripts/install-autostart.ps1",
+    "autostart:uninstall": "powershell -ExecutionPolicy Bypass -File scripts/install-autostart.ps1 -Uninstall",
     "main": "node scripts/main-agent.mjs --port=4332",
     "worker": "node scripts/worker-agent.mjs",
     "send": "node scripts/send.mjs",
