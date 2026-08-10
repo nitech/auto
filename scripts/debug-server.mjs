@@ -453,6 +453,30 @@ function setActiveSession(id) {
   saveState();
 }
 
+function createSession(patch = {}) {
+  const id = patch.id || `session-${Date.now().toString(36)}`;
+  if (state.sessions[id]) throw new Error(`session ${id} already exists`);
+  const s = makeSession({ ...patch, id, label: patch.label || 'New session' });
+  state.sessions[id] = s;
+  state.activeId = id;
+  saveState();
+  return s;
+}
+
+function closeSession(id) {
+  if (!state.sessions[id]) throw new Error(`unknown session ${id}`);
+  const remaining = Object.keys(state.sessions).filter((x) => x !== id);
+  if (!remaining.length) throw new Error('cannot close the only session');
+  delete state.sessions[id];
+  if (state.activeId === id) {
+    const next = remaining
+      .map((x) => state.sessions[x])
+      .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))[0];
+    state.activeId = next.id;
+  }
+  saveState();
+}
+
 function applyTokens(delta = {}, sessionId) {
   const id = sessionId || delta.sessionId || state.activeId;
   const s = state.sessions[id] || ensureSession({ id, setActive: false });
@@ -644,6 +668,13 @@ const HTML = `<!doctype html>
     }
     .tab.active { color: var(--ink); border-color: var(--accent); background: rgba(125,206,160,.08); }
     .tab .tok { color: var(--muted); margin-left: 6px; font-variant-numeric: tabular-nums; }
+    .tab-close {
+      display: inline-block; margin-left: 6px; width: 14px; height: 14px;
+      line-height: 14px; text-align: center; border-radius: 999px;
+      color: var(--muted); font-size: 11px;
+    }
+    .tab-close:hover { color: var(--ink); background: rgba(255,255,255,.12); }
+    .tab-add { font-weight: 700; padding: 4px 9px; color: var(--ink); }
     #log {
       grid-area: log; padding: 12px 14px 20px;
       display: flex; flex-direction: column; gap: 8px;
@@ -944,7 +975,56 @@ const HTML = `<!doctype html>
         b.innerHTML = escapeHtml(s.label || s.id) +
           '<span class="tok">' + fmt(s.tokens?.total || 0) + '</span>';
         b.onclick = () => switchSession(s.id);
+        if (list.length > 1) {
+          const x = document.createElement('span');
+          x.className = 'tab-close';
+          x.textContent = '\\u00d7';
+          x.title = 'Close session';
+          x.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeSessionTab(s.id, s.label || s.id);
+          });
+          b.appendChild(x);
+        }
         tabsEl.appendChild(b);
+      }
+
+      const nb = document.createElement('button');
+      nb.type = 'button';
+      nb.className = 'tab tab-add';
+      nb.textContent = '+';
+      nb.title = 'New session';
+      nb.onclick = () => createNewSession();
+      tabsEl.appendChild(nb);
+    }
+
+    async function createNewSession() {
+      const label = window.prompt('New session name:', '');
+      if (label === null) return;
+      const res = await fetch('/api/session/new', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: label.trim() || undefined }),
+      }).then((r) => r.json()).catch(() => null);
+      if (!res || !res.ok) return;
+      await switchSession(res.session.id);
+    }
+
+    async function closeSessionTab(id, label) {
+      const list = state.sessionList || Object.values(state.sessions || {});
+      if (list.length <= 1) return;
+      if (!confirm('Close session "' + label + '"? History stays on disk; the tab goes away.')) return;
+      const wasActive = id === viewSessionId;
+      const res = await fetch('/api/session/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      }).then((r) => r.json()).catch(() => null);
+      if (!res || !res.ok) return;
+      if (wasActive) {
+        await switchSession(res.state.activeId);
+      } else {
+        applyState(res.state);
       }
     }
 
@@ -1456,6 +1536,28 @@ const server = createServer(async (req, res) => {
     try {
       const body = await readBody(req);
       setActiveSession(body.id);
+      sendJson(res, 200, { ok: true, state: publicState() });
+    } catch (e) {
+      sendJson(res, 400, { ok: false, error: String(e) });
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/session/new' && req.method === 'POST') {
+    try {
+      const body = await readBody(req);
+      const s = createSession(body);
+      sendJson(res, 200, { ok: true, session: s, state: publicState() });
+    } catch (e) {
+      sendJson(res, 400, { ok: false, error: String(e) });
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/session/close' && req.method === 'POST') {
+    try {
+      const body = await readBody(req);
+      closeSession(body.id);
       sendJson(res, 200, { ok: true, state: publicState() });
     } catch (e) {
       sendJson(res, 400, { ok: false, error: String(e) });
