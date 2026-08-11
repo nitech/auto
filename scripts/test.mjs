@@ -287,6 +287,55 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1f. Telegram turn rendering: status on top, prose escaped, size bounded.
+{
+  try {
+    const { renderTurn } = await import('../src/core/telegram.mjs');
+    let failed = false;
+
+    const out = renderTurn({
+      text: 'Fixed the <script> bug & shipped it',
+      tools: [
+        { label: 'Edit File', status: 'completed' },
+        { label: 'npm test', status: 'in_progress' },
+      ],
+    });
+    if (!out.startsWith('✓ <i>Edit File</i>')) {
+      fail(`completed tool should lead the message, got ${JSON.stringify(out.slice(0, 40))}`);
+      failed = true;
+    }
+    if (out.includes('<script>')) {
+      fail('prose must be HTML-escaped');
+      failed = true;
+    }
+    if (!out.includes('&lt;script&gt;') || !out.includes('&amp;')) {
+      fail('escaping should preserve the original characters');
+      failed = true;
+    }
+
+    const huge = renderTurn({
+      text: 'x'.repeat(9000),
+      tools: [{ label: 'shell', status: 'in_progress' }],
+    });
+    if (huge.length > 4096) {
+      fail(`message must fit Telegram's limit, got ${huge.length}`);
+      failed = true;
+    }
+    if (!huge.includes('▸ <i>shell</i>')) {
+      fail('a long answer must not push out the tool status');
+      failed = true;
+    }
+    if (renderTurn({}) !== '…') {
+      fail('an empty turn should render a placeholder');
+      failed = true;
+    }
+
+    if (!failed) ok('v2 telegram: turn rendering, escaping, limits');
+  } catch (e) {
+    fail(`v2 telegram: ${e.message}`);
+  }
+}
+
 // 2. lib.mjs exports import cleanly.
 try {
   const lib = await import('./lib.mjs');

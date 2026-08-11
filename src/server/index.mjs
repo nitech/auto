@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { SessionManager, POLICY } from '../core/sessions.mjs';
 import { BrowserHost } from '../core/browser.mjs';
+import { TelegramBridge } from '../core/telegram.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -42,6 +43,22 @@ sessions.on('log', (m) => console.log(`[sessions] ${m}`));
  */
 const browser = new BrowserHost({ stateDir: join(ROOT, 'state') });
 browser.on('log', (m) => console.log(`[browser] ${m}`));
+
+/**
+ * Telegram is opt-in until the cutover: a bot token allows exactly one poller,
+ * and the old stack on :4331 still owns it. Two pollers would split messages
+ * between them at random.
+ */
+const telegram = new TelegramBridge({
+  sessions,
+  stateDir: join(ROOT, 'state'),
+  webUrl: process.env.AUTO_WEB_URL || `http://127.0.0.1:${PORT}`,
+});
+telegram.on('log', (m) => console.log(`[telegram] ${m}`));
+
+const wantTelegram = process.argv.includes('--telegram') || process.env.AUTO_TELEGRAM === '1';
+if (wantTelegram && telegram.enabled) telegram.start();
+else if (wantTelegram) console.log('[telegram] no credentials found; not starting');
 
 /** @type {Map<import('ws').WebSocket, {sessionId: string|null, browser: boolean}>} */
 const clients = new Map();
@@ -336,6 +353,7 @@ server.listen(PORT, '0.0.0.0', () => {
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, async () => {
     console.log('\n[auto-v2] shutting down');
+    telegram.stop();
     await browser.close().catch(() => {});
     await sessions.stopAll();
     process.exit(0);
