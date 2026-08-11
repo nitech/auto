@@ -19,6 +19,7 @@ import { TranscriptStore, KIND } from './transcript.mjs';
 import { mapUpdate } from './map-updates.mjs';
 import { PermissionBroker, POLICY } from './permissions.mjs';
 import { TerminalRegistry } from './terminals.mjs';
+import { importDesktopChat } from './desktop-chats.mjs';
 
 export const STATUS = {
   idle: 'idle',
@@ -263,9 +264,11 @@ export class SessionManager extends EventEmitter {
     if (meta.acpSessionId) {
       try {
         // Resuming makes the agent replay the whole conversation as updates.
-        // We already have all of it on disk, so recording it again would
-        // duplicate the history on every restart.
-        runtime.replaying = true;
+        // Usually we already have all of it on disk, so recording it again
+        // would duplicate the history on every restart. A session that came
+        // from somewhere else is the exception: its replay is the only copy
+        // we will ever get, so let that one through.
+        runtime.replaying = !meta.needsHistory;
         session = await client.loadSession({ sessionId: meta.acpSessionId, cwd: meta.folder });
         session = { sessionId: meta.acpSessionId, ...(session || {}) };
       } catch (err) {
@@ -302,6 +305,7 @@ export class SessionManager extends EventEmitter {
       model: modelId,
       modelName: this.modelName(modelId),
       mode: session.modes?.currentModeId || meta.mode,
+      needsHistory: false,
     });
 
     this.#record(id, KIND.sessionStart, {
@@ -458,6 +462,44 @@ export class SessionManager extends EventEmitter {
     } finally {
       if (throwaway) await client.stop().catch(() => {});
     }
+  }
+
+  /**
+   * Continue a chat started in the Cursor desktop app. The chat is copied into
+   * a session of its own, so the two go their separate ways from here.
+   *
+   * @param {object} opts
+   * @param {string} opts.chatId  desktop chat id
+   * @param {string} opts.folder  folder to run in
+   */
+  importDesktopChat({ chatId, folder }) {
+    const dir = folder || this.defaultFolder;
+    const { sessionId, title, blobs, missing } = importDesktopChat({ chatId, cwd: dir });
+
+    const id = randomUUID();
+    const meta = {
+      id,
+      title: title || 'Desktop chat',
+      titleLocked: true,
+      folder: dir,
+      mode: 'agent',
+      policy: this.defaultPolicy,
+      model: null,
+      modelName: null,
+      acpSessionId: sessionId,
+      status: STATUS.idle,
+      importedFrom: chatId,
+      // Its history lives in the agent, not in our transcript — record the
+      // replay the first time we load it so it can be read here too.
+      needsHistory: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.meta.set(id, meta);
+    this.#persist();
+    this.emit('log', `imported desktop chat "${meta.title}" (${blobs} blobs, ${missing} missing)`);
+    this.emit('sessions', this.list());
+    return meta;
   }
 
   async setModel(id, modelId) {

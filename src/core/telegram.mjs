@@ -13,7 +13,8 @@ import { EventEmitter } from 'node:events';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { listProjects } from './projects.mjs';
+import { listProjects, workspaceIdFor } from './projects.mjs';
+import { desktopChats } from './desktop-chats.mjs';
 
 const LIMIT = 4096;
 /** Telegram tolerates roughly one edit a second; stay well clear. */
@@ -271,6 +272,7 @@ export class TelegramBridge extends EventEmitter {
             '/stop — interrupt the current turn',
             '/mode agent|plan|ask',
             '/projects — projects on this machine',
+            '/chats — continue a chat from the desktop app',
             '/model — pick a model',
             '/policy ask|ask-on-write|auto',
             '/status — what is running',
@@ -310,6 +312,35 @@ export class TelegramBridge extends EventEmitter {
             ]),
           },
         });
+      }
+
+      case '/chats': {
+        const folder = arg || active?.folder;
+        if (!folder) return this.send('No active session, so no folder to look in.');
+        const chats = desktopChats(workspaceIdFor(folder), { limit: 8 });
+        if (!chats.length) {
+          return this.send(`No desktop chats for <code>${esc(folder)}</code>.`);
+        }
+        return this.send(
+          `<b>Desktop chats</b> — <code>${esc(folder)}</code>\n` +
+            'Pick one to continue it here.\n' +
+            chats
+              .map(
+                (c) =>
+                  `• ${esc(c.title)}${c.updatedAt ? ` — ${new Date(c.updatedAt).toLocaleDateString()}` : ''}`,
+              )
+              .join('\n'),
+          {
+            reply_markup: {
+              inline_keyboard: chats.map((c) => [
+                {
+                  text: c.title.slice(0, 40),
+                  callback_data: this.tokenFor({ kind: 'continue', chatId: c.id, folder }),
+                },
+              ]),
+            },
+          },
+        );
       }
 
       case '/sessions': {
@@ -462,6 +493,25 @@ export class TelegramBridge extends EventEmitter {
       await this.send(
         `${existing ? 'Now on' : 'Started'} <b>${esc(meta.title)}</b>\n<code>${esc(meta.folder)}</code>`,
       );
+      return;
+    }
+
+    if (payload.kind === 'continue') {
+      try {
+        const meta = this.sessions.importDesktopChat({
+          chatId: payload.chatId,
+          folder: payload.folder,
+        });
+        this.sessions.setActive(meta.id);
+        await answer(`Continuing ${meta.title}`);
+        await this.send(
+          `Continuing <b>${esc(meta.title)}</b> from the desktop app.\n` +
+            'It is a copy — carrying on in Cursor will not affect this one.',
+        );
+      } catch (err) {
+        await answer(err.message.slice(0, 190));
+        await this.send(`⚠️ ${esc(err.message)}`);
+      }
       return;
     }
 

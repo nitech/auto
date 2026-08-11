@@ -11,12 +11,12 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
+import { chatCountsByWorkspace } from './desktop-chats.mjs';
 
 const APPDATA = process.env.APPDATA || join(homedir(), 'AppData', 'Roaming');
 const CURSOR_USER = join(APPDATA, 'Cursor', 'User');
 const GLOBAL_STORAGE = join(CURSOR_USER, 'globalStorage', 'storage.json');
 const WORKSPACE_STORAGE = join(CURSOR_USER, 'workspaceStorage');
-const CURSOR_PROJECTS = join(homedir(), '.cursor', 'projects');
 
 /** `file:///d%3A/Sevenfold/auto` → `D:\Sevenfold\auto` */
 export function fromFileUri(uri) {
@@ -27,18 +27,6 @@ export function fromFileUri(uri) {
     return p.replace(/\//g, '\\').replace(/\\+$/, '');
   }
   return `/${p}`;
-}
-
-/**
- * Cursor stores a project's agent history under a directory named after its
- * path with the separators flattened. Encoding is one-way — `setto-agent` and
- * `setto\agent` collide — so always go path → slug, never the reverse.
- */
-export function projectSlug(path) {
-  return String(path)
-    .replace(/^([A-Za-z]):/, '$1')
-    .replace(/[\\/]+/g, '-')
-    .replace(/-+$/, '');
 }
 
 function readJson(file) {
@@ -77,7 +65,10 @@ function openFolders() {
   return out;
 }
 
-/** Every workspace the IDE remembers, newest first. */
+/**
+ * Every workspace the IDE remembers, newest first. The directory name is the
+ * workspace id the desktop files its chats under, so carry it along.
+ */
 function recentFolders() {
   let dirs = [];
   try {
@@ -98,22 +89,15 @@ function recentFolders() {
     } catch {
       /* keep 0 */
     }
-    seen.push({ path, usedAt });
+    seen.push({ path, usedAt, workspaceId: dir.name });
   }
   return seen.sort((a, b) => b.usedAt - a.usedAt);
 }
 
-/**
- * How many past desktop chats Cursor has recorded for a folder. Each chat is
- * a directory named after its id, holding `<id>.jsonl` and any subagent runs.
- */
-export function desktopChatCount(path) {
-  const dir = join(CURSOR_PROJECTS, projectSlug(path), 'agent-transcripts');
-  try {
-    return readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).length;
-  } catch {
-    return 0;
-  }
+/** The desktop's workspace id for a folder, if it has ever opened it. */
+export function workspaceIdFor(path) {
+  const k = key(path);
+  return recentFolders().find((w) => key(w.path) === k)?.workspaceId || null;
 }
 
 const isTemp = (p) => /[\\/]AppData[\\/]Local[\\/]Temp[\\/]/i.test(p);
@@ -129,14 +113,19 @@ const key = (p) => p.toLowerCase().replace(/[\\/]+$/, '');
  */
 export function listProjects(extraPaths = []) {
   const open = new Set(openFolders().filter(Boolean).map(key));
+  const counts = chatCountsByWorkspace();
   const byKey = new Map();
 
-  const add = (path, usedAt = 0) => {
+  const add = (path, usedAt = 0, workspaceId = null) => {
     if (!path || isTemp(path) || !existsSync(path)) return;
     const k = key(path);
     const existing = byKey.get(k);
     if (existing) {
       existing.usedAt = Math.max(existing.usedAt, usedAt);
+      if (!existing.workspaceId && workspaceId) {
+        existing.workspaceId = workspaceId;
+        existing.desktopChats = counts.get(workspaceId) || 0;
+      }
       return;
     }
     byKey.set(k, {
@@ -144,12 +133,13 @@ export function listProjects(extraPaths = []) {
       name: basename(path) || path,
       open: open.has(k),
       usedAt,
-      desktopChats: desktopChatCount(path),
+      workspaceId,
+      desktopChats: workspaceId ? counts.get(workspaceId) || 0 : 0,
     });
   };
 
   for (const p of openFolders()) add(p, Date.now());
-  for (const { path, usedAt } of recentFolders()) add(path, usedAt);
+  for (const { path, usedAt, workspaceId } of recentFolders()) add(path, usedAt, workspaceId);
   for (const p of extraPaths) add(p);
 
   return [...byKey.values()].sort((a, b) => {

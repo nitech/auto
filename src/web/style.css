@@ -106,6 +106,56 @@ button, select, textarea { font: inherit; color: inherit; }
 .project { cursor: pointer; border-radius: 8px; }
 .project:hover { background: var(--bg-3); }
 
+/* Chats from the desktop app, offered for continuing here. */
+.desktop-chats { margin: 0 0 4px 8px; }
+
+.desktop-chats > summary {
+  cursor: pointer;
+  padding: 5px 10px;
+  font-size: 11.5px;
+  color: var(--faint);
+  border-radius: 8px;
+  list-style: none;
+}
+
+.desktop-chats > summary::before { content: '⤶ '; opacity: 0.7; }
+.desktop-chats > summary:hover { background: var(--bg-3); color: var(--text); }
+
+.desktop-chat-list {
+  padding: 2px 0 6px;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.desktop-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  margin-left: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  border-left: 2px solid var(--line-2);
+}
+
+.desktop-chat:hover { background: var(--bg-3); }
+.desktop-chat.busy { opacity: 0.6; pointer-events: none; }
+
+.desktop-chat .name {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.desktop-chat .sub {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .more-projects { margin-top: 10px; }
 
 .more-projects > summary {

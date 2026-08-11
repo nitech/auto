@@ -16,7 +16,8 @@ import { WebSocketServer } from 'ws';
 import { SessionManager, POLICY } from '../core/sessions.mjs';
 import { BrowserHost } from '../core/browser.mjs';
 import { TelegramBridge } from '../core/telegram.mjs';
-import { listProjects } from '../core/projects.mjs';
+import { listProjects, workspaceIdFor } from '../core/projects.mjs';
+import { desktopChats } from '../core/desktop-chats.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -91,6 +92,16 @@ function send(ws, msg) {
  */
 function projectList() {
   return listProjects(sessions.list().map((s) => s.folder));
+}
+
+/** The desktop app's own chats for a folder, newest first. */
+function desktopChatsFor(folder) {
+  if (!folder) return [];
+  const imported = new Set(sessions.list().map((s) => s.importedFrom).filter(Boolean));
+  return desktopChats(workspaceIdFor(folder)).map((c) => ({
+    ...c,
+    imported: imported.has(c.id),
+  }));
 }
 
 /** Broadcast to every socket, or only those watching one session. */
@@ -188,6 +199,19 @@ const OPS = {
 
   'projects.list'(ws) {
     send(ws, { type: 'projects', projects: projectList() });
+  },
+
+  'desktop.chats'(ws, state, msg) {
+    send(ws, {
+      type: 'desktopChats',
+      folder: msg.folder,
+      chats: desktopChatsFor(msg.folder),
+    });
+  },
+
+  'desktop.continue'(ws, state, msg) {
+    const meta = sessions.importDesktopChat({ chatId: msg.chatId, folder: msg.folder });
+    return OPS.attach(ws, state, { sessionId: meta.id });
   },
 
   async 'session.archive'(_ws, _state, msg) {
@@ -381,6 +405,11 @@ const server = createServer(async (req, res) => {
 
   if (pathname === '/api/projects') {
     return json(res, { projects: projectList() });
+  }
+
+  if (pathname === '/api/desktop-chats') {
+    const folder = url.searchParams.get('folder');
+    return json(res, { folder, chats: desktopChatsFor(folder) });
   }
 
   // Point the active session at a folder, reusing a session already on it.

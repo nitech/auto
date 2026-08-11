@@ -384,7 +384,7 @@ if (existsSync(SRC)) {
 // 1f2. Project discovery: URI decoding, slugs, and a real list from Cursor.
 {
   try {
-    const { fromFileUri, projectSlug, listProjects } = await import('../src/core/projects.mjs');
+    const { fromFileUri, listProjects, workspaceIdFor } = await import('../src/core/projects.mjs');
     let failed = false;
 
     if (fromFileUri('file:///d%3A/Sevenfold/auto') !== 'D:\\Sevenfold\\auto') {
@@ -399,11 +399,6 @@ if (existsSync(SRC)) {
       fail('a non-URI should decode to null');
       failed = true;
     }
-    if (projectSlug('D:\\Sevenfold\\auto') !== 'D-Sevenfold-auto') {
-      fail(`unexpected slug ${projectSlug('D:\\Sevenfold\\auto')}`);
-      failed = true;
-    }
-
     // The repo we are in must show up, whether or not the IDE remembers it.
     const projects = listProjects([ROOT]);
     if (!projects.some((p) => p.path.toLowerCase() === ROOT.toLowerCase())) {
@@ -416,6 +411,43 @@ if (existsSync(SRC)) {
     }
 
     if (!failed) ok(`v2 core: projects (${projects.length} found)`);
+
+    // Desktop chats: the folder must resolve to a workspace the IDE knows,
+    // and its chats must come back with the fields the UI renders.
+    const { desktopChats, desktopChatsAvailable, chatCountsByWorkspace } = await import(
+      '../src/core/desktop-chats.mjs'
+    );
+
+    if (!desktopChatsAvailable()) {
+      ok('v2 core: desktop chats (no Cursor database here, skipped)');
+    } else {
+      const wsId = workspaceIdFor(ROOT);
+      const counts = chatCountsByWorkspace();
+      const chats = desktopChats(wsId, { limit: 5 });
+      let bad = false;
+
+      if (!wsId) {
+        fail('the current repo should map to a Cursor workspace id');
+        bad = true;
+      }
+      if (!(counts instanceof Map)) {
+        fail('chat counts should come back as a map');
+        bad = true;
+      }
+      for (const c of chats) {
+        if (!c.id || typeof c.title !== 'string') {
+          fail(`malformed desktop chat entry: ${JSON.stringify(c).slice(0, 120)}`);
+          bad = true;
+          break;
+        }
+      }
+      // Listing an unknown workspace is normal, not an error.
+      if (desktopChats(null).length || desktopChats('nope-not-a-workspace').length) {
+        fail('an unknown workspace should list no chats');
+        bad = true;
+      }
+      if (!bad) ok(`v2 core: desktop chats (${chats.length} for this repo)`);
+    }
   } catch (e) {
     fail(`v2 projects: ${e.message}`);
   }

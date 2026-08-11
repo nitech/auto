@@ -548,6 +548,8 @@ function renderRail() {
   for (const { project, sessions } of withSessions) {
     els.rail.appendChild(projectHeader(project, sessions.length));
     for (const s of sessions) els.rail.appendChild(sessionRow(s));
+    const chats = desktopChatsBlock(project);
+    if (chats) els.rail.appendChild(chats);
   }
 
   if (empty.length) {
@@ -556,8 +558,74 @@ function renderRail() {
     const summary = document.createElement('summary');
     summary.textContent = `${empty.length} more projects`;
     more.append(summary);
-    for (const { project } of empty) more.append(projectHeader(project, 0));
+    for (const { project } of empty) {
+      more.append(projectHeader(project, 0));
+      const chats = desktopChatsBlock(project);
+      if (chats) more.append(chats);
+    }
     els.rail.appendChild(more);
+  }
+}
+
+/**
+ * Chats you had in the desktop app. They are not Auto's, so they only load
+ * when you ask for them — and continuing one copies it into a session here.
+ */
+function desktopChatsBlock(project) {
+  if (!project.desktopChats || !project.path) return null;
+
+  const box = document.createElement('details');
+  box.className = 'desktop-chats';
+  const summary = document.createElement('summary');
+  summary.textContent = `${project.desktopChats} desktop ${project.desktopChats === 1 ? 'chat' : 'chats'}`;
+  box.append(summary);
+
+  const body = div('desktop-chat-list');
+  body.textContent = 'Loading…';
+  box.append(body);
+
+  box.ontoggle = () => {
+    if (!box.open) return;
+    state.chatTarget = project.path;
+    sendOp({ op: 'desktop.chats', folder: project.path });
+  };
+  box.dataset.folder = project.path;
+  return box;
+}
+
+function renderDesktopChats(folder, chats) {
+  const box = [...document.querySelectorAll('.desktop-chats')].find(
+    (el) => sameFolder(el.dataset.folder, folder),
+  );
+  if (!box) return;
+  const body = box.querySelector('.desktop-chat-list');
+  body.innerHTML = '';
+
+  if (!chats.length) {
+    body.textContent = 'No chats found for this folder.';
+    return;
+  }
+
+  for (const c of chats) {
+    const row = div('desktop-chat');
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = c.title;
+    const sub = document.createElement('span');
+    sub.className = 'sub';
+    sub.textContent = c.imported
+      ? 'already continued here'
+      : [c.subtitle, c.updatedAt ? new Date(c.updatedAt).toLocaleDateString() : '']
+          .filter(Boolean)
+          .join(' · ');
+    row.append(name, sub);
+    row.title = 'Continue this chat here';
+    row.onclick = () => {
+      row.classList.add('busy');
+      sub.textContent = 'Copying the conversation…';
+      sendOp({ op: 'desktop.continue', chatId: c.id, folder });
+    };
+    body.append(row);
   }
 }
 
@@ -707,6 +775,11 @@ function connect() {
       for (const t of msg.terminals || []) openPane(t);
       for (const rec of msg.records) render(rec);
       scrollDown(true);
+      return;
+    }
+
+    if (msg.type === 'desktopChats') {
+      renderDesktopChats(msg.folder, msg.chats || []);
       return;
     }
 
