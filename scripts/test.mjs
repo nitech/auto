@@ -519,6 +519,31 @@ if (existsSync(SRC)) {
       failed = true;
     }
 
+    // The commands that browse the machine must answer, with buttons that
+    // survive a round trip through Telegram's 64-byte callback data.
+    const sent = [];
+    bridge.send = async (text, opts) => {
+      sent.push({ text, opts });
+      return { message_id: 1 };
+    };
+    for (const text of ['/projects', '/chats']) {
+      sent.length = 0;
+      await bridge.handleUpdate({ update_id: 3, message: { chat: { id: 1 }, text } });
+      if (!sent.length) {
+        fail(`${text} said nothing`);
+        failed = true;
+        continue;
+      }
+      for (const row of sent[0].opts?.reply_markup?.inline_keyboard || []) {
+        const data = row[0]?.callback_data;
+        if (!data || Buffer.byteLength(data) > 64) {
+          fail(`${text} produced a callback that Telegram would reject`);
+          failed = true;
+        }
+      }
+      ok(`v2 telegram: ${text}`);
+    }
+
     if (!failed) ok('v2 telegram: approvals get through while a turn runs');
   } catch (e) {
     fail(`v2 telegram responsiveness: ${e.message}`);
