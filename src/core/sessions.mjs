@@ -42,11 +42,14 @@ export class SessionManager extends EventEmitter {
    * @param {string} opts.stateDir   directory for sessions.json and transcripts
    * @param {string} opts.defaultFolder folder for new sessions
    */
-  constructor({ stateDir, defaultFolder }) {
+  constructor({ stateDir, defaultFolder, defaultPolicy = POLICY.auto }) {
     super();
     this.stateDir = stateDir;
     this.statePath = join(stateDir, 'sessions.json');
     this.defaultFolder = defaultFolder;
+    this.defaultPolicy = Object.values(POLICY).includes(defaultPolicy)
+      ? defaultPolicy
+      : POLICY.auto;
     this.transcripts = new TranscriptStore(join(stateDir, 'transcripts'));
     this.permissions = new PermissionBroker();
     this.terminals = new TerminalRegistry();
@@ -55,6 +58,11 @@ export class SessionManager extends EventEmitter {
     /** @type {Map<string, object>} live runtime state, keyed by session id */
     this.live = new Map();
     this.activeId = null;
+    /**
+     * Modes and models are account-wide, but only arrive when a session goes
+     * live. Cache them so a picker can be drawn before anything has started.
+     */
+    this.catalog = { models: [], modes: [] };
     mkdirSync(stateDir, { recursive: true });
 
     this.permissions.on('requested', (req) => {
@@ -91,10 +99,17 @@ export class SessionManager extends EventEmitter {
       try {
         const raw = JSON.parse(readFileSync(this.statePath, 'utf8'));
         for (const s of raw.sessions || []) {
-          // Nothing is live yet after a restart.
-          this.meta.set(s.id, { ...s, status: STATUS.idle });
+          // Nothing is live yet after a restart. Sessions the user never gave
+          // an explicit policy follow the configured default, so changing it
+          // in .env applies everywhere rather than only to new sessions.
+          this.meta.set(s.id, {
+            ...s,
+            status: STATUS.idle,
+            policy: s.policyLocked ? s.policy : this.defaultPolicy,
+          });
         }
         this.activeId = raw.activeId || null;
+        if (raw.catalog) this.catalog = raw.catalog;
       } catch (err) {
         this.emit('log', `could not read ${this.statePath}: ${err.message}`);
       }
@@ -110,6 +125,7 @@ export class SessionManager extends EventEmitter {
     const payload = {
       activeId: this.activeId,
       sessions: [...this.meta.values()],
+      catalog: this.catalog,
       updatedAt: new Date().toISOString(),
     };
     // Write-then-rename so a crash mid-write cannot leave a truncated registry.
@@ -129,7 +145,7 @@ export class SessionManager extends EventEmitter {
     return this.meta.get(id) || null;
   }
 
-  create({ folder, title, policy = POLICY.ask, mode = 'agent' } = {}) {
+  create({ folder, title, policy = this.defaultPolicy, mode = 'agent' } = {}) {
     const dir = folder || this.defaultFolder;
     const id = randomUUID();
     const meta = {
@@ -263,17 +279,23 @@ export class SessionManager extends EventEmitter {
     runtime.modes = session.modes || null;
     runtime.models = session.models || null;
 
+    if (session.models?.availableModels?.length) {
+      this.catalog = {
+        models: session.models.availableModels,
+        modes: session.modes?.availableModes || this.catalog.modes,
+      };
+      this.emit('catalog', this.catalog);
+    }
+
     // Model ids carry their options (`default[]`, `claude-opus-5[thinking=true]`),
     // so keep the id for switching and the name for showing.
     const modelId = session.models?.currentModelId || null;
-    const modelName =
-      session.models?.availableModels?.find((m) => m.modelId === modelId)?.name || modelId;
 
     this.#update(id, {
       acpSessionId: session.sessionId,
       status: STATUS.idle,
       model: modelId,
-      modelName,
+      modelName: this.modelName(modelId),
       mode: session.modes?.currentModeId || meta.mode,
     });
 
@@ -377,9 +399,23 @@ export class SessionManager extends EventEmitter {
     return true;
   }
 
+  async setModel(id, modelId) {
+    const runtime = await this.ensureLive(id);
+    await runtime.client.setModel({ sessionId: runtime.acpSessionId, modelId });
+    this.#update(id, { model: modelId, modelName: this.modelName(modelId) });
+    return true;
+  }
+
+  /** Display name for a model id, falling back to the id itself. */
+  modelName(modelId) {
+    return (
+      this.catalog?.models?.find((m) => m.modelId === modelId)?.name || modelId || null
+    );
+  }
+
   setPolicy(id, policy) {
     if (!Object.values(POLICY).includes(policy)) throw new Error(`Unknown policy ${policy}`);
-    this.#update(id, { policy });
+    this.#update(id, { policy, policyLocked: true });
     return true;
   }
 

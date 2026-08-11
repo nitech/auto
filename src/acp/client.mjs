@@ -168,6 +168,11 @@ export class AcpClient extends EventEmitter {
     return this.#requirePeer().request('session/set_mode', { sessionId, modeId });
   }
 
+  /** Model ids carry their options, e.g. `claude-opus-5[thinking=true,...]`. */
+  setModel({ sessionId, modelId }) {
+    return this.#requirePeer().request('session/set_model', { sessionId, modelId });
+  }
+
   /** Escape hatch for protocol methods this wrapper does not model yet. */
   call(method, params, opts) {
     return this.#requirePeer().request(method, params, opts);

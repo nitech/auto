@@ -214,11 +214,13 @@ export class TelegramBridge extends EventEmitter {
     const id = this.sessions.activeId;
     if (!id) return this.send('No active session. /new to start one.');
 
-    try {
-      await this.sessions.prompt(id, { text, images });
-    } catch (err) {
-      await this.send(`⚠️ ${esc(err.message)}`);
-    }
+    // Deliberately not awaited: a turn does not resolve until the agent is
+    // done, and it can stop mid-way to ask for permission. Blocking here would
+    // stop us reading the very button press that unblocks it.
+    this.sessions.prompt(id, { text, images }).catch((err) => {
+      const busy = /already working/i.test(err.message);
+      this.send(busy ? 'Still working — /stop to interrupt.' : `⚠️ ${esc(err.message)}`);
+    });
     return undefined;
   }
 
@@ -255,6 +257,7 @@ export class TelegramBridge extends EventEmitter {
             '/new [folder] — start a session',
             '/stop — interrupt the current turn',
             '/mode agent|plan|ask',
+            '/model — pick a model',
             '/policy ask|ask-on-write|auto',
             '/status — what is running',
             this.webUrl ? `/web — ${esc(this.webUrl)}` : '',
@@ -301,6 +304,39 @@ export class TelegramBridge extends EventEmitter {
         }
         await this.sessions.setMode(active.id, arg);
         return this.send(`Mode → <b>${esc(arg)}</b>`);
+
+      case '/model': {
+        if (!active) return this.send('No active session.');
+        const models = this.sessions.catalog?.models || [];
+        if (!models.length) {
+          return this.send('No model list yet — send a prompt first, then try again.');
+        }
+
+        if (arg) {
+          const wanted = arg.toLowerCase();
+          const hit =
+            models.find((m) => m.name?.toLowerCase() === wanted) ||
+            models.find((m) => m.name?.toLowerCase().includes(wanted));
+          if (!hit) return this.send(`No model matching <b>${esc(arg)}</b>. Try /model.`);
+          await this.sessions.setModel(active.id, hit.modelId);
+          return this.send(`Model → <b>${esc(hit.name)}</b>`);
+        }
+
+        // Two per row: 33 models is a long list on a phone.
+        const rows = [];
+        for (let i = 0; i < models.length; i += 2) {
+          rows.push(
+            models.slice(i, i + 2).map((m) => ({
+              text: `${m.modelId === active.model ? '● ' : ''}${m.name || m.modelId}`,
+              callback_data: this.#token({ kind: 'model', modelId: m.modelId, label: m.name }),
+            })),
+          );
+        }
+        return this.send(
+          `Model is <b>${esc(active.modelName || active.model || 'unset')}</b>`,
+          { reply_markup: { inline_keyboard: rows } },
+        );
+      }
 
       case '/policy':
         if (!active) return this.send('No active session.');
@@ -354,6 +390,18 @@ export class TelegramBridge extends EventEmitter {
       const meta = this.sessions.get(payload.sessionId);
       await answer(`Switched to ${meta?.title || 'session'}`);
       await this.send(`Now on <b>${esc(meta?.title)}</b>\n<code>${esc(meta?.folder)}</code>`);
+      return;
+    }
+
+    if (payload.kind === 'model') {
+      const id = this.sessions.activeId;
+      try {
+        await this.sessions.setModel(id, payload.modelId);
+        await answer(`Model: ${payload.label}`);
+        await this.send(`Model → <b>${esc(payload.label)}</b>`);
+      } catch (err) {
+        await answer(err.message.slice(0, 190));
+      }
       return;
     }
 

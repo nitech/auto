@@ -45,7 +45,10 @@ const DEFAULT_FOLDER = arg('folder', ROOT);
 const sessions = new SessionManager({
   stateDir: join(ROOT, 'state'),
   defaultFolder: DEFAULT_FOLDER,
+  defaultPolicy: process.env.AUTO_POLICY || POLICY.auto,
 }).init();
+
+console.log(`[auto] approvals default to "${sessions.defaultPolicy}"`);
 
 sessions.on('log', (m) => console.log(`[sessions] ${m}`));
 
@@ -133,6 +136,7 @@ const OPS = {
       pending: sessions.permissions.list(id),
       terminals: sessions.terminals.list(id),
       terminalsAvailable: sessions.terminals.available,
+      catalog: sessions.catalog,
     });
   },
 
@@ -168,6 +172,10 @@ const OPS = {
 
   async 'session.mode'(_ws, state, msg) {
     await sessions.setMode(msg.sessionId || state.sessionId, msg.modeId);
+  },
+
+  async 'session.model'(_ws, state, msg) {
+    await sessions.setModel(msg.sessionId || state.sessionId, msg.modelId);
   },
 
   'session.policy'(_ws, state, msg) {

@@ -288,6 +288,50 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1e2. Approval policy: env sets the default, a hand-picked policy sticks.
+{
+  const dir = mkdtempSync(join(tmpdir(), 'auto-policy-'));
+  try {
+    const { SessionManager } = await import('../src/core/sessions.mjs');
+    let failed = false;
+
+    const first = new SessionManager({
+      stateDir: dir,
+      defaultFolder: ROOT,
+      defaultPolicy: 'auto',
+    }).init();
+    const yolo = first.list()[0];
+    if (yolo.policy !== 'auto') {
+      fail(`new sessions should follow the configured default, got ${yolo.policy}`);
+      failed = true;
+    }
+
+    const picked = first.create({ folder: ROOT });
+    first.setPolicy(picked.id, 'ask');
+
+    // Restart with a different default: only the untouched session moves.
+    const second = new SessionManager({
+      stateDir: dir,
+      defaultFolder: ROOT,
+      defaultPolicy: 'ask-on-write',
+    }).init();
+    if (second.get(yolo.id).policy !== 'ask-on-write') {
+      fail('an untouched session should follow the new default after a restart');
+      failed = true;
+    }
+    if (second.get(picked.id).policy !== 'ask') {
+      fail('a hand-picked policy must survive a change of default');
+      failed = true;
+    }
+
+    if (!failed) ok('v2 core: policy default from config, explicit choice wins');
+  } catch (e) {
+    fail(`v2 policy default: ${e.message}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // 1f. Telegram turn rendering: status on top, prose escaped, size bounded.
 {
   try {

@@ -29,6 +29,7 @@ const els = {
   folder: $('session-folder'),
   status: $('status'),
   mode: $('mode'),
+  model: $('model'),
   policy: $('policy'),
   conn: $('conn'),
   connLabel: $('conn-label'),
@@ -513,12 +514,30 @@ function renderRail() {
   }
 }
 
+/**
+ * The model list comes from the agent, not from us — 33 entries whose ids
+ * carry their options. Keep the id as the value and show the friendly name.
+ */
+function renderModels(models) {
+  if (!models?.length || els.model.dataset.filled === String(models.length)) return;
+  els.model.innerHTML = '';
+  for (const m of models) {
+    const opt = document.createElement('option');
+    opt.value = m.modelId;
+    opt.textContent = m.name || m.modelId;
+    els.model.append(opt);
+  }
+  els.model.dataset.filled = String(models.length);
+}
+
 function applyMeta(meta) {
   if (!meta) return;
   els.title.textContent = meta.title || 'session';
   els.folder.textContent = meta.folder || '';
   els.mode.value = meta.mode || 'agent';
   els.policy.value = meta.policy || 'ask';
+  // A session that has never run has no model yet; leave the picker as-is.
+  if (meta.model && els.model.options.length) els.model.value = meta.model;
   setBusy(meta.status === 'busy');
   els.status.textContent = meta.status || 'idle';
   els.status.className = `chip ${meta.status === 'busy' ? 'busy' : meta.status === 'error' ? 'error' : ''}`;
@@ -595,6 +614,7 @@ function connect() {
         state.stream = null;
         resetTerminals();
       }
+      renderModels(msg.catalog?.models);
       applyMeta(msg.meta);
       renderRail();
       // Panes first, so replayed terminal chunks have somewhere to land.
@@ -669,6 +689,8 @@ $('new-session').onclick = () => sendOp({ op: 'session.create' });
 $('rail-toggle').onclick = () => els.app.classList.toggle('rail-open');
 els.mode.onchange = () =>
   sendOp({ op: 'session.mode', sessionId: state.sessionId, modeId: els.mode.value });
+els.model.onchange = () =>
+  sendOp({ op: 'session.model', sessionId: state.sessionId, modelId: els.model.value });
 els.policy.onchange = () =>
   sendOp({ op: 'session.policy', sessionId: state.sessionId, policy: els.policy.value });
 
