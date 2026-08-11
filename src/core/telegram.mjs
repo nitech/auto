@@ -319,7 +319,8 @@ export class TelegramBridge extends EventEmitter {
           [
             `<b>${esc(active.title)}</b> — ${esc(active.status)}`,
             `<code>${esc(active.folder)}</code>`,
-            `mode ${esc(active.mode)} · approvals ${esc(active.policy)}`,
+            `mode ${esc(active.mode)} · approvals ${esc(active.policy)}` +
+              (active.modelName ? ` · ${esc(active.modelName)}` : ''),
             pending ? `${pending} waiting for approval` : '',
           ]
             .filter(Boolean)

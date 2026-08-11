@@ -139,6 +139,7 @@ export class SessionManager extends EventEmitter {
       mode,
       policy,
       model: null,
+      modelName: null,
       acpSessionId: null,
       status: STATUS.idle,
       createdAt: new Date().toISOString(),
@@ -262,10 +263,17 @@ export class SessionManager extends EventEmitter {
     runtime.modes = session.modes || null;
     runtime.models = session.models || null;
 
+    // Model ids carry their options (`default[]`, `claude-opus-5[thinking=true]`),
+    // so keep the id for switching and the name for showing.
+    const modelId = session.models?.currentModelId || null;
+    const modelName =
+      session.models?.availableModels?.find((m) => m.modelId === modelId)?.name || modelId;
+
     this.#update(id, {
       acpSessionId: session.sessionId,
       status: STATUS.idle,
-      model: session.models?.currentModelId || null,
+      model: modelId,
+      modelName,
       mode: session.modes?.currentModeId || meta.mode,
     });
 
