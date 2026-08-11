@@ -1,23 +1,38 @@
-# Auto Web
+# Auto
 
-Auto Web is the browser UI for the Auto project at D:\Sevenfold\auto (port 4331).
+Auto is a remote control for Cursor's agent, running at D:\Sevenfold\auto on
+port 4331. It drives `cursor-agent` sessions on this machine and exposes them
+through a web app (PWA) and a Telegram bot.
 
 ## Responsibilities
-- Live SSE log of Telegram inbound/outbound and Cursor agent tool activity
-- Session tabs (per project folder) with token stats in the Stats menu
-- ChatGPT-style compose box (Enter to send, image attach/paste/drop)
-- Auto-process: each message runs immediately via the agent CLI (`claude -p`, scripts/process-instruction.mjs); no drain backlog. The model behind the CLI depends on AUTO_PROVIDER — behavior is provider-agnostic.
+- Run agent sessions over ACP (JSON-RPC to `cursor-agent acp`), one child
+  process per session, resumable across restarts
+- Record everything the agent emits — prose, thinking, tool calls, tool
+  results, diffs, plans, terminal output, errors — to append-only transcripts
+- Broker approvals (ask / ask-on-write / auto) answerable from web or Telegram
+- Host real PTY terminals for the agent and for the user
+- Host a Chrome instance the user can drive by hand from a phone
+- Serve the web app and a WebSocket that replays transcripts from a sequence
+  number, so a reload loses nothing
 
-## Key scripts
-- scripts/debug-server.mjs — Auto Web HTTP UI + Telegram poller + processor pump
-- scripts/lib.mjs — auth, Telegram API, paths, normalizeFsPath
-- scripts/send.mjs / listen.mjs — outbound / inbound helpers
-- scripts/process-instruction.mjs — agent executor for instructions
-- hooks/cursor-debug-feed.mjs — Cursor hooks → /api/event
+## Design rules
+- The host owns state; web and Telegram are projections with no authority
+- The transcript is the source of truth, not the socket
+- Unknown ACP updates are recorded rather than dropped
+- Browser frames are the one thing deliberately not persisted
+
+## Key modules
+- src/server/index.mjs — HTTP, WebSocket, session API, static web app
+- src/acp/ — process resolution, JSON-RPC peer, ACP client
+- src/core/sessions.mjs — session registry, lifecycle, resume
+- src/core/transcript.mjs — append-only JSONL with monotonic sequence numbers
+- src/core/permissions.mjs — approval broker and policies
+- src/core/terminals.mjs — node-pty registry
+- src/core/browser.mjs — Chrome over CDP, screencast and input
+- src/core/telegram.mjs — Telegram control surface
+- scripts/supervise.mjs — restart and health watchdog
 
 ## Related
-- Improvement plan / backlog: wiki/concepts/auto_web_ui_plan.md
-- llm-wiki installed as npm dependency for a local knowledge wiki under wiki/
-- Cursor skill telegram-notify points here
-
-[src: raw/ingested/2026/08/09-auto-web-architecture.md]
+- Agent workflow and restart rules: AGENTS.md
+- Skills: .claude/skills/{auto-doctor,auto-restart,switch-repo}
+- llm-wiki hosts this knowledge base under wiki/

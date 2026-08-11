@@ -2,123 +2,88 @@
 
 > This is Auto's real instruction doc. `CLAUDE.md` in this repo is only a
 > stub that imports this file — the harness auto-loads that fixed filename,
-> but the content lives in `AGENTS.md` (the cross-tool convention for agent
-> instructions) because the behavior here is provider-agnostic (see
-> "Agent independence" below).
+> but the content lives in `AGENTS.md`, the cross-tool convention for agent
+> instructions.
 
-Auto is Simon's own always-on Telegram/Auto-Web bridge (`scripts/main-agent.mjs`
-+ `scripts/worker-agent.mjs`, fronted by `scripts/debug-server.mjs`). Any agent
-session working in this repo — main agent, worker, or a manual session —
-follows the rule below when it edits files in this repo.
+Auto is Simon's always-on remote control for Cursor's agent: one host
+(`src/server/index.mjs`) serving a web app and a Telegram bot, driving
+`cursor-agent` sessions over ACP. Any session working in this repo — one of
+Auto's own sessions or a manual one — follows the rules below.
 
-## Agent independence (memory & behavior)
+## Agent independence
 
-Auto's docs and wiki are provider-agnostic and must stay that way. The model
-behind a session can be Claude, Kimi, or any future provider (selected via
-`AUTO_PROVIDER` in `.env`), but the *behavior* described in this file,
-`README.md`, `wiki/`, and `raw/` never changes with it. Rules:
+Auto's docs and wiki describe behaviour, not models. The agent behind a
+session is whatever the Cursor CLI is configured to use, and it can change.
+Never write a model name into these docs when describing what the agent *is*
+or *does* — say "the agent". Naming the CLI (`cursor-agent`) or a config
+value as setup documentation is fine.
 
-- Never write a model/provider name (Claude, Kimi, …) into these docs when
-  describing what an agent *is* or *does* — say "the agent" instead. Naming
-  the harness CLI (`claude`) or provider config (`AUTO_PROVIDER=kimi`) as
-  setup/config documentation is fine.
-- Which model is actually answering is injected at runtime, per session, by
-  `autoAgentIdentity()` in `scripts/lib.mjs` — docs must not duplicate or
-  contradict that.
+## Architecture in one pass
 
-## Auto's own skills
-
-Auto can author its own skills. They live in `.claude/skills/<name>/SKILL.md`
-in this repo and are loaded automatically in every session: the main agent
-runs with this repo as its cwd, and workers get the repo added as an extra
-working directory (`--add-dir` in `worker-agent.mjs`) no matter which folder
-the job is in.
-
-- To create or update a skill, follow the `create-skill` skill — it covers
-  the SKILL.md format, naming rules, and when a skill is worth writing.
-- Skills go through the same mandatory workflow as any change: `npm test`
-  (it validates each skill's frontmatter), commit, **push**.
-- No service restart is needed for skill-only changes — workers are spawned
-  per job and pick new skills up immediately; the main agent picks them up
-  on its next respawn.
+- **One host, one port.** `src/server/index.mjs` on 4331 owns everything:
+  HTTP, WebSocket, the session API, Telegram, the browser, terminals.
+- **One session, one agent process.** Each session spawns `cursor-agent acp`
+  and holds an ACP session id, so sessions resume rather than restart.
+- **The transcript is the truth.** Every prompt, tool call, result, diff,
+  permission and error is appended to `state/transcripts/<id>.jsonl` with a
+  monotonic sequence number. Clients replay from a sequence number; they
+  hold no authoritative state. If you add a new kind of event, record it —
+  a record we cannot render yet beats one we threw away.
+- **Live-only by exception.** Browser frames are the sole thing deliberately
+  never recorded; a video stream is not worth replaying.
+- **The web and Telegram are projections.** Neither owns state. Anything one
+  can do, the other should be able to do.
 
 ## Mandatory workflow for changes to this repo
 
-Whenever you change any file in this repo (not just docs):
-
-1. **Run tests**: `npm test`. This syntax-checks every script under
-   `scripts/`, sanity-checks `lib.mjs`'s exports, and — if the service is
-   already running — hits its `/health` / `/api/health` endpoints.
-2. **If tests pass**: `git add -A` the relevant files, commit with a
-   short message describing the change, and **push** (`git push`) —
-   every commit must be pushed, not left local-only. Then restart the
-   service (see below) so the fix actually takes effect.
-3. **If tests fail**: revert your change (`git checkout -- <files>` or
-   `git stash` for uncommitted work), then tell the user which check
-   failed and why. Do not leave the repo in a broken, uncommitted state.
-   After reverting, investigate the root cause and fix the underlying
-   issue, then repeat from step 1.
+1. **Run tests**: `npm test`. It syntax-checks everything, exercises
+   transcripts, permissions, PTYs, diff rendering, the browser address bar
+   and Telegram rendering, validates skill frontmatter, and — if the host is
+   running — checks its health and session API.
+2. **If tests pass**: `git add -A`, commit with a short message describing
+   the change, and **push**. Then restart the host so the change takes
+   effect (see below).
+3. **If tests fail**: revert (`git checkout -- <files>`), tell the user
+   which check failed and why, then fix the root cause and start again.
 
 Do not skip the commit — uncommitted fixes are invisible to anyone
-restarting the service later, which has caused fixes to silently not
-apply before. Do not skip the push either — an unpushed commit exists
-only on this machine.
+restarting later, which has silently lost fixes before. Do not skip the
+push either; an unpushed commit exists only on this machine.
 
-## Restarting the service
+## Restarting
 
-Prefer the supervisor (restarts on crash + health fail):
-
-```powershell
-npm run supervise
-# or logon task: npm run autostart:install && Start-ScheduledTask -TaskName AutoSupervise
-```
-
-`npm start` (`scripts/debug-server.mjs`, port 4331) is the bare top-level
-process; it spawns `scripts/main-agent.mjs` (port 4332) as a child and
-auto-restarts that child on crash, but debug-server itself must be
-restarted for changes to `debug-server.mjs` or `lib.mjs` to take effect.
-Do not host Auto only inside a Cursor agent background shell — those get
-killed and take Auto down.
-
-To restart on Windows:
+The `AutoSupervise` scheduled task runs `scripts/supervise.mjs`, which keeps
+the host alive. To apply a change to `src/`:
 
 ```powershell
-# find and stop the current listener, then start it again under supervise
 Get-NetTCPConnection -LocalPort 4331 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
-npm run supervise
 ```
 
-If only `main-agent.mjs` or `worker-agent.mjs` changed, killing the
-process on port 4332 is enough — debug-server respawns it automatically.
+The supervisor brings it straight back. Skills and docs need no restart.
+See the `auto-restart` skill for the full picture.
+
+**Never run a second host with Telegram enabled** — a bot token allows one
+poller, and two will split messages between them at random. Use
+`npm run dev` (port 4340, Telegram off).
+
+**Never host Auto in a Cursor agent background shell** — they get killed.
 
 ## Current repo / active folder
 
-There is one global "active session" (`debug-server.mjs`, persisted to
-`session-state.json`) whose `folder` becomes the `job.folder` for every
-Telegram/Auto-Web message: `main-agent.mjs` gets it as the `folder:` line
-in each injected `USER_MESSAGE`, and `worker-agent.mjs` gets it as
-`AUTO_CWD` (its spawned agent's `cwd`) and as "Preferred working folder"
-in its prompt. Named sessions (`auto`, `setto-agent`, …) already exist in
-`session-state.json` for repos used regularly.
-
-**Switching repos only sticks if you update that state.** `cd`-ing into a
-repo and reporting back that you're "now in repo X" does *not* change
-future jobs' folder — only a call to the debug-server's session API does:
+There is one active session, and its `folder` is where Telegram messages
+run. Switching repos only sticks if you call the session API — `cd`-ing and
+saying "now in repo X" reverts on the next message:
 
 ```powershell
-# Point the active session at a folder (creates the session if it doesn't
-# exist yet, and makes it active) — this is what a "switch to repo X" /
-# "switch to the Y project" request should actually do:
 curl -s -X POST http://127.0.0.1:4331/api/session -H "Content-Type: application/json" -d '{\"folder\":\"D:\\Sevenfold\\auto\"}'
-
-# If a session for that repo already exists and you just want to reactivate
-# it without touching its folder, switch by id instead:
-curl -s http://127.0.0.1:4331/api/session   # inspect sessions + activeId
-curl -s -X POST http://127.0.0.1:4331/api/session/active -H "Content-Type: application/json" -d '{\"id\":\"auto\"}'
 ```
 
-Both `main-agent.mjs` and `worker-agent.mjs` are told this in their
-prompts. Whichever one handles a "switch repo/folder" request must make
-this call (workers, which have Bash, are the ones normally doing this)
-before confirming the switch to the user — a verbal confirmation without
-the API call will silently revert on the next message.
+The `switch-repo` skill covers this, including reactivating an existing
+session by id or title.
+
+## Auto's own skills
+
+Skills live in `.claude/skills/<name>/SKILL.md` and load in every session in
+this repo. To create or update one, follow the `create-skill` skill. Skills
+go through the same workflow as any change: `npm test` (it validates
+frontmatter), commit, **push**. No restart needed.

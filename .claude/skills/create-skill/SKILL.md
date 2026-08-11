@@ -52,10 +52,9 @@ Rules:
 2. `npm test` — it validates every skill's frontmatter (name matches
    directory, description present). Fix what it flags.
 3. Commit with a short message **and push** (`git push`).
-4. No service restart is needed: workers are spawned per job and pick new
-   skills up immediately. The long-lived main agent picks them up on its next
-   respawn (kill the port-4332 listener to force it) — only do that if the
-   main agent itself needs the skill right away.
+4. No service restart is needed: an agent process loads skills when its
+   session starts, so new sessions pick them up immediately and existing
+   ones do on their next start.
 
 ## Good candidates for new skills
 

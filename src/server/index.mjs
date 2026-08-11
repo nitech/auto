@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Auto v2 host.
+ * Auto host.
  *
  * Serves the web client and a WebSocket that carries the live transcript in one
  * direction and prompts, approvals, and steering in the other. The host owns
  * all state; clients are views that attach and replay.
  *
- *   node src/server/index.mjs [--port=4340] [--folder=D:\some\repo]
+ *   node src/server/index.mjs [--port=4331] [--folder=D:\some\repo]
  */
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
@@ -26,7 +26,20 @@ function arg(name, fallback) {
   return hit ? hit.slice(name.length + 3) : fallback;
 }
 
-const PORT = Number(arg('port', '4340')) || 4340;
+/** Load .env without a dependency. Real environment variables win. */
+(function loadDotEnv() {
+  const file = join(ROOT, '.env');
+  if (!existsSync(file)) return;
+  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!m || line.trimStart().startsWith('#')) continue;
+    const value = m[2].trim().replace(/^(['"])(.*)\1$/, '$2');
+    if (!(m[1] in process.env)) process.env[m[1]] = value;
+  }
+})();
+
+const PORT = Number(arg('port', process.env.AUTO_PORT || '4331')) || 4331;
+const HOST = arg('host', '0.0.0.0');
 const DEFAULT_FOLDER = arg('folder', ROOT);
 
 const sessions = new SessionManager({
@@ -45,9 +58,9 @@ const browser = new BrowserHost({ stateDir: join(ROOT, 'state') });
 browser.on('log', (m) => console.log(`[browser] ${m}`));
 
 /**
- * Telegram is opt-in until the cutover: a bot token allows exactly one poller,
- * and the old stack on :4331 still owns it. Two pollers would split messages
- * between them at random.
+ * A bot token allows exactly one poller, so only ever run one host with
+ * Telegram enabled. `--no-telegram` is there for a second instance on another
+ * port while developing.
  */
 const telegram = new TelegramBridge({
   sessions,
@@ -56,7 +69,7 @@ const telegram = new TelegramBridge({
 });
 telegram.on('log', (m) => console.log(`[telegram] ${m}`));
 
-const wantTelegram = process.argv.includes('--telegram') || process.env.AUTO_TELEGRAM === '1';
+const wantTelegram = !process.argv.includes('--no-telegram') && process.env.AUTO_TELEGRAM !== '0';
 if (wantTelegram && telegram.enabled) telegram.start();
 else if (wantTelegram) console.log('[telegram] no credentials found; not starting');
 
@@ -280,25 +293,87 @@ function serveStatic(req, res) {
   }
 }
 
-const server = createServer((req, res) => {
-  if (req.url === '/api/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(
-      JSON.stringify({
-        ok: true,
-        sessions: sessions.list().length,
-        live: sessions.live.size,
-        activeId: sessions.activeId,
-      }),
-    );
-    return;
+function json(res, body, code = 200) {
+  res.writeHead(code, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(body));
+}
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    let raw = '';
+    req.on('data', (c) => {
+      raw += c;
+      if (raw.length > 1e6) req.destroy();
+    });
+    req.on('end', () => {
+      try {
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch {
+        resolve({});
+      }
+    });
+  });
+}
+
+/** Cursor and hooks hand out paths like `/D:/foo`; Windows wants `D:\foo`. */
+function normalizeFolder(input) {
+  let s = String(input).trim().replace(/^\/([A-Za-z]:)/, '$1');
+  if (/^[A-Za-z]:[\\/]/.test(s)) s = s.replace(/\//g, '\\');
+  return s.replace(/[\\/]+$/, '');
+}
+
+const sameFolder = (a, b) =>
+  String(a || '').replace(/[\\/]+$/, '').toLowerCase() ===
+  String(b || '').replace(/[\\/]+$/, '').toLowerCase();
+
+const server = createServer(async (req, res) => {
+  const { pathname } = new URL(req.url, 'http://localhost');
+
+  if (pathname === '/api/health') {
+    return json(res, {
+      ok: true,
+      sessions: sessions.list().length,
+      live: sessions.live.size,
+      activeId: sessions.activeId,
+      telegram: telegram.running,
+    });
   }
-  if (req.url === '/api/sessions') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ sessions: sessions.list(), activeId: sessions.activeId }));
-    return;
+
+  if (pathname === '/api/sessions' || (pathname === '/api/session' && req.method === 'GET')) {
+    return json(res, { sessions: sessions.list(), activeId: sessions.activeId });
   }
-  serveStatic(req, res);
+
+  // Point the active session at a folder, reusing a session already on it.
+  // This is the contract the switch-repo skill depends on.
+  if (pathname === '/api/session' && req.method === 'POST') {
+    const body = await readBody(req);
+    const folder = body.folder ? normalizeFolder(body.folder) : null;
+    if (!folder) return json(res, { error: 'folder is required' }, 400);
+    if (!existsSync(folder)) return json(res, { error: `No such folder: ${folder}` }, 400);
+
+    let meta = sessions.list().find((s) => sameFolder(s.folder, folder));
+    if (!meta) meta = sessions.create({ folder, title: body.title });
+    sessions.setActive(meta.id);
+    return json(res, { session: sessions.get(meta.id), activeId: sessions.activeId });
+  }
+
+  if (pathname === '/api/session/active' && req.method === 'POST') {
+    const body = await readBody(req);
+    const wanted = String(body.id || '').trim();
+    const match = sessions
+      .list()
+      .find(
+        (s) =>
+          s.id === wanted ||
+          s.title?.toLowerCase() === wanted.toLowerCase() ||
+          sameFolder(s.folder, wanted),
+      );
+    if (!match) return json(res, { error: `Unknown session ${wanted}` }, 404);
+    sessions.setActive(match.id);
+    return json(res, { session: sessions.get(match.id), activeId: sessions.activeId });
+  }
+
+  return serveStatic(req, res);
 });
 
 // ----------------------------------------------------------------- websocket
@@ -346,13 +421,13 @@ wss.on('connection', async (ws) => {
   });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[auto-v2] http://127.0.0.1:${PORT}  (${sessions.list().length} sessions)`);
+server.listen(PORT, HOST, () => {
+  console.log(`[auto] http://127.0.0.1:${PORT}  (${sessions.list().length} sessions)`);
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, async () => {
-    console.log('\n[auto-v2] shutting down');
+    console.log('\n[auto] shutting down');
     telegram.stop();
     await browser.close().catch(() => {});
     await sessions.stopAll();

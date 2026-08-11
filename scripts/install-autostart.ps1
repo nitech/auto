@@ -44,7 +44,7 @@ Register-ScheduledTask `
   -Action $action `
   -Trigger $trigger `
   -Settings $settings `
-  -Description "Keep Auto Web (:4331) + main agent (:4332) alive via scripts/supervise.mjs" `
+  -Description "Keep Auto (:4331) alive via scripts/supervise.mjs" `
   -User $env:USERNAME |
   Out-Null
 

@@ -1,16 +1,5 @@
 auth.json
 bot-token.txt
-whatsapp-auth/
-whatsapp-qr.png
-whatsapp-last-qr.txt
-offset.json
-events.jsonl
-pending-queue.json
-session-state.json
-main-session.json
-inbox/
-jobs/
-runs/
 state/
 *.log
 node_modules/
@@ -18,5 +7,4 @@ node_modules/
 
 .wikirc.yaml
 .env
-provider-stamp.json
 supervise.pid

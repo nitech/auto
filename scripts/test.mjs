@@ -6,10 +6,11 @@
  *
  * Checks:
  *   1. Every .mjs script under scripts/ and src/ parses (node --check).
- *   1b. v2 core behaviour: transcript replay and ACP update mapping.
- *   2. lib.mjs's exports actually import and are the expected type.
+ *   1b–1f. Core behaviour: transcripts, permissions, terminals, diffs,
+ *          the browser address bar, and Telegram rendering.
+ *   2. The Cursor agent CLI resolves — nothing works without it.
  *   2b. Every skill under .claude/skills/ has valid SKILL.md frontmatter.
- *   3. If the service is already running, its /health endpoints respond.
+ *   3. If the host is running, its health and session API answer.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
@@ -336,67 +337,14 @@ if (existsSync(SRC)) {
   }
 }
 
-// 2. lib.mjs exports import cleanly.
+// 2. The agent CLI the whole host depends on must be resolvable.
 try {
-  const lib = await import('./lib.mjs');
-  const required = [
-    'arg',
-    'PROJECT_ROOT',
-    'normalizeFsPath',
-    'DEBUG_PORT',
-    'appendEvent',
-    'SKILL_ROOT',
-    'loadDotEnv',
-    'applyAutoProvider',
-    'ensureAutoProviderAuth',
-    'AUTO_PROVIDER_INFO',
-    'autoAgentIdentity',
-  ];
-  for (const name of required) {
-    if (!(name in lib)) fail(`lib.mjs missing export: ${name}`);
-  }
-  if (typeof lib.loadDotEnv !== 'function') fail('loadDotEnv should be a function');
-  if (typeof lib.applyAutoProvider !== 'function') fail('applyAutoProvider should be a function');
-  if (typeof lib.ensureAutoProviderAuth !== 'function') {
-    fail('ensureAutoProviderAuth should be a function');
-  }
-  if (typeof lib.autoAgentIdentity !== 'function') {
-    fail('autoAgentIdentity should be a function');
-  } else {
-    const id = lib.autoAgentIdentity();
-    if (typeof id !== 'string' || !/Model identity:/.test(id)) {
-      fail('autoAgentIdentity should return a "Model identity:" string');
-    } else {
-      ok(`identity: ${id.split('.')[0]}`);
-    }
-  }
-  if (!lib.AUTO_PROVIDER_INFO || typeof lib.AUTO_PROVIDER_INFO.provider !== 'string') {
-    fail('AUTO_PROVIDER_INFO.provider missing');
-  } else {
-    ok(
-      `provider: ${lib.AUTO_PROVIDER_INFO.provider}` +
-        (lib.AUTO_PROVIDER_INFO.mode ? `/${lib.AUTO_PROVIDER_INFO.mode}` : ''),
-    );
-  }
-  if (!failed) ok('lib.mjs exports present');
+  const { resolveCursorAgent } = await import('../src/acp/resolve.mjs');
+  const found = resolveCursorAgent();
+  if (!found?.command) fail('cursor-agent could not be resolved');
+  else ok(`agent CLI: ${found.command.split(/[\\/]/).slice(-3).join('/')}`);
 } catch (e) {
-  fail(`import lib.mjs: ${e.message}`);
-}
-
-// kimi-oauth helpers import cleanly
-try {
-  const oauth = await import('./kimi-oauth.mjs');
-  for (const name of [
-    'ensureKimiCodingToken',
-    'startKimiDeviceLogin',
-    'pollKimiDeviceLogin',
-    'loadKimiOAuthCreds',
-  ]) {
-    if (typeof oauth[name] !== 'function') fail(`kimi-oauth missing ${name}`);
-  }
-  if (!failed) ok('kimi-oauth.mjs exports present');
-} catch (e) {
-  fail(`import kimi-oauth.mjs: ${e.message}`);
+  fail(`resolve cursor-agent: ${e.message}`);
 }
 
 // 2b. Auto's own skills: every .claude/skills/<name>/SKILL.md must have valid
@@ -432,20 +380,30 @@ if (existsSync(SKILLS_DIR)) {
   }
 }
 
-// 3. If the debug server / main agent are already running, hit /health.
-for (const [name, port, path] of [
-  ['debug-server', 4331, '/api/health'],
-  ['main-agent', 4332, '/health'],
-]) {
-  try {
-    const res = await fetch(`http://127.0.0.1:${port}${path}`, {
+// 3. If the host is already running, check its health and session API.
+const PORT = Number(process.env.AUTO_PORT || 4331);
+try {
+  const res = await fetch(`http://127.0.0.1:${PORT}/api/health`, {
+    signal: AbortSignal.timeout(2000),
+  });
+  if (!res.ok) fail(`/api/health returned ${res.status}`);
+  else {
+    const body = await res.json();
+    if (!body.ok) fail('/api/health reported not ok');
+    else ok(`host healthy on :${PORT} (${body.sessions} sessions)`);
+
+    // The switch-repo skill depends on this shape.
+    const s = await fetch(`http://127.0.0.1:${PORT}/api/session`, {
       signal: AbortSignal.timeout(2000),
-    });
-    if (res.ok) ok(`${name} ${path} responded`);
-    else fail(`${name} ${path} returned ${res.status}`);
-  } catch {
-    console.log(`skip: ${name} not running on :${port}`);
+    }).then((r) => r.json());
+    if (!Array.isArray(s.sessions) || !('activeId' in s)) {
+      fail('/api/session should return { sessions, activeId }');
+    } else {
+      ok('session API shape');
+    }
   }
+} catch {
+  console.log(`skip: host not running on :${PORT}`);
 }
 
 if (failed) {
