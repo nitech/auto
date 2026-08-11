@@ -408,6 +408,58 @@ export class SessionManager extends EventEmitter {
     return true;
   }
 
+  /**
+   * Ask the agent for every session it knows about — including ones started
+   * from a terminal or by a previous install of Auto — and register the ones
+   * we are missing. Without this, Auto shows only its own history while the
+   * desktop shows more, which is exactly the wrong way round for a remote
+   * control.
+   *
+   * @returns {Promise<number>} how many sessions were newly adopted
+   */
+  async syncFromAgent() {
+    const live = [...this.live.values()].find((r) => r.client?.running);
+    const client = live?.client || new AcpClient({ cwd: this.defaultFolder });
+    const throwaway = !live;
+
+    try {
+      if (throwaway) await client.start();
+      const res = await client.call('session/list', {}, { timeoutMs: 20_000 });
+      const known = new Set(
+        [...this.meta.values()].map((s) => s.acpSessionId).filter(Boolean),
+      );
+
+      let adopted = 0;
+      for (const s of res?.sessions || []) {
+        if (!s.sessionId || known.has(s.sessionId) || !s.cwd) continue;
+        const id = randomUUID();
+        this.meta.set(id, {
+          id,
+          title: s.title || basename(s.cwd) || 'session',
+          titleLocked: Boolean(s.title),
+          folder: s.cwd,
+          mode: 'agent',
+          policy: this.defaultPolicy,
+          model: null,
+          modelName: null,
+          acpSessionId: s.sessionId,
+          status: STATUS.idle,
+          adopted: true,
+          createdAt: s.updatedAt || new Date().toISOString(),
+          updatedAt: s.updatedAt || new Date().toISOString(),
+        });
+        adopted += 1;
+      }
+      if (adopted) {
+        this.#persist();
+        this.emit('log', `adopted ${adopted} session(s) from the agent`);
+      }
+      return adopted;
+    } finally {
+      if (throwaway) await client.stop().catch(() => {});
+    }
+  }
+
   async setModel(id, modelId) {
     const runtime = await this.ensureLive(id);
     await runtime.client.setModel({ sessionId: runtime.acpSessionId, modelId });
@@ -415,11 +467,15 @@ export class SessionManager extends EventEmitter {
     return true;
   }
 
-  /** Display name for a model id, falling back to the id itself. */
+  /**
+   * Display name for a model id, falling back to the id itself. The agent
+   * calls its automatic pick "Auto", which reads as this app's name — say what
+   * it actually does instead.
+   */
   modelName(modelId) {
-    return (
-      this.catalog?.models?.find((m) => m.modelId === modelId)?.name || modelId || null
-    );
+    if (!modelId) return null;
+    if (modelId === 'default[]') return 'Auto-select';
+    return this.catalog?.models?.find((m) => m.modelId === modelId)?.name || modelId;
   }
 
   setPolicy(id, policy) {

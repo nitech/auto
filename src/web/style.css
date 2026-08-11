@@ -69,6 +69,52 @@ button, select, textarea { font: inherit; color: inherit; }
   gap: 2px;
 }
 
+/* Projects head their sessions, the way the desktop groups them. */
+.project {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 12px 10px 4px;
+  min-width: 0;
+}
+
+.project-name {
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project.open .project-name { color: var(--text); }
+
+.project-note {
+  flex: 1;
+  font-size: 11px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project .close { opacity: 0; font-size: 15px; }
+.project:hover .close { opacity: 0.7; }
+
+.more-projects { margin-top: 10px; }
+
+.more-projects > summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--faint);
+  border-radius: 8px;
+}
+
+.more-projects > summary:hover { background: var(--bg-3); }
+
 .session {
   display: flex;
   align-items: center;
@@ -78,6 +124,7 @@ button, select, textarea { font: inherit; color: inherit; }
   cursor: pointer;
   border: 1px solid transparent;
   min-width: 0;
+  margin-left: 8px;
 }
 
 .session:hover { background: var(--bg-3); }

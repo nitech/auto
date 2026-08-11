@@ -381,6 +381,46 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1f2. Project discovery: URI decoding, slugs, and a real list from Cursor.
+{
+  try {
+    const { fromFileUri, projectSlug, listProjects } = await import('../src/core/projects.mjs');
+    let failed = false;
+
+    if (fromFileUri('file:///d%3A/Sevenfold/auto') !== 'D:\\Sevenfold\\auto') {
+      fail(`file URI should decode to a Windows path, got ${fromFileUri('file:///d%3A/Sevenfold/auto')}`);
+      failed = true;
+    }
+    if (fromFileUri('file:///d%3A/Projects/glose%20l%C3%A6rar') !== 'D:\\Projects\\glose lærar') {
+      fail('file URI should decode escapes and non-ASCII');
+      failed = true;
+    }
+    if (fromFileUri('not a uri') !== null) {
+      fail('a non-URI should decode to null');
+      failed = true;
+    }
+    if (projectSlug('D:\\Sevenfold\\auto') !== 'D-Sevenfold-auto') {
+      fail(`unexpected slug ${projectSlug('D:\\Sevenfold\\auto')}`);
+      failed = true;
+    }
+
+    // The repo we are in must show up, whether or not the IDE remembers it.
+    const projects = listProjects([ROOT]);
+    if (!projects.some((p) => p.path.toLowerCase() === ROOT.toLowerCase())) {
+      fail('the current repo should appear in the project list');
+      failed = true;
+    }
+    if (projects.some((p) => /AppData[\\/]Local[\\/]Temp/i.test(p.path))) {
+      fail('temp folders should not be listed as projects');
+      failed = true;
+    }
+
+    if (!failed) ok(`v2 core: projects (${projects.length} found)`);
+  } catch (e) {
+    fail(`v2 projects: ${e.message}`);
+  }
+}
+
 // 1g. Telegram must stay responsive during a turn. A prompt does not resolve
 // until the agent is done, and the agent may be waiting on the very approval
 // the user is about to tap — so handling a message must not block the loop.

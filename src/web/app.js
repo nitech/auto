@@ -39,6 +39,7 @@ const state = {
   ws: null,
   sessionId: null,
   sessions: [],
+  projects: [],
   lastSeq: 0,
   busy: false,
   /** toolCallId -> element, so tool_update mutates the card it belongs to */
@@ -485,33 +486,108 @@ function render(rec) {
 
 // -------------------------------------------------------------------- rail
 
+const sameFolder = (a, b) =>
+  String(a || '').replace(/[\\/]+$/, '').toLowerCase() ===
+  String(b || '').replace(/[\\/]+$/, '').toLowerCase();
+
+function sessionRow(s) {
+  const row = div('session' + (s.id === state.sessionId ? ' active' : ''));
+  const dot = div(`dot ${s.status || 'idle'}`);
+  const meta = div('meta');
+  const name = document.createElement('span');
+  name.className = 'name';
+  name.textContent = s.title || 'session';
+  meta.append(name);
+
+  const close = document.createElement('button');
+  close.className = 'close';
+  close.textContent = '×';
+  close.title = 'Archive session';
+  close.onclick = (e) => {
+    e.stopPropagation();
+    sendOp({ op: 'session.archive', sessionId: s.id });
+  };
+
+  row.append(dot, meta, close);
+  row.onclick = () => attach(s.id);
+  return row;
+}
+
+/**
+ * Sessions live under their project, the way the desktop groups them. Projects
+ * with no sessions are still listed — that is how you start work somewhere new
+ * from the phone — but they collapse to a single line until they have any.
+ */
 function renderRail() {
   els.rail.innerHTML = '';
-  for (const s of state.sessions) {
-    const row = div('session' + (s.id === state.sessionId ? ' active' : ''));
-    const dot = div(`dot ${s.status || 'idle'}`);
-    const meta = div('meta');
-    const name = document.createElement('span');
-    name.className = 'name';
-    name.textContent = s.title || 'session';
-    const sub = document.createElement('span');
-    sub.className = 'sub';
-    sub.textContent = (s.folder || '').split(/[\\/]/).slice(-2).join('/');
-    meta.append(name, sub);
 
-    const close = document.createElement('button');
-    close.className = 'close';
-    close.textContent = '×';
-    close.title = 'Archive session';
-    close.onclick = (e) => {
-      e.stopPropagation();
-      sendOp({ op: 'session.archive', sessionId: s.id });
-    };
+  const projects = state.projects.length
+    ? state.projects
+    : [...new Set(state.sessions.map((s) => s.folder))].map((path) => ({
+        path,
+        name: (path || '').split(/[\\/]/).pop(),
+        open: false,
+      }));
 
-    row.append(dot, meta, close);
-    row.onclick = () => attach(s.id);
-    els.rail.appendChild(row);
+  const used = new Set();
+  const withSessions = [];
+  const empty = [];
+
+  for (const p of projects) {
+    const mine = state.sessions.filter((s) => sameFolder(s.folder, p.path));
+    mine.forEach((s) => used.add(s.id));
+    (mine.length ? withSessions : empty).push({ project: p, sessions: mine });
   }
+
+  // A session in a folder Cursor has never heard of still deserves a home.
+  const orphans = state.sessions.filter((s) => !used.has(s.id));
+  if (orphans.length) {
+    withSessions.push({ project: { path: '', name: 'Other' }, sessions: orphans });
+  }
+
+  for (const { project, sessions } of withSessions) {
+    els.rail.appendChild(projectHeader(project, sessions.length));
+    for (const s of sessions) els.rail.appendChild(sessionRow(s));
+  }
+
+  if (empty.length) {
+    const more = document.createElement('details');
+    more.className = 'more-projects';
+    const summary = document.createElement('summary');
+    summary.textContent = `${empty.length} more projects`;
+    more.append(summary);
+    for (const { project } of empty) more.append(projectHeader(project, 0));
+    els.rail.appendChild(more);
+  }
+}
+
+function projectHeader(project, count) {
+  const head = div('project' + (project.open ? ' open' : ''));
+
+  const name = document.createElement('span');
+  name.className = 'project-name';
+  name.textContent = project.name || project.path || 'Other';
+  name.title = project.path || '';
+
+  const note = document.createElement('span');
+  note.className = 'project-note';
+  const bits = [];
+  if (project.open) bits.push('open in Cursor');
+  if (!count && project.desktopChats) bits.push(`${project.desktopChats} desktop chats`);
+  note.textContent = bits.join(' · ');
+
+  const add = document.createElement('button');
+  add.className = 'close';
+  add.textContent = '+';
+  add.title = `New session in ${project.name || 'this folder'}`;
+  add.onclick = (e) => {
+    e.stopPropagation();
+    if (!project.path) return;
+    sendOp({ op: 'session.create', folder: project.path });
+  };
+
+  head.append(name, note, add);
+  return head;
 }
 
 /**
@@ -524,7 +600,8 @@ function renderModels(models) {
   for (const m of models) {
     const opt = document.createElement('option');
     opt.value = m.modelId;
-    opt.textContent = m.name || m.modelId;
+    // The agent's automatic pick is called "Auto", which reads as this app.
+    opt.textContent = m.modelId === 'default[]' ? 'Auto-select (Cursor picks)' : m.name || m.modelId;
     els.model.append(opt);
   }
   els.model.dataset.filled = String(models.length);
@@ -615,12 +692,25 @@ function connect() {
         resetTerminals();
       }
       renderModels(msg.catalog?.models);
+      if (msg.projects) state.projects = msg.projects;
       applyMeta(msg.meta);
       renderRail();
       // Panes first, so replayed terminal chunks have somewhere to land.
       for (const t of msg.terminals || []) openPane(t);
       for (const rec of msg.records) render(rec);
       scrollDown(true);
+      return;
+    }
+
+    if (msg.type === 'projects') {
+      state.projects = msg.projects || [];
+      renderRail();
+      return;
+    }
+
+    if (msg.type === 'synced') {
+      state.sessions = msg.sessions || state.sessions;
+      renderRail();
       return;
     }
 

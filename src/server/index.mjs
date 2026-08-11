@@ -16,6 +16,7 @@ import { WebSocketServer } from 'ws';
 import { SessionManager, POLICY } from '../core/sessions.mjs';
 import { BrowserHost } from '../core/browser.mjs';
 import { TelegramBridge } from '../core/telegram.mjs';
+import { listProjects } from '../core/projects.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -84,6 +85,14 @@ function send(ws, msg) {
   if (ws.readyState === 1) ws.send(JSON.stringify(msg));
 }
 
+/**
+ * Cursor's projects, plus any folder Auto has a session in — so a project
+ * never disappears from the rail just because the IDE forgot it.
+ */
+function projectList() {
+  return listProjects(sessions.list().map((s) => s.folder));
+}
+
 /** Broadcast to every socket, or only those watching one session. */
 function broadcast(msg, sessionId = null) {
   for (const [ws, state] of clients) {
@@ -139,6 +148,7 @@ const OPS = {
       terminals: sessions.terminals.list(id),
       terminalsAvailable: sessions.terminals.available,
       catalog: sessions.catalog,
+      projects: projectList(),
     });
 
     // The model list only exists once an agent has started. Warm it in the
@@ -169,6 +179,15 @@ const OPS = {
   'session.create'(ws, state, msg) {
     const meta = sessions.create({ folder: msg.folder, title: msg.title });
     return OPS.attach(ws, state, { sessionId: meta.id });
+  },
+
+  async 'sessions.sync'(ws) {
+    const adopted = await sessions.syncFromAgent();
+    send(ws, { type: 'synced', adopted, sessions: sessions.list() });
+  },
+
+  'projects.list'(ws) {
+    send(ws, { type: 'projects', projects: projectList() });
   },
 
   async 'session.archive'(_ws, _state, msg) {
@@ -360,6 +379,10 @@ const server = createServer(async (req, res) => {
     return json(res, { sessions: sessions.list(), activeId: sessions.activeId });
   }
 
+  if (pathname === '/api/projects') {
+    return json(res, { projects: projectList() });
+  }
+
   // Point the active session at a folder, reusing a session already on it.
   // This is the contract the switch-repo skill depends on.
   if (pathname === '/api/session' && req.method === 'POST') {
@@ -503,6 +526,12 @@ function announceRestart() {
 server.listen(PORT, HOST, () => {
   console.log(`[auto] http://127.0.0.1:${PORT}  (${sessions.list().length} sessions)`);
   announceRestart();
+  // Pick up sessions started outside Auto. Costs one short-lived agent
+  // process, so do it once at boot rather than on every attach.
+  sessions
+    .syncFromAgent()
+    .then((n) => n && broadcast({ type: 'sessions', sessions: sessions.list() }))
+    .catch((err) => console.error(`[sync] ${err.message}`));
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
