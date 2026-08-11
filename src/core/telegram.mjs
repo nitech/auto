@@ -315,7 +315,9 @@ export class TelegramBridge extends EventEmitter {
         if (!active) return this.send('No active session.');
         const models = this.sessions.catalog?.models || [];
         if (!models.length) {
-          return this.send('No model list yet — send a prompt first, then try again.');
+          // Starting the agent takes a moment; do not hold up the poll loop.
+          this.sessions.ensureLive(active.id).catch(() => {});
+          return this.send('Fetching the model list — send /model again in a moment.');
         }
 
         if (arg) {

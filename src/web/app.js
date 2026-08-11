@@ -624,6 +624,13 @@ function connect() {
       return;
     }
 
+    if (msg.type === 'catalog') {
+      renderModels(msg.catalog?.models);
+      const mine = state.sessions.find((s) => s.id === state.sessionId);
+      if (mine?.model) els.model.value = mine.model;
+      return;
+    }
+
     if (msg.type === 'record') {
       if (msg.sessionId !== state.sessionId) return;
       render(msg.record);

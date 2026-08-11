@@ -95,6 +95,7 @@ sessions.on('record', ({ sessionId, record }) =>
   broadcast({ type: 'record', sessionId, record }, sessionId),
 );
 sessions.on('sessions', (list) => broadcast({ type: 'sessions', sessions: list }));
+sessions.on('catalog', (catalog) => broadcast({ type: 'catalog', catalog }));
 
 // Terminal output reaches clients as transcript records; these only announce
 // the widget's existence so the UI knows to open or close a pane.
@@ -138,6 +139,13 @@ const OPS = {
       terminalsAvailable: sessions.terminals.available,
       catalog: sessions.catalog,
     });
+
+    // The model list only exists once an agent has started. Warm it in the
+    // background on a cold host so the picker fills shortly after you look at
+    // it, rather than staying empty until the first prompt.
+    if (!sessions.catalog.models.length) {
+      sessions.ensureLive(id).catch((err) => console.error(`[catalog] ${err.message}`));
+    }
   },
 
   async prompt(_ws, state, msg) {

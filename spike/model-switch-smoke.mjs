@@ -11,41 +11,57 @@ const port = process.argv[2] || 4331;
 const ws = new WebSocket(`ws://127.0.0.1:${port}/`);
 
 const send = (msg) => ws.send(JSON.stringify(msg));
+
+let phase = 'waiting'; // waiting → switching → restoring → done
 let original = null;
 let target = null;
 
-ws.on('open', () => send({ op: 'attach' }));
+function beginSwitch(models) {
+  console.log(`catalogue: ${models.length} models`);
+  if (models.length < 2) {
+    console.error('FAIL: no catalogue to switch within');
+    process.exit(1);
+  }
+  target = models.find((m) => m.modelId !== original);
+  phase = 'switching';
+  console.log(`switching to ${target.name}…`);
+  send({ op: 'session.model', modelId: target.modelId });
+}
+
+// No attach op needed: the host attaches a new socket to the active session.
 
 ws.on('message', (raw) => {
   const msg = JSON.parse(raw);
 
-  if (msg.type === 'attached') {
-    const models = msg.catalog?.models || [];
+  if (msg.type === 'attached' && phase === 'waiting') {
+    original = msg.meta.model;
     console.log(`attached: ${msg.meta.title}`);
     console.log(`current model: ${msg.meta.modelName} (${msg.meta.model})`);
-    console.log(`catalogue: ${models.length} models`);
-    if (models.length < 2) {
-      console.error('FAIL: no catalogue to switch within');
-      process.exit(1);
-    }
-    original = msg.meta.model;
-    target = models.find((m) => m.modelId !== original);
-    console.log(`switching to ${target.name}…`);
-    send({ op: 'session.model', modelId: target.modelId });
+    const models = msg.catalog?.models || [];
+    // A cold host has no catalogue yet; it warms one and broadcasts it.
+    if (models.length) beginSwitch(models);
+    else console.log('catalogue empty, waiting for the host to warm it…');
+    return;
+  }
+
+  if (msg.type === 'catalog' && phase === 'waiting') {
+    beginSwitch(msg.catalog?.models || []);
     return;
   }
 
   if (msg.type === 'sessions') {
-    const mine = msg.sessions.find((s) => s.active);
+    const mine = msg.sessions.find((s) => s.id && s.active);
     if (!mine) return;
-    if (mine.model === target?.modelId) {
+
+    if (phase === 'switching' && mine.model === target.modelId) {
       console.log(`now on ${mine.modelName}`);
+      phase = 'restoring';
       console.log('switching back…');
       send({ op: 'session.model', modelId: original });
-      target = null;
       return;
     }
-    if (target === null && mine.model === original) {
+
+    if (phase === 'restoring' && mine.model === original) {
       console.log(`restored ${mine.modelName}`);
       console.log('PASS: model switching works over the socket');
       process.exit(0);
@@ -64,6 +80,6 @@ ws.on('error', (err) => {
 });
 
 setTimeout(() => {
-  console.error('FAIL: timed out');
+  console.error(`FAIL: timed out in phase ${phase}`);
   process.exit(1);
 }, 60_000);
