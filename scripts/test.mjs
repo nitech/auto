@@ -13,7 +13,7 @@
  *   3. If the host is running, its health and session API answer.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -459,6 +459,67 @@ if (existsSync(SRC)) {
     }
   } catch (e) {
     fail(`v2 projects: ${e.message}`);
+  }
+}
+
+// 1f2. The desktop bridge: discovery must tolerate a missing directory, stale
+// files and rubbish, and refuse to send anything the bridge would reject. We
+// cannot assume a Cursor is running here, so nothing below needs one.
+if (existsSync(SRC)) {
+  const tmp = mkdtempSync(join(tmpdir(), 'auto-bridge-'));
+  const previous = process.env.CURSOR_DESKTOP_BRIDGE_DIR;
+  try {
+    const { instances, bridgeAvailable, sendMessage, discoveryDir } = await import(
+      '../src/core/desktop-bridge.mjs'
+    );
+
+    process.env.CURSOR_DESKTOP_BRIDGE_DIR = join(tmp, 'missing');
+    if ((await instances()).length) fail('a missing discovery dir should yield no instances');
+    if (await bridgeAvailable()) fail('a missing discovery dir means no bridge');
+
+    process.env.CURSOR_DESKTOP_BRIDGE_DIR = tmp;
+    if (discoveryDir() !== tmp) fail('the discovery dir should follow its environment override');
+
+    // A dead pid, a wrong protocol and a broken file must all be ignored
+    // rather than crash discovery or be treated as reachable.
+    const write = (name, body) => writeFileSync(join(tmp, name), body);
+    write('dead.json', JSON.stringify({ protocolVersion: 1, socketPath: '\\\\.\\pipe\\x', token: 't', pid: 0x7ffffffe, appName: 'Cursor', appVersion: '0' }));
+    write('old.json', JSON.stringify({ protocolVersion: 99, socketPath: '\\\\.\\pipe\\y', token: 't', pid: process.pid, appName: 'Cursor', appVersion: '0' }));
+    write('junk.json', 'not json at all');
+    write('ignored.txt', 'not a discovery file');
+
+    const found = await instances();
+    if (found.length) fail(`stale discovery files should be ignored, got ${found.length}`);
+
+    // This process is alive, so a well-formed file must be picked up.
+    write('live.json', JSON.stringify({ protocolVersion: 1, socketPath: '\\\\.\\pipe\\auto-test', token: 'tok', pid: process.pid, appName: 'Cursor', appVersion: '1.2.3' }));
+    const live = await instances();
+    if (live.length !== 1 || live[0].label !== 'Cursor 1.2.3') {
+      fail(`a live discovery file should be found once, got ${JSON.stringify(live.map((i) => i.label))}`);
+    }
+
+    // Bad input must be refused before a pipe is ever opened.
+    for (const [why, args] of [
+      ['a non-uuid thread', { threadId: 'nope', text: 'hi' }],
+      ['empty text', { threadId: '00000000-0000-4000-8000-000000000000', text: '   ' }],
+      ['oversized text', { threadId: '00000000-0000-4000-8000-000000000000', text: 'x'.repeat(300 * 1024) }],
+    ]) {
+      let threw = false;
+      try {
+        await sendMessage(args);
+      } catch {
+        threw = true;
+      }
+      if (!threw) fail(`sendMessage should refuse ${why}`);
+    }
+
+    if (!failed) ok('v2 core: desktop bridge discovery and guards');
+  } catch (e) {
+    fail(`v2 desktop bridge: ${e.message}`);
+  } finally {
+    if (previous === undefined) delete process.env.CURSOR_DESKTOP_BRIDGE_DIR;
+    else process.env.CURSOR_DESKTOP_BRIDGE_DIR = previous;
+    rmSync(tmp, { recursive: true, force: true });
   }
 }
 
