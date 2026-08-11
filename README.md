@@ -43,6 +43,7 @@ off — a bot token allows only one poller).
 | **Terminals** | Real PTYs you can type into, streamed live and replayed after a reload. |
 | **Browser** | A real Chrome on this machine you can drive: tap, scroll, type. The profile persists, so logins stick. |
 | **Telegram** | Prompt, watch a turn unfold in one edited message, approve with buttons, switch sessions. |
+| **Self-restart** | `/restart`, the ♻ button, or `POST /api/restart`. Waits for the current turn, then comes back and says so — so Auto can apply changes to its own code. |
 
 ## Requirements
 

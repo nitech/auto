@@ -53,13 +53,20 @@ push either; an unpushed commit exists only on this machine.
 ## Restarting
 
 The `AutoSupervise` scheduled task runs `scripts/supervise.mjs`, which keeps
-the host alive. To apply a change to `src/`:
+the host alive. To apply a change to `src/`, ask the host to restart itself:
 
 ```powershell
-Get-NetTCPConnection -LocalPort 4331 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+curl -s -X POST http://127.0.0.1:4331/api/restart -H "Content-Type: application/json" -d '{\"reason\":\"applied a change\"}'
 ```
 
-The supervisor brings it straight back. Skills and docs need no restart.
+It answers immediately, waits for any running turn to finish, then exits and
+the supervisor starts it again. **Use this, not a kill**, when you are
+running inside Auto: your session is a child of the host, so killing the
+port kills you mid-reply. Telegram has `/restart` and the web has ♻ for the
+same thing. Killing the port listener is still fine from a plain shell.
+
+Restarting does not lose a session: transcripts are on disk and the agent
+resumes from its ACP session id. Skills and docs need no restart at all.
 See the `auto-restart` skill for the full picture.
 
 **Never run a second host with Telegram enabled** — a bot token allows one
