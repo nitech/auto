@@ -209,8 +209,8 @@ const OPS = {
     });
   },
 
-  'desktop.continue'(ws, state, msg) {
-    const meta = sessions.importDesktopChat({ chatId: msg.chatId, folder: msg.folder });
+  async 'desktop.continue'(ws, state, msg) {
+    const meta = await sessions.importDesktopChat({ chatId: msg.chatId, folder: msg.folder });
     return OPS.attach(ws, state, { sessionId: meta.id });
   },
 
@@ -386,8 +386,18 @@ const sameFolder = (a, b) =>
   String(a || '').replace(/[\\/]+$/, '').toLowerCase() ===
   String(b || '').replace(/[\\/]+$/, '').toLowerCase();
 
-const server = createServer(async (req, res) => {
-  const { pathname } = new URL(req.url, 'http://localhost');
+const server = createServer((req, res) => {
+  // A failing route must not take the host down with it: Auto is the thing
+  // you use to fix Auto, so it has to survive its own bad days.
+  route(req, res).catch((err) => {
+    console.error(`[http] ${req.method} ${req.url}: ${err.stack || err.message}`);
+    if (!res.headersSent) json(res, { error: err.message }, 500);
+    else res.end();
+  });
+});
+
+async function route(req, res) {
+  const { pathname, searchParams } = new URL(req.url, 'http://localhost');
 
   if (pathname === '/api/health') {
     return json(res, {
@@ -408,7 +418,7 @@ const server = createServer(async (req, res) => {
   }
 
   if (pathname === '/api/desktop-chats') {
-    const folder = url.searchParams.get('folder');
+    const folder = searchParams.get('folder');
     return json(res, { folder, chats: desktopChatsFor(folder) });
   }
 
@@ -452,7 +462,7 @@ const server = createServer(async (req, res) => {
   }
 
   return serveStatic(req, res);
-});
+}
 
 // ----------------------------------------------------------------- websocket
 

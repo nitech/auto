@@ -100,12 +100,14 @@ export class SessionManager extends EventEmitter {
       try {
         const raw = JSON.parse(readFileSync(this.statePath, 'utf8'));
         for (const s of raw.sessions || []) {
-          // Nothing is live yet after a restart. Sessions the user never gave
-          // an explicit policy follow the configured default, so changing it
-          // in .env applies everywhere rather than only to new sessions.
+          // Nothing is live yet after a restart, but a session you archived
+          // must stay archived — resetting every status brought them all back.
+          // Sessions the user never gave an explicit policy follow the
+          // configured default, so changing it in .env applies everywhere
+          // rather than only to new sessions.
           this.meta.set(s.id, {
             ...s,
-            status: STATUS.idle,
+            status: s.status === STATUS.archived ? STATUS.archived : STATUS.idle,
             policy: s.policyLocked ? s.policy : this.defaultPolicy,
           });
         }
@@ -264,11 +266,9 @@ export class SessionManager extends EventEmitter {
     if (meta.acpSessionId) {
       try {
         // Resuming makes the agent replay the whole conversation as updates.
-        // Usually we already have all of it on disk, so recording it again
-        // would duplicate the history on every restart. A session that came
-        // from somewhere else is the exception: its replay is the only copy
-        // we will ever get, so let that one through.
-        runtime.replaying = !meta.needsHistory;
+        // We already have all of it on disk, so recording it again would
+        // duplicate the history on every restart.
+        runtime.replaying = true;
         session = await client.loadSession({ sessionId: meta.acpSessionId, cwd: meta.folder });
         session = { sessionId: meta.acpSessionId, ...(session || {}) };
       } catch (err) {
@@ -305,7 +305,6 @@ export class SessionManager extends EventEmitter {
       model: modelId,
       modelName: this.modelName(modelId),
       mode: session.modes?.currentModeId || meta.mode,
-      needsHistory: false,
     });
 
     this.#record(id, KIND.sessionStart, {
@@ -472,9 +471,23 @@ export class SessionManager extends EventEmitter {
    * @param {string} opts.chatId  desktop chat id
    * @param {string} opts.folder  folder to run in
    */
-  importDesktopChat({ chatId, folder }) {
+  async importDesktopChat({ chatId, folder }) {
+    // Continuing the same chat twice should land you back in the session you
+    // already have, not make a second copy of it. One you archived is a
+    // different matter: you threw it away, so start again.
+    const already = [...this.meta.values()].find(
+      (s) => s.importedFrom === chatId && s.status !== STATUS.archived,
+    );
+    if (already) {
+      this.setActive(already.id);
+      return already;
+    }
+
     const dir = folder || this.defaultFolder;
-    const { sessionId, title, blobs, missing } = importDesktopChat({ chatId, cwd: dir });
+    const { sessionId, title, blobs, missing, messages } = importDesktopChat({
+      chatId,
+      cwd: dir,
+    });
 
     const id = randomUUID();
     const meta = {
@@ -489,14 +502,29 @@ export class SessionManager extends EventEmitter {
       acpSessionId: sessionId,
       status: STATUS.idle,
       importedFrom: chatId,
-      // Its history lives in the agent, not in our transcript — record the
-      // replay the first time we load it so it can be read here too.
-      needsHistory: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     this.meta.set(id, meta);
     this.#persist();
+
+    // The agent gets the conversation from the blobs, but our transcript
+    // starts empty — so write the readable part of it in, or continuing a
+    // chat on the phone would look like starting a blank one.
+    await this.transcripts.get(id);
+    this.#record(id, KIND.notice, {
+      text: `Continued from the Cursor desktop app — ${messages.length} earlier messages${
+        missing ? `, ${missing} parts no longer stored locally` : ''
+      }`,
+    });
+    for (const m of messages) {
+      if (m.role === 'user') this.#record(id, KIND.userMessage, { text: m.text });
+      else {
+        this.#record(id, KIND.agentDelta, { text: m.text });
+        this.#record(id, KIND.turnEnd, { stopReason: 'imported' });
+      }
+    }
+
     this.emit('log', `imported desktop chat "${meta.title}" (${blobs} blobs, ${missing} missing)`);
     this.emit('sessions', this.list());
     return meta;

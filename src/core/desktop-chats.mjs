@@ -124,12 +124,65 @@ function refs(buf) {
 }
 
 /**
+ * The readable conversation inside a set of blobs, in the order the manifest
+ * names them.
+ *
+ * The agent gets the whole conversation regardless; this is only so the phone
+ * has something to show. Tool traffic is left out — it is most of the volume
+ * and none of the thread — and the environment preambles that wrap every real
+ * message are unwrapped back to what was actually typed.
+ *
+ * @param {string[]} order    blob digests, in conversation order
+ * @param {Map<string, Buffer>} blobs
+ * @param {number} [limit]    keep only the last N messages
+ */
+function readConversation(order, blobs, limit = 300) {
+  const out = [];
+
+  for (const digest of order) {
+    const buf = blobs.get(digest);
+    if (!buf || buf[0] !== 0x7b) continue; // not JSON
+
+    let msg;
+    try {
+      msg = JSON.parse(buf.toString('utf8'));
+    } catch {
+      continue;
+    }
+    if (msg.role !== 'user' && msg.role !== 'assistant') continue;
+
+    const text = (
+      typeof msg.content === 'string'
+        ? msg.content
+        : (msg.content || [])
+            .filter((c) => c?.type === 'text' && c.text)
+            .map((c) => c.text)
+            .join('\n')
+    ).trim();
+    if (!text) continue;
+
+    if (msg.role === 'user') {
+      // Real messages arrive wrapped in context the harness adds; anything
+      // without a query in it is that scaffolding, not something you said.
+      const query = /<user_query>([\s\S]*?)<\/user_query>/.exec(text);
+      if (!query) continue;
+      out.push({ role: 'user', text: query[1].trim() });
+    } else {
+      out.push({ role: 'assistant', text });
+    }
+  }
+
+  return out.length > limit ? out.slice(-limit) : out;
+}
+
+/**
  * Copy a desktop chat into a new ACP session the agent can load.
  *
  * @param {object} opts
  * @param {string} opts.chatId  the desktop chat (composer) id
  * @param {string} opts.cwd     folder the session should run in
- * @returns {{ sessionId: string, title: string, blobs: number, missing: number }}
+ * @returns {{ sessionId: string, title: string, blobs: number, missing: number,
+ *            messages: Array<{role: string, text: string}> }}
  */
 export function importDesktopChat({ chatId, cwd }) {
   const chat = withDb((db) => {
@@ -171,6 +224,7 @@ export function importDesktopChat({ chatId, cwd }) {
       rootBytes,
       blobs,
       missing: missing.size,
+      messages: readConversation(refs(rootBytes), blobs),
     };
   });
 
@@ -223,5 +277,11 @@ export function importDesktopChat({ chatId, cwd }) {
     throw err;
   }
 
-  return { sessionId, title: chat.name, blobs: chat.blobs.size, missing: chat.missing };
+  return {
+    sessionId,
+    title: chat.name,
+    blobs: chat.blobs.size,
+    missing: chat.missing,
+    messages: chat.messages,
+  };
 }

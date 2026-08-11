@@ -346,6 +346,18 @@ details.think,
   margin: 6px 0;
 }
 
+.notice {
+  width: 100%;
+  max-width: 900px;
+  margin: 10px 0;
+  padding: 6px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--faint);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
 .msg.user {
   width: fit-content;
   max-width: min(620px, 85%);

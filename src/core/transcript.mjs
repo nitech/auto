@@ -36,6 +36,8 @@ export const KIND = {
   turnStart: 'turn_start',
   turnEnd: 'turn_end',
   error: 'error',
+  // A quiet line about the session itself rather than the conversation.
+  notice: 'notice',
 };
 
 /** Records kept in memory for fast replay; older ones are read back from disk. */

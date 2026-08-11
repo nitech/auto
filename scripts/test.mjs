@@ -324,6 +324,15 @@ if (existsSync(SRC)) {
       failed = true;
     }
 
+    // Archiving must survive a restart: it used to be undone by the reset
+    // that clears "busy" on load, so binned sessions came back every time.
+    await second.archive(picked.id);
+    const third = new SessionManager({ stateDir: dir, defaultFolder: ROOT }).init();
+    if (third.list().some((s) => s.id === picked.id)) {
+      fail('an archived session should stay archived across a restart');
+      failed = true;
+    }
+
     if (!failed) ok('v2 core: policy default from config, explicit choice wins');
   } catch (e) {
     fail(`v2 policy default: ${e.message}`);
@@ -582,6 +591,33 @@ try {
     } else {
       ok('session API shape');
     }
+
+    // Every read-only route, because a route that throws used to take the
+    // whole host down and only showed up when someone opened the rail.
+    for (const [path, check] of [
+      ['/api/projects', (b) => Array.isArray(b.projects)],
+      [
+        `/api/desktop-chats?folder=${encodeURIComponent(ROOT)}`,
+        (b) => Array.isArray(b.chats),
+      ],
+    ]) {
+      try {
+        const r = await fetch(`http://127.0.0.1:${PORT}${path}`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        const body = await r.json();
+        if (!r.ok || !check(body)) fail(`${path} answered ${r.status}: ${JSON.stringify(body).slice(0, 120)}`);
+        else ok(`route ${path.split('?')[0]}`);
+      } catch (e) {
+        fail(`${path} failed: ${e.message}`);
+      }
+    }
+
+    // The host must still be alive after all of that.
+    const after = await fetch(`http://127.0.0.1:${PORT}/api/health`, {
+      signal: AbortSignal.timeout(2000),
+    }).then((r) => r.json());
+    if (!after.ok) fail('host stopped being healthy while answering routes');
   }
 } catch {
   console.log(`skip: host not running on :${PORT}`);

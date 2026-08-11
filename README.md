@@ -37,13 +37,14 @@ off — a bot token allows only one poller).
 | | |
 | --- | --- |
 | **Projects** | The folders Cursor itself knows: what is open in a window right now, then everything it remembers. Sessions are grouped under them, and you can start work in any of them from the phone. |
+| **Desktop chats** | Chats you started in the Cursor app, listed per project and continued here — the agent picks up with the full conversation. Continuing copies the chat, so it and the desktop go their separate ways from that point. |
 | **Sessions** | Many at once, each with its own folder, agent process and transcript. They persist across restarts and resume where they left off. Sessions started outside Auto — from a terminal, say — are adopted at boot and resume too. |
 | **Full fidelity** | Everything the agent emits is recorded and rendered. Nothing is summarised or truncated. |
 | **Approvals** | Auto-approve by default (`AUTO_POLICY` in `.env`); switch a session to ask-before-writes or ask-every-time and that choice sticks. Answer from web or Telegram. |
 | **Models** | Pick any model on your account per session, from the web header or Telegram's `/model`. |
 | **Terminals** | Real PTYs you can type into, streamed live and replayed after a reload. |
 | **Browser** | A real Chrome on this machine you can drive: tap, scroll, type. The profile persists, so logins stick. |
-| **Telegram** | Prompt, watch a turn unfold in one edited message, approve with buttons, switch sessions and projects (`/projects`). |
+| **Telegram** | Prompt, watch a turn unfold in one edited message, approve with buttons, switch sessions and projects (`/projects`), continue a desktop chat (`/chats`). |
 | **Self-restart** | `/restart`, the ♻ button, or `POST /api/restart`. Waits for the current turn, then comes back and says so — so Auto can apply changes to its own code. |
 
 ## Requirements
@@ -67,6 +68,7 @@ the `auth.json` the telegram-notify skill writes. Copy `.env.example` to
 | `src/acp/` | JSON-RPC client for the agent's ACP mode |
 | `src/core/sessions.mjs` | Session lifecycle, registry, resume |
 | `src/core/projects.mjs` | The machine's projects, read from Cursor's own state |
+| `src/core/desktop-chats.mjs` | Listing and continuing chats from the Cursor app |
 | `src/core/transcript.mjs` | Append-only JSONL transcripts with replay |
 | `src/core/permissions.mjs` | Approval broker and policies |
 | `src/core/terminals.mjs` | PTY registry, for the agent and for you |

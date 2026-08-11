@@ -498,7 +498,7 @@ export class TelegramBridge extends EventEmitter {
 
     if (payload.kind === 'continue') {
       try {
-        const meta = this.sessions.importDesktopChat({
+        const meta = await this.sessions.importDesktopChat({
           chatId: payload.chatId,
           folder: payload.folder,
         });

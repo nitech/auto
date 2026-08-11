@@ -474,6 +474,12 @@ function render(rec) {
     case 'turn_end':
       add(div('turn-divider'));
       break;
+    case 'notice': {
+      const el = div('notice');
+      el.textContent = rec.text || '';
+      add(el);
+      break;
+    }
     case 'session_start':
     case 'session_info':
     case 'commands':
