@@ -38,7 +38,8 @@ off — a bot token allows only one poller).
 | --- | --- |
 | **Sessions** | Many at once, each with its own folder, agent process and transcript. They persist across restarts and resume where they left off. |
 | **Full fidelity** | Everything the agent emits is recorded and rendered. Nothing is summarised or truncated. |
-| **Approvals** | Ask every time, ask before writes, or auto-approve — per session, changeable mid-run. Answer from web or Telegram. |
+| **Approvals** | Auto-approve by default (`AUTO_POLICY` in `.env`); switch a session to ask-before-writes or ask-every-time and that choice sticks. Answer from web or Telegram. |
+| **Models** | Pick any model on your account per session, from the web header or Telegram's `/model`. |
 | **Terminals** | Real PTYs you can type into, streamed live and replayed after a reload. |
 | **Browser** | A real Chrome on this machine you can drive: tap, scroll, type. The profile persists, so logins stick. |
 | **Telegram** | Prompt, watch a turn unfold in one edited message, approve with buttons, switch sessions. |
@@ -53,7 +54,8 @@ agent login       # if not
 ```
 
 Telegram credentials come from `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`, or
-the `auth.json` the telegram-notify skill writes.
+the `auth.json` the telegram-notify skill writes. Copy `.env.example` to
+`.env` for the rest; every setting there is optional.
 
 ## Layout
 

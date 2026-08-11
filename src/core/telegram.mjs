@@ -109,7 +109,8 @@ export class TelegramBridge extends EventEmitter {
     writeFileSync(this.offsetPath, JSON.stringify({ offset }));
   }
 
-  #token(payload) {
+  /** Register a button payload and return its callback_data (limited to 64 bytes). */
+  tokenFor(payload) {
     const id = `c${++this.callbackSeq}`;
     this.callbacks.set(id, payload);
     // Old buttons stop working eventually; that is better than growing forever.
@@ -176,7 +177,7 @@ export class TelegramBridge extends EventEmitter {
           offset = update.update_id + 1;
           this.#saveOffset(offset);
           try {
-            await this.#onUpdate(update);
+            await this.handleUpdate(update);
           } catch (err) {
             this.emit('log', `update failed: ${err.message}`);
             await this.send(`⚠️ ${esc(err.message)}`);
@@ -192,7 +193,12 @@ export class TelegramBridge extends EventEmitter {
 
   // -------------------------------------------------------------------- input
 
-  async #onUpdate(update) {
+  /**
+   * Handle one update. Must return promptly: the poll loop is single-file, and
+   * anything slow here delays every later update — including the button press
+   * that releases a turn stuck on a permission request.
+   */
+  async handleUpdate(update) {
     if (update.callback_query) return this.#onCallback(update.callback_query);
 
     const msg = update.message || update.edited_message;
@@ -278,7 +284,7 @@ export class TelegramBridge extends EventEmitter {
               inline_keyboard: list.map((s) => [
                 {
                   text: `${s.active ? '● ' : ''}${s.title}`,
-                  callback_data: this.#token({ kind: 'switch', sessionId: s.id }),
+                  callback_data: this.tokenFor({ kind: 'switch', sessionId: s.id }),
                 },
               ]),
             },
@@ -328,7 +334,7 @@ export class TelegramBridge extends EventEmitter {
           rows.push(
             models.slice(i, i + 2).map((m) => ({
               text: `${m.modelId === active.model ? '● ' : ''}${m.name || m.modelId}`,
-              callback_data: this.#token({ kind: 'model', modelId: m.modelId, label: m.name }),
+              callback_data: this.tokenFor({ kind: 'model', modelId: m.modelId, label: m.name }),
             })),
           );
         }
@@ -372,13 +378,17 @@ export class TelegramBridge extends EventEmitter {
     }
   }
 
+  /** Toast shown on the tapped button. Overridable so tests stay offline. */
+  answerCallback(queryId, text) {
+    return tgApi(this.auth.token, 'answerCallbackQuery', {
+      callback_query_id: queryId,
+      text,
+    }).catch(() => {});
+  }
+
   async #onCallback(query) {
     const payload = this.callbacks.get(query.data);
-    const answer = (text) =>
-      tgApi(this.auth.token, 'answerCallbackQuery', {
-        callback_query_id: query.id,
-        text,
-      }).catch(() => {});
+    const answer = (text) => this.answerCallback(query.id, text);
 
     if (!payload) {
       await answer('That button has expired.');
@@ -534,7 +544,7 @@ export class TelegramBridge extends EventEmitter {
     const buttons = (rec.options || []).map((opt) => [
       {
         text: opt.name || opt.optionId,
-        callback_data: this.#token({
+        callback_data: this.tokenFor({
           kind: 'permission',
           requestId: rec.requestId,
           optionId: opt.optionId,

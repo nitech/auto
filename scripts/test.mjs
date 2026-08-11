@@ -381,6 +381,71 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1g. Telegram must stay responsive during a turn. A prompt does not resolve
+// until the agent is done, and the agent may be waiting on the very approval
+// the user is about to tap — so handling a message must not block the loop.
+{
+  const dir = mkdtempSync(join(tmpdir(), 'auto-tg-'));
+  try {
+    const { TelegramBridge } = await import('../src/core/telegram.mjs');
+    let failed = false;
+    let resolved = null;
+
+    const fakeSessions = {
+      activeId: 's1',
+      on() {},
+      get: () => ({ id: 's1', title: 't', folder: ROOT, mode: 'agent', policy: 'ask' }),
+      list: () => [{ id: 's1', title: 't', folder: ROOT, active: true }],
+      prompt: () => new Promise(() => {}), // a turn that never ends
+      permissions: {
+        resolve(requestId, optionId) {
+          resolved = { requestId, optionId };
+          return true;
+        },
+      },
+    };
+
+    const bridge = new TelegramBridge({
+      sessions: fakeSessions,
+      stateDir: dir,
+      auth: { token: 'test', chatId: 1 },
+    });
+    bridge.send = async () => ({ message_id: 1 });
+    bridge.edit = async () => ({});
+    bridge.answerCallback = async () => ({});
+
+    const raced = await Promise.race([
+      bridge.handleUpdate({ update_id: 1, message: { chat: { id: 1 }, text: 'go' } }).then(
+        () => 'returned',
+      ),
+      new Promise((r) => setTimeout(() => r('blocked'), 1000)),
+    ]);
+    if (raced !== 'returned') {
+      fail('handling a message must not wait for the turn to finish');
+      failed = true;
+    }
+
+    // Now the approval that unblocks it has to get through.
+    await bridge.handleUpdate({
+      update_id: 2,
+      callback_query: {
+        id: 'q1',
+        data: bridge.tokenFor({ kind: 'permission', requestId: 'r1', optionId: 'allow' }),
+      },
+    });
+    if (resolved?.requestId !== 'r1' || resolved?.optionId !== 'allow') {
+      fail(`approval did not reach the broker, got ${JSON.stringify(resolved)}`);
+      failed = true;
+    }
+
+    if (!failed) ok('v2 telegram: approvals get through while a turn runs');
+  } catch (e) {
+    fail(`v2 telegram responsiveness: ${e.message}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // 2. The agent CLI the whole host depends on must be resolvable.
 try {
   const { resolveCursorAgent } = await import('../src/acp/resolve.mjs');
