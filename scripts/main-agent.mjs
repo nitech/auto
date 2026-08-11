@@ -731,7 +731,9 @@ async function handleWorkerStatus(body) {
   // "started" is redundant with the instant "On it — spinning up a worker" ack
   // (main-ack in handleJob) — narrating it too is what produced back-to-back
   // "On it…" replies. Only surface phases that actually tell the user something new.
-  if (phase !== 'started') {
+  // Also: don't narrate raw Kimi 401s — workers refresh+retry; if they still fail
+  // the error summary is enough without an extra auth-noise bubble.
+  if (phase !== 'started' && !AUTH_FAIL_RE.test(text)) {
     ensureClaude();
     injectUserText(
       [
@@ -747,6 +749,12 @@ async function handleWorkerStatus(body) {
         .filter((x) => x != null)
         .join('\n'),
     );
+  } else if (AUTH_FAIL_RE.test(text)) {
+    log(`[main] suppressing worker auth-fail narration for ${workerId}`);
+    refreshProviderAuth({
+      force: true,
+      reason: 'worker 401 status',
+    }).catch((e) => log(`[main] auth refresh failed: ${e.message}`));
   }
 
   // Fallback: if Claude is down, still tell the user on done/error

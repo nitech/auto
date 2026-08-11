@@ -155,7 +155,57 @@ function buildPrompt(job) {
   return parts.join('\n');
 }
 
-function runClaude(prompt, cwd, promptFile, job) {
+function jobSafeName() {
+  return String(Date.now()).slice(-6);
+}
+
+/** 401 / auth rejection from the spawned claude process (often exit code 0!). */
+function looksLikeAuthFailure(result) {
+  const s = `${result.text || ''}\n${result.stderr || ''}`;
+  return /Failed to authenticate|API Error:\s*401|API Key appears to be invalid|may have expired|authentication_error|invalid.?api.?key/i.test(
+    s,
+  );
+}
+
+/**
+ * Refresh Kimi OAuth into process.env right before spawning Claude.
+ * Force when near expiry or when a prior attempt already got 401.
+ */
+async function refreshAuthForClaude({ force = false, reason = '' } = {}) {
+  const label = reason ? ` (${reason})` : '';
+  try {
+    const { loadKimiOAuthCreds, oauthTokenExpired } = await import(
+      './kimi-oauth.mjs'
+    );
+    const creds = loadKimiOAuthCreds();
+    const nearExpiry =
+      !creds ||
+      oauthTokenExpired(creds) ||
+      Number(creds.expires_at || 0) - Date.now() / 1000 < 300;
+    const doForce = force || nearExpiry;
+    const auth = await ensureAutoProviderAuth({ force: doForce });
+    if (!auth.ready) {
+      console.error(
+        `[worker] auth not ready${label}: ${auth.warning || 'unknown'}`,
+      );
+    } else {
+      console.error(
+        `[worker] auth ok${label} force=${doForce} auth=${auth.auth || '?'}`,
+      );
+    }
+    return auth;
+  } catch (e) {
+    console.error(`[worker] auth refresh failed${label}: ${e.message}`);
+    return { ready: false, warning: e.message };
+  }
+}
+
+async function runClaude(prompt, cwd, promptFile, job, { forceAuth = false } = {}) {
+  await refreshAuthForClaude({
+    force: forceAuth,
+    reason: forceAuth ? 'forced' : 'pre-spawn',
+  });
+
   const skip =
     process.env.AUTO_SKIP_PERMS === '0'
       ? []
@@ -181,6 +231,7 @@ function runClaude(prompt, cwd, promptFile, job) {
       });
       return;
     }
+    // Snapshot env AFTER refresh so Claude gets the current access token.
     const child = spawn('claude', args, {
       cwd,
       shell: true,
@@ -235,18 +286,6 @@ function runClaude(prompt, cwd, promptFile, job) {
   });
 }
 
-function jobSafeName() {
-  return String(Date.now()).slice(-6);
-}
-
-/** 401 / auth rejection from the spawned claude process. */
-function looksLikeAuthFailure(result) {
-  const s = `${result.text || ''}\n${result.stderr || ''}`;
-  return /401|Failed to authenticate|API Key appears to be invalid|authentication_error/i.test(
-    s,
-  );
-}
-
 async function replyTelegram(text) {
   if (process.env.AUTO_REPLY_TELEGRAM === '0') return;
   const send = join(HERE, 'send.mjs');
@@ -281,8 +320,10 @@ if (!job) {
 // Never spawn claude with credentials we already know are bad — that surfaces
 // as an opaque 401 from the harness. Refresh (forced once), and if auth still
 // isn't ready, fail the job with the real reason instead.
-let auth = await ensureAutoProviderAuth();
-if (!auth.ready) auth = await ensureAutoProviderAuth({ force: true });
+let auth = await refreshAuthForClaude({ force: false, reason: 'job-start' });
+if (!auth.ready) {
+  auth = await refreshAuthForClaude({ force: true, reason: 'job-start-retry' });
+}
 if (!auth.ready) {
   const msg = `Provider auth failed: ${auth.warning || 'unknown reason'}`;
   console.error(`[worker] ${msg}`);
@@ -311,14 +352,30 @@ const prompt = buildPrompt(job);
 const promptFile = join(RUNS, `${runId}.prompt.txt`);
 let result = await runClaude(prompt, cwd, promptFile, job);
 
-// The shared Kimi OAuth token rotates every ~15 min; a token that passed the
-// pre-spawn check can still be rejected (expired mid-setup, raced refresh).
-// Force a refresh and retry the job once instead of reporting a bare 401.
-if (result.code !== 0 && looksLikeAuthFailure(result)) {
-  console.error('[worker] claude rejected credentials — forcing token refresh and retrying once');
-  await reportStatus(job, 'started', 'Credentials were rejected (401) — refreshing the Kimi token and retrying…');
-  await ensureAutoProviderAuth({ force: true });
-  result = await runClaude(prompt, cwd, promptFile, job);
+// Kimi access tokens last ~15 min. Claude often returns the 401 as result text
+// with exit code 0 — treat that as auth failure, force-refresh, retry once.
+if (looksLikeAuthFailure(result)) {
+  console.error(
+    '[worker] claude rejected credentials — forcing token refresh and retrying once',
+  );
+  await reportStatus(
+    job,
+    'progress',
+    'Credentials expired (401) — refreshing Kimi token and retrying…',
+  );
+  result = await runClaude(prompt, cwd, promptFile, job, { forceAuth: true });
+}
+
+// Still auth-fail after retry → hard error (don't report as a successful done).
+if (looksLikeAuthFailure(result)) {
+  result = {
+    code: 1,
+    text: '',
+    stderr:
+      result.text ||
+      result.stderr ||
+      'Kimi auth failed after refresh — run npm run kimi:login',
+  };
 }
 
 const summary =
