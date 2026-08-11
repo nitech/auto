@@ -1,0 +1,18 @@
+{
+  "name": "Auto",
+  "short_name": "Auto",
+  "description": "Remote control for Cursor agents",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

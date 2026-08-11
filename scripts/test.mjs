@@ -108,6 +108,58 @@ if (existsSync(SRC)) {
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
+
+  // Permission broker: parked requests, policy shortcuts, and racing clients.
+  try {
+    const { PermissionBroker, POLICY } = await import('../src/core/permissions.mjs');
+    const broker = new PermissionBroker();
+    const options = [
+      { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' },
+      { optionId: 'allow-always', name: 'Allow always', kind: 'allow_always' },
+      { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+    ];
+
+    // Auto policy must not park anything.
+    const auto = await broker.request({
+      sessionId: 's',
+      params: { options, toolCall: { kind: 'execute' } },
+      policy: POLICY.auto,
+    });
+    if (auto.outcome?.optionId !== 'allow-once') {
+      fail(`auto policy should pick allow-once, got ${JSON.stringify(auto)}`);
+    }
+    if (broker.list().length !== 0) fail('auto policy should leave nothing pending');
+
+    // ask-on-write approves reads but parks writes.
+    const read = await broker.request({
+      sessionId: 's',
+      params: { options, toolCall: { kind: 'read' } },
+      policy: POLICY.askOnWrite,
+    });
+    if (read.outcome?.optionId !== 'allow-once') fail('ask-on-write should auto-allow reads');
+
+    const parked = broker.request({
+      sessionId: 's',
+      params: { options, toolCall: { kind: 'execute', title: 'rm -rf' } },
+      policy: POLICY.askOnWrite,
+    });
+    const pending = broker.list('s');
+    if (pending.length !== 1) fail(`ask-on-write should park a write, got ${pending.length}`);
+
+    const reqId = pending[0].requestId;
+    if (!broker.resolve(reqId, 'reject')) fail('resolve should report success');
+    // A second client answering the same request must be a harmless no-op.
+    if (broker.resolve(reqId, 'allow-once')) fail('double resolve should be a no-op');
+    const settled = await parked;
+    if (settled.outcome?.optionId !== 'reject') {
+      fail(`parked request should settle with reject, got ${JSON.stringify(settled)}`);
+    }
+    if (broker.list().length !== 0) fail('broker should be empty after resolve');
+
+    if (!failed) ok('v2 core: permission broker policies + resolution');
+  } catch (e) {
+    fail(`v2 permissions: ${e.message}`);
+  }
 }
 
 // 2. lib.mjs exports import cleanly.
