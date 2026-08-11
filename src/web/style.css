@@ -507,6 +507,87 @@ details.think .body {
 #composer button.danger { color: var(--red); border-color: #5c2c30; }
 #composer button.danger:hover { background: #2a1416; }
 
+/* ---------------------------------------------------- diffs and images */
+
+.diff {
+  margin: 8px 0 2px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0c0e14;
+}
+
+.diff > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+  background: var(--bg-3);
+  font-size: 12px;
+}
+
+.diff .path {
+  flex: 1;
+  font-family: ui-monospace, Consolas, monospace;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff .tag {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(86, 190, 110, 0.16);
+  color: #a6e3b4;
+  font-size: 11px;
+}
+
+.diff .plus { color: var(--green, #6cc07a); }
+.diff .minus { color: var(--red); }
+
+.diff-body {
+  margin: 0;
+  padding: 6px 0;
+  max-height: 420px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dl {
+  padding: 0 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.dl.add { background: rgba(86, 190, 110, 0.12); color: #a6e3b4; }
+.dl.del { background: rgba(224, 92, 100, 0.12); color: #f1a8ad; }
+.dl.ctx { color: var(--fg-dim); }
+.dl.gap {
+  color: var(--fg-dim);
+  opacity: 0.6;
+  font-style: italic;
+  padding: 2px 10px;
+}
+
+.shot {
+  margin: 8px 0 2px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0c0e14;
+}
+
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: zoom-in;
+}
+
 /* ----------------------------------------------------------- terminals */
 
 #terminals {

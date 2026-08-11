@@ -36,7 +36,8 @@ ws.on('open', () => console.log(`connected :${PORT}`));
 ws.on('message', (buf) => {
   const msg = JSON.parse(buf.toString());
 
-  if (msg.type === 'hello') {
+  // The host attaches us to the active session right after `hello`.
+  if (msg.type === 'attached') {
     console.log(`session ${msg.sessionId} (${msg.records.length} existing records)`);
     if (!started) {
       started = true;
@@ -64,6 +65,15 @@ ws.on('message', (buf) => {
         'tool_update',
         `${r.status}${r.rawOutput ? ` · out=${JSON.stringify(r.rawOutput).slice(0, 200)}` : ''}`,
       );
+      for (const b of r.content || []) {
+        const inner = b?.type === 'content' ? b.content : b;
+        note(
+          'content_block',
+          b?.type === 'diff'
+            ? `diff ${b.path} (old=${(b.oldText || '').length}b new=${(b.newText || '').length}b)`
+            : `${inner?.type}${inner?.data ? ` ${inner.data.length}b ${inner.mimeType}` : ''}`,
+        );
+      }
       break;
     case 'permission_request': {
       const opt =

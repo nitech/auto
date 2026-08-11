@@ -213,6 +213,49 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1d. Diff rendering maths (pure module, shared with the web client).
+{
+  try {
+    const { lineDiff, collapseContext, diffStats } = await import('../src/web/diff.js');
+    let failed = false;
+
+    const rows = lineDiff('alpha\nbeta\ngamma\n', 'alpha\nBETA\ngamma\n');
+    const stats = diffStats(rows);
+    if (stats.added !== 1 || stats.removed !== 1) {
+      fail(`one-line edit should be +1 −1, got +${stats.added} −${stats.removed}`);
+      failed = true;
+    }
+    if (rows.filter((r) => r.type === 'ctx').length !== 2) {
+      fail('one-line edit should keep two context lines');
+      failed = true;
+    }
+
+    // An empty original is a new file: additions only, no phantom blank line.
+    const created = diffStats(lineDiff('', 'a\nb\nc'));
+    if (created.added !== 3 || created.removed !== 0) {
+      fail(`new file should be +3 −0, got +${created.added} −${created.removed}`);
+      failed = true;
+    }
+
+    const long = Array.from({ length: 40 }, (_, i) => `line ${i}`);
+    const changed = [...long];
+    changed[20] = 'CHANGED';
+    const collapsed = collapseContext(lineDiff(long.join('\n'), changed.join('\n')));
+    if (!collapsed.some((r) => r.type === 'gap')) {
+      fail('long unchanged runs should collapse into a gap');
+      failed = true;
+    }
+    if (collapsed.length > 20) {
+      fail(`collapsed diff should be short, got ${collapsed.length} rows`);
+      failed = true;
+    }
+
+    if (!failed) ok('v2 web: line diff, context collapse, stats');
+  } catch (e) {
+    fail(`v2 diff: ${e.message}`);
+  }
+}
+
 // 2. lib.mjs exports import cleanly.
 try {
   const lib = await import('./lib.mjs');

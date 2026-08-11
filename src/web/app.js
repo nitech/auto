@@ -13,6 +13,7 @@ import {
   resetTerminals,
   writeChunk,
 } from './terminals.js';
+import { lineDiff, collapseContext, diffStats } from './diff.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -178,6 +179,111 @@ function renderStreaming(rec) {
   scrollDown(stick);
 }
 
+/**
+ * ACP attaches richer content to tool calls than the raw input/output JSON:
+ * file diffs, and images such as browser screenshots. Rendering these is what
+ * makes an edit or a page visit legible at a glance.
+ */
+function renderContent(body, blocks, card) {
+  for (const block of blocks || []) {
+    if (!block) continue;
+
+    if (block.type === 'diff') {
+      body.appendChild(renderDiff(block));
+      // A diff is the point of an edit, so never make the reader open it.
+      if (card) {
+        card.open = true;
+        const label = card.querySelector('.label');
+        if (label) label.textContent = (block.path || '').split(/[\\/]/).pop() || label.textContent;
+      }
+      continue;
+    }
+
+    if (block.type === 'content' && block.content?.type === 'image' && card) card.open = true;
+
+    if (block.type === 'terminal') {
+      const note = div('cap');
+      note.textContent = `terminal ${block.terminalId || ''}`;
+      body.appendChild(note);
+      continue;
+    }
+
+    const inner = block.type === 'content' ? block.content : block;
+    if (!inner) continue;
+
+    if (inner.type === 'image' && inner.data) {
+      const fig = div('shot');
+      const img = document.createElement('img');
+      img.src = `data:${inner.mimeType || 'image/png'};base64,${inner.data}`;
+      img.alt = 'screenshot';
+      img.loading = 'lazy';
+      // Full size in a new tab: phone screens crop a desktop screenshot hard.
+      img.onclick = () => window.open(img.src, '_blank');
+      fig.appendChild(img);
+      body.appendChild(fig);
+    } else if (inner.type === 'text' && inner.text) {
+      body.appendChild(div('cap', 'content'));
+      const pre = document.createElement('pre');
+      pre.innerHTML = `<code>${esc(inner.text)}</code>`;
+      body.appendChild(pre);
+    } else if (inner.type === 'resource_link' && inner.uri) {
+      const p = div('cap');
+      const a = document.createElement('a');
+      a.href = inner.uri;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = inner.name || inner.uri;
+      p.appendChild(a);
+      body.appendChild(p);
+    }
+  }
+}
+
+/**
+ * For a newly created file the agent puts unified-diff headers inside the
+ * text itself (`-- /dev/null`, `++ b/path`); they are metadata, not content.
+ * The marker arrives with two characters rather than the usual three.
+ */
+function stripDiffHeaders(oldText, newText) {
+  const old = String(oldText ?? '');
+  const neu = String(newText ?? '');
+  const isNew = /^-{2,3} \/dev\/null/.test(old) && /^\+{2,3} /.test(neu);
+  if (!isNew) return { oldText: old, newText: neu, isNew: false };
+  return {
+    oldText: old.split('\n').slice(1).join('\n'),
+    newText: neu.split('\n').slice(1).join('\n'),
+    isNew: true,
+  };
+}
+
+function renderDiff(block) {
+  const { oldText, newText, isNew } = stripDiffHeaders(block.oldText, block.newText);
+  const rows = collapseContext(lineDiff(oldText, newText));
+  const { added, removed } = diffStats(rows);
+
+  const wrap = document.createElement('details');
+  wrap.className = 'diff';
+  wrap.open = true;
+  wrap.innerHTML = `
+    <summary>
+      <span class="path"></span>
+      ${isNew ? '<span class="tag">new</span>' : ''}
+      <span class="stat"><span class="plus">+${added}</span> <span class="minus">−${removed}</span></span>
+    </summary>`;
+  wrap.querySelector('.path').textContent = (block.path || '').split(/[\\/]/).slice(-2).join('/');
+
+  const pre = document.createElement('pre');
+  pre.className = 'diff-body';
+  for (const r of rows) {
+    const line = document.createElement('div');
+    line.className = `dl ${r.type}`;
+    line.textContent = `${r.type === 'add' ? '+' : r.type === 'del' ? '-' : ' '} ${r.text}`;
+    pre.appendChild(line);
+  }
+  wrap.appendChild(pre);
+  return wrap;
+}
+
 /** Human-friendly one-liner for a tool call. */
 function toolLabel(rec) {
   const input = rec.rawInput || {};
@@ -211,6 +317,8 @@ function renderToolCall(rec) {
     body.appendChild(div('cap', 'input'));
     body.appendChild(pre);
   }
+  renderContent(body, rec.content, card);
+  card.dataset.contentCount = String((rec.content || []).length);
   if (rec.toolCallId) state.toolCards.set(rec.toolCallId, card);
   add(card);
 }
@@ -230,6 +338,17 @@ function renderToolUpdate(rec) {
     stateEl.textContent = failed ? 'failed' : 'done';
   } else if (rec.status) {
     stateEl.textContent = rec.status.replace('_', ' ');
+  }
+
+  // Updates repeat the whole content array as it grows, so render only the
+  // blocks this card has not seen.
+  const blocks = rec.content || [];
+  const seen = Number(card.dataset.contentCount || 0);
+  if (blocks.length > seen) {
+    const stickForContent = nearBottom();
+    renderContent(body, blocks.slice(seen), card);
+    card.dataset.contentCount = String(blocks.length);
+    scrollDown(stickForContent);
   }
 
   if (!out) return;
