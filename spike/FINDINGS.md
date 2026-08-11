@@ -99,6 +99,26 @@ Consequences:
   spec-compliant, and may be exercised by future CLI versions.
 - User-initiated terminals are unaffected and still need our own PTY.
 
+## Permission latency tolerance
+
+Measured by holding the approval before answering (`ws-smoke.mjs --delay=N`):
+
+| Approval delay | Result |
+|----------------|--------|
+| instant | turn completes, 12s total |
+| 20s | turn completes |
+| 120s | turn completes |
+
+A two-minute approval is fine, so a phone user can take their time. An early
+run did die with `RetriableError: [unavailable] PING timed out` after a slow
+approval, but the delay was not the cause — it did not reproduce at 120s. Treat
+it as a transient upstream failure.
+
+That failure is still instructive: the error arrived as **agent message text**
+and ended the turn with `stopReason: end_turn`, indistinguishable from a normal
+answer. The session layer needs to detect upstream errors and record them as
+errors rather than assistant prose, and should offer a retry.
+
 ## Not yet exercised
 
 `fs/read_text_file` and `fs/write_text_file` (the agent appears to do its own

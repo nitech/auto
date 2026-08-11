@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Auto v2 — skeleton</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font: 14px/1.5 ui-monospace, Consolas, monospace; background: #0e0f13; color: #d6d9e0; }
+  header { padding: 8px 12px; border-bottom: 1px solid #23262e; display: flex; gap: 12px; align-items: center; }
+  header b { color: #8ab4ff; }
+  #status { margin-left: auto; color: #7d8494; }
+  #log { padding: 12px; }
+  .rec { margin: 0 0 8px; padding: 6px 10px; border-left: 3px solid #2a2e38; white-space: pre-wrap; word-break: break-word; }
+  .user { border-color: #4f8cff; background: #131a26; }
+  .assistant { border-color: #46d17f; background: #101a14; }
+  .thought { border-color: #6b7280; color: #949aa8; font-style: italic; background: #12141a; }
+  .tool { border-color: #e0a94f; background: #1a1710; }
+  .toolout { border-color: #8a6d3b; background: #15130e; color: #bfc4cf; }
+  .perm { border-color: #ff6b6b; background: #221214; }
+  .err { border-color: #ff4d4f; background: #24080a; color: #ffb4b6; }
+  .sys { border-color: #3a3f4b; color: #7d8494; font-size: 12px; }
+  .label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #767d8c; margin-bottom: 2px; }
+  pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; }
+  button { font: inherit; background: #232833; color: #d6d9e0; border: 1px solid #39404f; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+  button:hover { background: #2d3341; }
+  button.allow { border-color: #46d17f; color: #46d17f; }
+  button.deny { border-color: #ff6b6b; color: #ff6b6b; }
+  footer { position: sticky; bottom: 0; display: flex; gap: 8px; padding: 10px 12px; background: #0e0f13; border-top: 1px solid #23262e; }
+  #box { flex: 1; font: inherit; background: #171a21; color: #d6d9e0; border: 1px solid #2f3542; border-radius: 6px; padding: 8px; resize: vertical; min-height: 44px; }
+  details summary { cursor: pointer; color: #767d8c; }
+</style>
+</head>
+<body>
+<header>
+  <b>Auto v2 skeleton</b>
+  <span id="folder"></span>
+  <label style="color:#767d8c"><input type="checkbox" id="raw" /> raw</label>
+  <span id="status">connecting…</span>
+</header>
+
+<div id="log"></div>
+
+<footer>
+  <textarea id="box" placeholder="Message the agent…  (Enter to send, Shift+Enter for newline)"></textarea>
+  <button id="send">Send</button>
+  <button id="stop" class="deny">Stop</button>
+</footer>
+
+<script>
+const log = document.getElementById('log');
+const statusEl = document.getElementById('status');
+const folderEl = document.getElementById('folder');
+const rawEl = document.getElementById('raw');
+const box = document.getElementById('box');
+
+let ws, busy = false;
+// Coalesce consecutive streaming chunks into one element instead of one per token.
+let streamEl = null, streamKind = null;
+
+function atBottom() {
+  return window.innerHeight + window.scrollY >= document.body.offsetHeight - 120;
+}
+function scroll(was) { if (was) window.scrollTo(0, document.body.scrollHeight); }
+
+function el(cls, label, text) {
+  const d = document.createElement('div');
+  d.className = 'rec ' + cls;
+  if (label) {
+    const s = document.createElement('span');
+    s.className = 'label';
+    s.textContent = label;
+    d.appendChild(s);
+  }
+  const p = document.createElement('pre');
+  p.textContent = text ?? '';
+  d.appendChild(p);
+  log.appendChild(d);
+  return p;
+}
+
+function render(rec) {
+  const was = atBottom();
+
+  if (rawEl.checked) {
+    el('sys', rec.kind + ' #' + rec.seq, JSON.stringify(rec, null, 2));
+    streamEl = null;
+    scroll(was);
+    return;
+  }
+
+  const streaming = rec.kind === 'agent_delta' || rec.kind === 'agent_thought';
+  if (!streaming) { streamEl = null; streamKind = null; }
+
+  switch (rec.kind) {
+    case 'agent_delta':
+    case 'agent_thought': {
+      if (!streamEl || streamKind !== rec.kind) {
+        streamKind = rec.kind;
+        streamEl = el(
+          rec.kind === 'agent_delta' ? 'assistant' : 'thought',
+          rec.kind === 'agent_delta' ? 'agent' : 'thinking',
+          '',
+        );
+      }
+      streamEl.textContent += rec.text || '';
+      break;
+    }
+    case 'user_message':
+      el('user', 'you', rec.text);
+      break;
+    case 'tool_call':
+      el(
+        'tool',
+        `tool · ${rec.toolKind || ''} · ${rec.status || ''}`,
+        (rec.title || '') + (rec.rawInput ? '\n\ninput: ' + JSON.stringify(rec.rawInput, null, 2) : ''),
+      );
+      break;
+    case 'tool_update': {
+      const out = rec.rawOutput;
+      if (!out && !rec.content) { el('sys', 'tool', `${rec.status || ''}`); break; }
+      let body = '';
+      if (out && typeof out === 'object') {
+        if (out.stdout) body += out.stdout;
+        if (out.stderr) body += (body ? '\n' : '') + out.stderr;
+        if (!body) body = JSON.stringify(out, null, 2);
+        if (out.exitCode !== undefined) body += `\n[exit ${out.exitCode}]`;
+      } else if (out) body = String(out);
+      else body = JSON.stringify(rec.content, null, 2);
+      el('toolout', `result · ${rec.status || ''}`, body);
+      break;
+    }
+    case 'permission_request': {
+      const d = document.createElement('div');
+      d.className = 'rec perm';
+      const s = document.createElement('span');
+      s.className = 'label';
+      s.textContent = 'permission requested';
+      d.appendChild(s);
+      const p = document.createElement('pre');
+      p.textContent = rec.toolCall?.title || JSON.stringify(rec.toolCall, null, 2);
+      d.appendChild(p);
+      const row = document.createElement('div');
+      row.style.marginTop = '6px';
+      row.style.display = 'flex';
+      row.style.gap = '6px';
+      row.style.flexWrap = 'wrap';
+      for (const opt of rec.options || []) {
+        const b = document.createElement('button');
+        b.textContent = opt.name || opt.optionId;
+        b.className = /allow/i.test(opt.kind || opt.optionId || '') ? 'allow' : 'deny';
+        b.onclick = () => {
+          ws.send(JSON.stringify({ op: 'permission', requestId: rec.requestId, optionId: opt.optionId }));
+          row.remove();
+        };
+        row.appendChild(b);
+      }
+      d.appendChild(row);
+      log.appendChild(d);
+      break;
+    }
+    case 'permission_resolved':
+      el('sys', 'permission', `resolved → ${rec.optionId}`);
+      break;
+    case 'plan':
+      el('sys', 'plan', JSON.stringify(rec.entries, null, 2));
+      break;
+    case 'session_info':
+      el('sys', 'session', rec.title ? `title: ${rec.title}` : JSON.stringify(rec));
+      break;
+    case 'turn_end':
+      el('sys', 'turn end', rec.stopReason || '');
+      break;
+    case 'error':
+      el('err', 'error', rec.text);
+      break;
+    case 'session_start':
+      el('sys', 'session start', rec.folder);
+      break;
+    case 'commands':
+      break;
+    default:
+      el('sys', rec.kind, JSON.stringify(rec, null, 2));
+  }
+  scroll(was);
+}
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}`);
+  ws.onopen = () => (statusEl.textContent = 'connected');
+  ws.onclose = () => {
+    statusEl.textContent = 'disconnected — retrying';
+    setTimeout(connect, 1200);
+  };
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'hello') {
+      log.innerHTML = '';
+      streamEl = null;
+      folderEl.textContent = msg.meta?.folder || '';
+      busy = msg.busy;
+      statusEl.textContent = busy ? 'working…' : 'idle';
+      for (const r of msg.records) render(r);
+    } else if (msg.type === 'record') {
+      render(msg.record);
+    } else if (msg.type === 'busy') {
+      busy = msg.busy;
+      statusEl.textContent = busy ? 'working…' : 'idle';
+    }
+  };
+}
+
+function send() {
+  const text = box.value.trim();
+  if (!text) return;
+  ws.send(JSON.stringify({ op: 'prompt', text }));
+  box.value = '';
+}
+
+document.getElementById('send').onclick = send;
+document.getElementById('stop').onclick = () => ws.send(JSON.stringify({ op: 'cancel' }));
+box.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    send();
+  }
+});
+
+connect();
+</script>
+</body>
+</html>

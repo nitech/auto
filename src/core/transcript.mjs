@@ -1,0 +1,132 @@
+/**
+ * Append-only per-session transcript.
+ *
+ * Every client is a projection of this log, so it is written in full and never
+ * summarised or truncated — trimming is a rendering decision made at the edge.
+ * Records carry a monotonic `seq` per session, which is the only thing a client
+ * needs in order to resync after a disconnect.
+ */
+import { EventEmitter } from 'node:events';
+import {
+  appendFileSync,
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+} from 'node:fs';
+import { createInterface } from 'node:readline';
+import { join } from 'node:path';
+
+/** Record kinds. Renderers should ignore kinds they do not know. */
+export const KIND = {
+  sessionStart: 'session_start',
+  userMessage: 'user_message',
+  agentDelta: 'agent_delta',
+  agentThought: 'agent_thought',
+  toolCall: 'tool_call',
+  toolUpdate: 'tool_update',
+  diff: 'diff',
+  terminalChunk: 'terminal_chunk',
+  permissionRequest: 'permission_request',
+  permissionResolved: 'permission_resolved',
+  plan: 'plan',
+  sessionInfo: 'session_info',
+  commands: 'commands',
+  turnStart: 'turn_start',
+  turnEnd: 'turn_end',
+  error: 'error',
+};
+
+/** Records kept in memory for fast replay; older ones are read back from disk. */
+const MEMORY_TAIL = 4000;
+
+export class Transcript extends EventEmitter {
+  /**
+   * @param {string} dir  directory holding `<sessionId>.jsonl`
+   * @param {string} sessionId
+   */
+  constructor(dir, sessionId) {
+    super();
+    this.dir = dir;
+    this.sessionId = sessionId;
+    this.path = join(dir, `${sessionId}.jsonl`);
+    this.seq = 0;
+    this.tail = [];
+    mkdirSync(dir, { recursive: true });
+  }
+
+  /** Recover `seq` from an existing file so appends stay monotonic across restarts. */
+  async open() {
+    if (!existsSync(this.path) || statSync(this.path).size === 0) return this;
+    const rl = createInterface({
+      input: createReadStream(this.path, { encoding: 'utf8' }),
+      crlfDelay: Infinity,
+    });
+    for await (const line of rl) {
+      if (!line.trim()) continue;
+      try {
+        const rec = JSON.parse(line);
+        if (typeof rec.seq === 'number' && rec.seq > this.seq) this.seq = rec.seq;
+        this.tail.push(rec);
+        if (this.tail.length > MEMORY_TAIL) this.tail.shift();
+      } catch {
+        // A torn final line from an unclean shutdown; the rest of the log stands.
+      }
+    }
+    return this;
+  }
+
+  /**
+   * Append a record.
+   * @param {string} kind one of KIND
+   * @param {object} [payload]
+   * @returns {object} the stored record
+   */
+  append(kind, payload = {}) {
+    const rec = { seq: ++this.seq, ts: Date.now(), kind, ...payload };
+    appendFileSync(this.path, JSON.stringify(rec) + '\n');
+    this.tail.push(rec);
+    if (this.tail.length > MEMORY_TAIL) this.tail.shift();
+    this.emit('record', rec);
+    return rec;
+  }
+
+  /** Records with `seq` greater than `fromSeq`, in order. */
+  readFrom(fromSeq = 0) {
+    const oldestInMemory = this.tail.length ? this.tail[0].seq : Infinity;
+    if (fromSeq + 1 >= oldestInMemory || this.tail.length === 0) {
+      return this.tail.filter((r) => r.seq > fromSeq);
+    }
+    // Requested range predates the memory tail — reread the log.
+    if (!existsSync(this.path)) return [];
+    const out = [];
+    for (const line of readFileSync(this.path, 'utf8').split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const rec = JSON.parse(line);
+        if (rec.seq > fromSeq) out.push(rec);
+      } catch {
+        /* skip torn line */
+      }
+    }
+    return out;
+  }
+}
+
+/** Lazily-opened collection of per-session transcripts. */
+export class TranscriptStore {
+  constructor(dir) {
+    this.dir = dir;
+    this.open = new Map();
+    mkdirSync(dir, { recursive: true });
+  }
+
+  async get(sessionId) {
+    let t = this.open.get(sessionId);
+    if (t) return t;
+    t = await new Transcript(this.dir, sessionId).open();
+    this.open.set(sessionId, t);
+    return t;
+  }
+}

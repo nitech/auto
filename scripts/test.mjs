@@ -5,14 +5,16 @@
  *   npm test
  *
  * Checks:
- *   1. Every .mjs script under scripts/ parses (node --check).
+ *   1. Every .mjs script under scripts/ and src/ parses (node --check).
+ *   1b. v2 core behaviour: transcript replay and ACP update mapping.
  *   2. lib.mjs's exports actually import and are the expected type.
  *   2b. Every skill under .claude/skills/ has valid SKILL.md frontmatter.
  *   3. If the service is already running, its /health endpoints respond.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -37,6 +39,74 @@ for (const f of files) {
     fail(`node --check ${f}\n${res.stderr}`);
   } else {
     ok(`syntax: ${f}`);
+  }
+}
+
+// 1a. Syntax-check the v2 tree.
+const SRC = join(ROOT, 'src');
+if (existsSync(SRC)) {
+  const walk = (dir) =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) return walk(p);
+      return e.name.endsWith('.mjs') ? [p] : [];
+    });
+  for (const p of walk(SRC)) {
+    const res = spawnSync(process.execPath, ['--check', p], { encoding: 'utf8' });
+    const rel = relative(ROOT, p);
+    if (res.status !== 0) fail(`node --check ${rel}\n${res.stderr}`);
+    else ok(`syntax: ${rel}`);
+  }
+}
+
+// 1b. v2 core behaviour. Pure logic only — no agent process, no network.
+if (existsSync(SRC)) {
+  const tmp = mkdtempSync(join(tmpdir(), 'auto-test-'));
+  try {
+    const { Transcript, KIND } = await import('../src/core/transcript.mjs');
+    const { mapUpdate } = await import('../src/core/map-updates.mjs');
+
+    const t = await new Transcript(tmp, 'sess-1').open();
+    t.append(KIND.userMessage, { text: 'one' });
+    t.append(KIND.agentDelta, { text: 'two' });
+    const third = t.append(KIND.turnEnd, { stopReason: 'end_turn' });
+
+    if (third.seq !== 3) fail(`transcript seq should be 3, got ${third.seq}`);
+    if (t.readFrom(0).length !== 3) fail('transcript readFrom(0) should return 3 records');
+    if (t.readFrom(2).length !== 1) fail('transcript readFrom(2) should return 1 record');
+
+    // Reopening must continue the sequence rather than restart it.
+    const again = await new Transcript(tmp, 'sess-1').open();
+    if (again.seq !== 3) fail(`reopened transcript seq should be 3, got ${again.seq}`);
+    if (again.append(KIND.userMessage, {}).seq !== 4) fail('reopened transcript should append at 4');
+
+    const delta = mapUpdate({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: 'hi' },
+    });
+    if (delta?.kind !== KIND.agentDelta || delta.payload.text !== 'hi') {
+      fail(`mapUpdate agent_message_chunk wrong: ${JSON.stringify(delta)}`);
+    }
+    const call = mapUpdate({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'c1',
+      kind: 'execute',
+      rawInput: { command: 'ls' },
+    });
+    if (call?.kind !== KIND.toolCall || call.payload.rawInput.command !== 'ls') {
+      fail(`mapUpdate tool_call wrong: ${JSON.stringify(call)}`);
+    }
+    // Unknown kinds must be preserved, never dropped.
+    const unknown = mapUpdate({ sessionUpdate: 'something_new', a: 1 });
+    if (!unknown || !unknown.kind.startsWith('acp:') || !unknown.payload.raw) {
+      fail('mapUpdate should preserve unknown update kinds');
+    }
+
+    if (!failed) ok('v2 core: transcript replay + update mapping');
+  } catch (e) {
+    fail(`v2 core: ${e.message}`);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
   }
 }
 

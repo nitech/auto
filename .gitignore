@@ -11,6 +11,7 @@ main-session.json
 inbox/
 jobs/
 runs/
+state/
 *.log
 node_modules/
 .DS_Store

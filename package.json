@@ -25,10 +25,11 @@
     "wiki:lint": "wiki lint --skip-llm"
   },
   "dependencies": {
-    "llm-wiki": "^0.1.3",
     "@whiskeysockets/baileys": "^6.7.18",
+    "llm-wiki": "^0.1.3",
     "pino": "^9.6.0",
     "qrcode": "^1.5.4",
-    "qrcode-terminal": "^0.12.0"
+    "qrcode-terminal": "^0.12.0",
+    "ws": "^8.21.3"
   }
 }
