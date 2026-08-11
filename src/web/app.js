@@ -6,6 +6,14 @@
  * authoritative state, so a reload or a dropped connection costs nothing.
  */
 
+import {
+  initTerminals,
+  openPane,
+  closePane,
+  resetTerminals,
+  writeChunk,
+} from './terminals.js';
+
 const $ = (id) => document.getElementById(id);
 
 const els = {
@@ -335,6 +343,9 @@ function render(rec) {
     case 'plan':
       renderPlan(rec);
       break;
+    case 'terminal_chunk':
+      writeChunk(rec);
+      break;
     case 'error':
       renderError(rec);
       break;
@@ -416,6 +427,7 @@ function attach(sessionId) {
   state.toolCards.clear();
   state.permCards.clear();
   state.stream = null;
+  resetTerminals();
   els.app.classList.remove('rail-open');
   sendOp({ op: 'attach', sessionId, fromSeq: 0 });
 }
@@ -461,9 +473,12 @@ function connect() {
         state.toolCards.clear();
         state.permCards.clear();
         state.stream = null;
+        resetTerminals();
       }
       applyMeta(msg.meta);
       renderRail();
+      // Panes first, so replayed terminal chunks have somewhere to land.
+      for (const t of msg.terminals || []) openPane(t);
       for (const rec of msg.records) render(rec);
       scrollDown(true);
       return;
@@ -472,6 +487,16 @@ function connect() {
     if (msg.type === 'record') {
       if (msg.sessionId !== state.sessionId) return;
       render(msg.record);
+      return;
+    }
+
+    if (msg.type === 'terminal.opened') {
+      if (msg.terminal?.sessionId === state.sessionId) openPane(msg.terminal);
+      return;
+    }
+
+    if (msg.type === 'terminal.closed') {
+      closePane(msg.terminalId);
       return;
     }
 
@@ -522,4 +547,5 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden && state.ws?.readyState !== 1) connect();
 });
 
+initTerminals(sendOp);
 connect();

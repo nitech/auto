@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#0b0d12" />
 <title>Auto</title>
 <link rel="manifest" href="/manifest.webmanifest" />
+<link rel="stylesheet" href="/vendor/xterm.css" />
 <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -39,9 +40,19 @@
         <option value="auto">Auto-approve</option>
       </select>
       <span id="status" class="chip">idle</span>
+      <button id="term-toggle" class="icon" title="Terminals">▤</button>
     </header>
 
     <div id="transcript"></div>
+
+    <section id="terminals" hidden>
+      <div class="term-bar">
+        <div id="term-tabs"></div>
+        <button id="term-new" class="icon" title="New terminal">+</button>
+        <button id="term-hide" class="icon" title="Hide terminals">▾</button>
+      </div>
+      <div id="term-panes"></div>
+    </section>
 
     <footer id="composer">
       <textarea id="box" rows="1" placeholder="Message the agent…"></textarea>
@@ -52,6 +63,8 @@
     </footer>
   </main>
 </div>
+<script src="/vendor/xterm.js"></script>
+<script src="/vendor/addon-fit.js"></script>
 <script type="module" src="/app.js"></script>
 </body>
 </html>

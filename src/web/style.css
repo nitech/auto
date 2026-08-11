@@ -507,6 +507,72 @@ details.think .body {
 #composer button.danger { color: var(--red); border-color: #5c2c30; }
 #composer button.danger:hover { background: #2a1416; }
 
+/* ----------------------------------------------------------- terminals */
+
+#terminals {
+  display: flex;
+  flex-direction: column;
+  height: min(42vh, 380px);
+  border-top: 1px solid var(--line);
+  background: #0b0d12;
+}
+
+.term-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-2);
+}
+
+#term-tabs {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.term-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.term-tab.active {
+  background: var(--bg-3);
+  border-color: var(--line-2);
+  color: var(--fg);
+}
+
+.term-tab .x { opacity: 0.5; }
+.term-tab .x:hover { opacity: 1; color: var(--red); }
+
+#term-panes {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+
+.term-pane {
+  position: absolute;
+  inset: 0;
+  padding: 6px 8px;
+  display: none;
+}
+
+.term-pane.active { display: block; }
+.term-pane .xterm { height: 100%; }
+
 /* -------------------------------------------------------------- mobile */
 
 @media (max-width: 760px) {

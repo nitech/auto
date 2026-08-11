@@ -54,6 +54,15 @@ sessions.on('record', ({ sessionId, record }) =>
 );
 sessions.on('sessions', (list) => broadcast({ type: 'sessions', sessions: list }));
 
+// Terminal output reaches clients as transcript records; these only announce
+// the widget's existence so the UI knows to open or close a pane.
+sessions.terminals.on('opened', (t) =>
+  broadcast({ type: 'terminal.opened', terminal: t }, t?.sessionId),
+);
+sessions.terminals.on('closed', (t) =>
+  broadcast({ type: 'terminal.closed', terminalId: t.terminalId }, t.sessionId),
+);
+
 // ------------------------------------------------------------------ requests
 
 const OPS = {
@@ -69,6 +78,8 @@ const OPS = {
       meta: sessions.get(id),
       records,
       pending: sessions.permissions.list(id),
+      terminals: sessions.terminals.list(id),
+      terminalsAvailable: sessions.terminals.available,
     });
   },
 
@@ -109,6 +120,33 @@ const OPS = {
   'session.policy'(_ws, state, msg) {
     sessions.setPolicy(msg.sessionId || state.sessionId, msg.policy);
   },
+
+  'terminal.open'(ws, state, msg) {
+    const id = msg.sessionId || state.sessionId;
+    const meta = sessions.get(id);
+    if (!meta) throw new Error('No session');
+    if (!sessions.terminals.available) {
+      throw new Error(`Terminals unavailable: ${sessions.terminals.unavailableReason}`);
+    }
+    sessions.terminals.createUser({
+      sessionId: id,
+      cwd: meta.folder,
+      cols: msg.cols,
+      rows: msg.rows,
+    });
+  },
+
+  'terminal.input'(_ws, _state, msg) {
+    sessions.terminals.write(msg.terminalId, msg.data);
+  },
+
+  'terminal.resize'(_ws, _state, msg) {
+    sessions.terminals.resize(msg.terminalId, msg.cols, msg.rows);
+  },
+
+  'terminal.close'(_ws, _state, msg) {
+    sessions.terminals.release(msg.terminalId);
+  },
 };
 
 // --------------------------------------------------------------------- http
@@ -122,6 +160,13 @@ const CONTENT_TYPES = {
   '.svg': 'image/svg+xml',
 };
 
+/** Third-party browser assets, served straight out of node_modules. */
+const VENDOR = {
+  '/vendor/xterm.js': 'node_modules/@xterm/xterm/lib/xterm.js',
+  '/vendor/xterm.css': 'node_modules/@xterm/xterm/css/xterm.css',
+  '/vendor/addon-fit.js': 'node_modules/@xterm/addon-fit/lib/addon-fit.js',
+};
+
 function serveStatic(req, res) {
   const url = new URL(req.url, 'http://localhost');
   let rel = url.pathname === '/' ? '/index.html' : url.pathname;
@@ -129,7 +174,7 @@ function serveStatic(req, res) {
     res.writeHead(400).end('bad path');
     return;
   }
-  const file = join(WEB, rel);
+  const file = VENDOR[rel] ? join(ROOT, VENDOR[rel]) : join(WEB, rel);
   const ext = rel.slice(rel.lastIndexOf('.'));
   try {
     const body = readFileSync(file);

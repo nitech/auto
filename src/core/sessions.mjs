@@ -18,6 +18,7 @@ import { AcpClient } from '../acp/client.mjs';
 import { TranscriptStore, KIND } from './transcript.mjs';
 import { mapUpdate } from './map-updates.mjs';
 import { PermissionBroker, POLICY } from './permissions.mjs';
+import { TerminalRegistry } from './terminals.mjs';
 
 export const STATUS = {
   idle: 'idle',
@@ -48,6 +49,7 @@ export class SessionManager extends EventEmitter {
     this.defaultFolder = defaultFolder;
     this.transcripts = new TranscriptStore(join(stateDir, 'transcripts'));
     this.permissions = new PermissionBroker();
+    this.terminals = new TerminalRegistry();
     /** @type {Map<string, object>} persisted session metadata */
     this.meta = new Map();
     /** @type {Map<string, object>} live runtime state, keyed by session id */
@@ -70,6 +72,15 @@ export class SessionManager extends EventEmitter {
         cancelled: Boolean(res.cancelled),
         by: res.by || null,
       });
+    });
+
+    // Terminal output is part of the transcript, so it replays like everything
+    // else rather than living only in a live socket.
+    this.terminals.on('chunk', ({ sessionId, terminalId, chunk }) => {
+      this.#record(sessionId, KIND.terminalChunk, { terminalId, text: chunk });
+    });
+    this.terminals.on('exit', ({ sessionId, terminalId, status }) => {
+      this.#record(sessionId, KIND.terminalChunk, { terminalId, exitStatus: status });
     });
   }
 
@@ -201,6 +212,12 @@ export class SessionManager extends EventEmitter {
           writeFileSync(path, content);
           return {};
         },
+        terminalCreate: (params) =>
+          this.terminals.create({ ...params, sessionId: id, cwd: params.cwd || meta.folder }),
+        terminalOutput: ({ terminalId }) => this.terminals.outputOf(terminalId),
+        terminalWaitForExit: ({ terminalId }) => this.terminals.waitForExit(terminalId),
+        terminalKill: ({ terminalId }) => this.terminals.kill(terminalId),
+        terminalRelease: ({ terminalId }) => this.terminals.release(terminalId),
       },
     });
 
@@ -377,12 +394,14 @@ export class SessionManager extends EventEmitter {
   async stop(id) {
     const runtime = this.live.get(id);
     this.permissions.cancelForSession(id, 'session stopped');
+    this.terminals.releaseForSession(id);
     if (runtime?.client) await runtime.client.stop();
     this.live.delete(id);
   }
 
   async stopAll() {
     await Promise.all([...this.live.keys()].map((id) => this.stop(id)));
+    this.terminals.releaseAll();
   }
 }
 

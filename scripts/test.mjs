@@ -162,6 +162,57 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1c. Terminals: a real PTY runs a command and reports its output and exit.
+{
+  try {
+    const { TerminalRegistry } = await import('../src/core/terminals.mjs');
+    const reg = new TerminalRegistry();
+
+    if (!reg.available) {
+      fail(`v2 terminals: node-pty unavailable (${reg.unavailableReason})`);
+    } else {
+      const { terminalId } = reg.create({
+        sessionId: 's1',
+        command: 'echo',
+        args: ['pty-check'],
+      });
+
+      let streamed = '';
+      reg.on('chunk', (e) => {
+        if (e.terminalId === terminalId) streamed += e.chunk;
+      });
+
+      const status = await Promise.race([
+        reg.waitForExit(terminalId),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 15000)),
+      ]);
+
+      const { output } = reg.outputOf(terminalId);
+      let failed = false;
+      if (status.exitCode !== 0) {
+        fail(`terminal should exit 0, got ${status.exitCode}`);
+        failed = true;
+      }
+      if (!output.includes('pty-check')) {
+        fail(`terminal output missing command output: ${JSON.stringify(output.slice(0, 120))}`);
+        failed = true;
+      }
+      if (!streamed.includes('pty-check')) {
+        fail('terminal should stream chunks as they arrive');
+        failed = true;
+      }
+      reg.release(terminalId);
+      if (reg.list().length !== 0) {
+        fail('released terminal should leave the registry');
+        failed = true;
+      }
+      if (!failed) ok('v2 core: PTY runs, streams, exits, releases');
+    }
+  } catch (e) {
+    fail(`v2 terminals: ${e.message}`);
+  }
+}
+
 // 2. lib.mjs exports import cleanly.
 try {
   const lib = await import('./lib.mjs');
@@ -279,3 +330,6 @@ if (failed) {
   process.exit(1);
 }
 console.log('\nAll checks passed.');
+// node-pty leaves handles behind after a terminal is released, which would
+// otherwise keep this process alive forever.
+process.exit(0);
