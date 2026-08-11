@@ -238,7 +238,7 @@ export class SessionManager extends EventEmitter {
       },
     });
 
-    const runtime = { client, turn: null, streamBuffer: '' };
+    const runtime = { client, turn: null, streamBuffer: '', replaying: false };
     this.live.set(id, runtime);
 
     client.on('log', (m) => this.emit('log', `[${meta.title}] ${m}`));
@@ -262,6 +262,10 @@ export class SessionManager extends EventEmitter {
     let session;
     if (meta.acpSessionId) {
       try {
+        // Resuming makes the agent replay the whole conversation as updates.
+        // We already have all of it on disk, so recording it again would
+        // duplicate the history on every restart.
+        runtime.replaying = true;
         session = await client.loadSession({ sessionId: meta.acpSessionId, cwd: meta.folder });
         session = { sessionId: meta.acpSessionId, ...(session || {}) };
       } catch (err) {
@@ -273,6 +277,7 @@ export class SessionManager extends EventEmitter {
       }
     }
     if (!session) session = await client.newSession({ cwd: meta.folder });
+    runtime.replaying = false;
 
     runtime.acpSessionId = session.sessionId;
     runtime.capabilities = info;
@@ -310,6 +315,10 @@ export class SessionManager extends EventEmitter {
   }
 
   #onUpdate(id, update) {
+    // History being replayed back to us on resume: already on disk, and
+    // clients replay from the transcript rather than from the agent.
+    if (this.live.get(id)?.replaying) return;
+
     const mapped = mapUpdate(update);
     if (!mapped) return;
 

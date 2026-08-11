@@ -9,7 +9,7 @@
  *   node src/server/index.mjs [--port=4331] [--folder=D:\some\repo]
  */
 import { createServer } from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
@@ -69,6 +69,7 @@ const telegram = new TelegramBridge({
   sessions,
   stateDir: join(ROOT, 'state'),
   webUrl: process.env.AUTO_WEB_URL || `http://127.0.0.1:${PORT}`,
+  restart: (opts) => restartHost(opts),
 });
 telegram.on('log', (m) => console.log(`[telegram] ${m}`));
 
@@ -373,6 +374,15 @@ const server = createServer(async (req, res) => {
     return json(res, { session: sessions.get(meta.id), activeId: sessions.activeId });
   }
 
+  // Restart from a shell or from an agent working on this repo. Answers first,
+  // then waits for work to finish before exiting.
+  if (pathname === '/api/restart' && req.method === 'POST') {
+    const body = await readBody(req);
+    json(res, { ok: true, restarting: true });
+    restartHost({ reason: body.reason || 'api' });
+    return undefined;
+  }
+
   if (pathname === '/api/session/active' && req.method === 'POST') {
     const body = await readBody(req);
     const wanted = String(body.id || '').trim();
@@ -437,8 +447,62 @@ wss.on('connection', async (ws) => {
   });
 });
 
+// ------------------------------------------------------------------- restart
+
+/**
+ * Restart the host from inside it, which is how Auto applies changes to its
+ * own code. Exiting is enough: the supervisor starts us again.
+ *
+ * The catch is that a session lives in a child process, so an immediate exit
+ * would kill the very turn that asked for the restart. So we wait for work to
+ * finish first, and leave a note to announce ourselves when we return.
+ */
+const RESTART_MARKER = join(ROOT, 'state', 'restarting.json');
+let restartPending = false;
+
+async function restartHost({ reason = 'requested', maxWaitMs = 180_000 } = {}) {
+  if (restartPending) return 'already restarting';
+  restartPending = true;
+
+  broadcast({ type: 'host.restarting', reason });
+  const busy = () => sessions.list().some((s) => s.status === 'busy');
+  if (busy()) {
+    await telegram.send('Restarting once the current turn finishes…').catch(() => {});
+    const until = Date.now() + maxWaitMs;
+    while (busy() && Date.now() < until) await new Promise((r) => setTimeout(r, 500));
+  }
+
+  writeFileSync(
+    RESTART_MARKER,
+    JSON.stringify({ at: Date.now(), reason, telegram: telegram.running }),
+  );
+  console.log(`[auto] restarting (${reason})`);
+  // Give the socket write and the marker a tick to land before we go.
+  setTimeout(() => process.exit(0), 250);
+  return 'restarting';
+}
+
+OPS['host.restart'] = (_ws, _state, msg) => restartHost({ reason: msg.reason || 'web' });
+
+/** Announce the return, so a restart requested from a phone visibly completes. */
+function announceRestart() {
+  if (!existsSync(RESTART_MARKER)) return;
+  let note = null;
+  try {
+    note = JSON.parse(readFileSync(RESTART_MARKER, 'utf8'));
+  } catch {
+    /* a corrupt marker is not worth failing a boot over */
+  }
+  rmSync(RESTART_MARKER, { force: true });
+  const secs = note?.at ? Math.max(1, Math.round((Date.now() - note.at) / 1000)) : null;
+  telegram
+    .send(`♻️ Auto is back${secs ? ` after ${secs}s` : ''} — sessions resume where they left off.`)
+    .catch(() => {});
+}
+
 server.listen(PORT, HOST, () => {
   console.log(`[auto] http://127.0.0.1:${PORT}  (${sessions.list().length} sessions)`);
+  announceRestart();
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) {

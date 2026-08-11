@@ -624,6 +624,11 @@ function connect() {
       return;
     }
 
+    if (msg.type === 'host.restarting') {
+      els.connLabel.textContent = 'restarting';
+      return;
+    }
+
     if (msg.type === 'catalog') {
       renderModels(msg.catalog?.models);
       const mine = state.sessions.find((s) => s.id === state.sessionId);
@@ -693,6 +698,10 @@ els.box.addEventListener('keydown', (e) => {
 });
 
 $('new-session').onclick = () => sendOp({ op: 'session.create' });
+$('restart').onclick = () => {
+  if (!confirm('Restart Auto? It waits for the current turn, then reconnects.')) return;
+  sendOp({ op: 'host.restart', reason: 'web' });
+};
 $('rail-toggle').onclick = () => els.app.classList.toggle('rail-open');
 els.mode.onchange = () =>
   sendOp({ op: 'session.mode', sessionId: state.sessionId, modeId: els.mode.value });

@@ -75,11 +75,13 @@ export function renderTurn({ text = '', tools = [] } = {}) {
 }
 
 export class TelegramBridge extends EventEmitter {
-  constructor({ sessions, stateDir, auth = loadTelegramAuth(), webUrl = '' }) {
+  constructor({ sessions, stateDir, auth = loadTelegramAuth(), webUrl = '', restart = null }) {
     super();
     this.sessions = sessions;
     this.auth = auth;
     this.webUrl = webUrl;
+    /** Supplied by the host, since restarting is its business, not ours. */
+    this.restart = restart;
     this.offsetPath = join(stateDir, 'telegram-offset.json');
     this.running = false;
     /** sessionId -> live turn render state */
@@ -266,6 +268,7 @@ export class TelegramBridge extends EventEmitter {
             '/model — pick a model',
             '/policy ask|ask-on-write|auto',
             '/status — what is running',
+            '/restart — apply code changes',
             this.webUrl ? `/web — ${esc(this.webUrl)}` : '',
           ]
             .filter(Boolean)
@@ -371,6 +374,12 @@ export class TelegramBridge extends EventEmitter {
             .join('\n'),
         );
       }
+
+      case '/restart':
+        if (!this.restart) return this.send('Restarting is not available here.');
+        await this.send('Restarting Auto…');
+        this.restart({ reason: 'telegram' });
+        return undefined;
 
       case '/web':
         return this.send(this.webUrl ? esc(this.webUrl) : 'No web URL configured.');
