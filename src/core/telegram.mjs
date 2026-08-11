@@ -13,6 +13,7 @@ import { EventEmitter } from 'node:events';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
+import { listProjects } from './projects.mjs';
 
 const LIMIT = 4096;
 /** Telegram tolerates roughly one edit a second; stay well clear. */
@@ -53,6 +54,10 @@ export async function tgApi(token, method, body) {
 
 const esc = (s) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const sameFolder = (a, b) =>
+  String(a || '').replace(/[\\/]+$/, '').toLowerCase() ===
+  String(b || '').replace(/[\\/]+$/, '').toLowerCase();
 
 /** Keep the tail: the end of a long answer is the part you want. */
 function clamp(text, max) {
@@ -265,6 +270,7 @@ export class TelegramBridge extends EventEmitter {
             '/new [folder] — start a session',
             '/stop — interrupt the current turn',
             '/mode agent|plan|ask',
+            '/projects — projects on this machine',
             '/model — pick a model',
             '/policy ask|ask-on-write|auto',
             '/status — what is running',
@@ -274,6 +280,37 @@ export class TelegramBridge extends EventEmitter {
             .filter(Boolean)
             .join('\n'),
         );
+
+      case '/projects': {
+        const list = this.sessions.list();
+        const projects = listProjects(list.map((s) => s.folder))
+          .filter((p) => p.open || list.some((s) => sameFolder(s.folder, p.path)))
+          .slice(0, 12);
+
+        if (!projects.length) return this.send('No projects open in Cursor.');
+
+        const lines = projects.map((p) => {
+          const mine = list.filter((s) => sameFolder(s.folder, p.path));
+          const note = [
+            mine.length ? `${mine.length} session${mine.length > 1 ? 's' : ''}` : 'no sessions',
+            p.open ? 'open in Cursor' : '',
+          ]
+            .filter(Boolean)
+            .join(' · ');
+          return `<b>${esc(p.name)}</b> — ${esc(note)}\n<code>${esc(p.path)}</code>`;
+        });
+
+        return this.send(`<b>Projects</b>\n${lines.join('\n')}`, {
+          reply_markup: {
+            inline_keyboard: projects.map((p) => [
+              {
+                text: p.name,
+                callback_data: this.tokenFor({ kind: 'project', folder: p.path }),
+              },
+            ]),
+          },
+        });
+      }
 
       case '/sessions': {
         const list = this.sessions.list();
@@ -411,6 +448,20 @@ export class TelegramBridge extends EventEmitter {
       const meta = this.sessions.get(payload.sessionId);
       await answer(`Switched to ${meta?.title || 'session'}`);
       await this.send(`Now on <b>${esc(meta?.title)}</b>\n<code>${esc(meta?.folder)}</code>`);
+      return;
+    }
+
+    if (payload.kind === 'project') {
+      // Go to the project's newest session, or open one if it has none.
+      const existing = this.sessions
+        .list()
+        .find((s) => sameFolder(s.folder, payload.folder));
+      const meta = existing || this.sessions.create({ folder: payload.folder });
+      this.sessions.setActive(meta.id);
+      await answer(`${existing ? 'Switched to' : 'Started'} ${meta.title}`);
+      await this.send(
+        `${existing ? 'Now on' : 'Started'} <b>${esc(meta.title)}</b>\n<code>${esc(meta.folder)}</code>`,
+      );
       return;
     }
 

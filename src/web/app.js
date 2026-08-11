@@ -582,8 +582,16 @@ function projectHeader(project, count) {
   add.title = `New session in ${project.name || 'this folder'}`;
   add.onclick = (e) => {
     e.stopPropagation();
+    if (project.path) sendOp({ op: 'session.create', folder: project.path });
+  };
+
+  // Tapping the project is the phone-sized target: go to its newest session,
+  // or start one if it has none.
+  head.onclick = () => {
     if (!project.path) return;
-    sendOp({ op: 'session.create', folder: project.path });
+    const mine = state.sessions.filter((s) => sameFolder(s.folder, project.path));
+    if (mine.length) attach(mine[0].id);
+    else sendOp({ op: 'session.create', folder: project.path });
   };
 
   head.append(name, note, add);
