@@ -256,6 +256,37 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1e. Browser address bar: URLs are opened, prose is searched.
+{
+  try {
+    const { normalizeUrl, findChrome } = await import('../src/core/browser.mjs');
+    let failed = false;
+
+    const cases = [
+      ['example.com', 'https://example.com'],
+      ['https://example.com/x?y=1', 'https://example.com/x?y=1'],
+      ['localhost:4340', 'http://localhost:4340'],
+      ['127.0.0.1:4340/health', 'https://127.0.0.1:4340/health'],
+    ];
+    for (const [input, want] of cases) {
+      const got = normalizeUrl(input);
+      if (got !== want) {
+        fail(`normalizeUrl(${input}) should be ${want}, got ${got}`);
+        failed = true;
+      }
+    }
+    if (!normalizeUrl('how tall is everest').startsWith('https://duckduckgo.com/?q=')) {
+      fail('prose should become a search');
+      failed = true;
+    }
+    if (!findChrome()) console.log('skip: no Chrome found for the browser panel');
+
+    if (!failed) ok('v2 browser: address bar normalisation');
+  } catch (e) {
+    fail(`v2 browser: ${e.message}`);
+  }
+}
+
 // 2. lib.mjs exports import cleanly.
 try {
   const lib = await import('./lib.mjs');

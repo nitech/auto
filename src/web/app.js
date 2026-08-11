@@ -14,6 +14,7 @@ import {
   writeChunk,
 } from './terminals.js';
 import { lineDiff, collapseContext, diffStats } from './diff.js';
+import { initBrowser, onFrame, onStatus } from './browser.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -609,6 +610,16 @@ function connect() {
       return;
     }
 
+    if (msg.type === 'browser.frame') {
+      onFrame(msg.data);
+      return;
+    }
+
+    if (msg.type === 'browser.status') {
+      onStatus(msg.status);
+      return;
+    }
+
     if (msg.type === 'terminal.opened') {
       if (msg.terminal?.sessionId === state.sessionId) openPane(msg.terminal);
       return;
@@ -667,4 +678,5 @@ document.addEventListener('visibilitychange', () => {
 });
 
 initTerminals(sendOp);
+initBrowser(sendOp);
 connect();

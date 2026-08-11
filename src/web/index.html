@@ -40,8 +40,26 @@
         <option value="auto">Auto-approve</option>
       </select>
       <span id="status" class="chip">idle</span>
+      <button id="browser-toggle" class="icon" title="Browser">◉</button>
       <button id="term-toggle" class="icon" title="Terminals">▤</button>
     </header>
+
+    <section id="browser" hidden>
+      <div class="browser-bar">
+        <button id="browser-back" class="icon" title="Back">‹</button>
+        <button id="browser-forward" class="icon" title="Forward">›</button>
+        <button id="browser-reload" class="icon" title="Reload">⟳</button>
+        <input id="browser-url" type="url" inputmode="url" autocomplete="off"
+               spellcheck="false" placeholder="Search or enter address" />
+        <span id="browser-spinner" class="spinner" hidden></span>
+        <button id="browser-hide" class="icon" title="Hide browser">▾</button>
+      </div>
+      <div class="browser-view">
+        <img id="browser-frame" alt="Browser view" draggable="false" />
+        <textarea id="browser-keys" aria-label="Browser keyboard"
+                  autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+      </div>
+    </section>
 
     <div id="transcript"></div>
 

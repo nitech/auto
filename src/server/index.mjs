@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { SessionManager, POLICY } from '../core/sessions.mjs';
+import { BrowserHost } from '../core/browser.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -34,7 +35,15 @@ const sessions = new SessionManager({
 
 sessions.on('log', (m) => console.log(`[sessions] ${m}`));
 
-/** @type {Map<import('ws').WebSocket, {sessionId: string|null}>} */
+/**
+ * One browser for the whole host. Frames are live-only: they go to the clients
+ * watching, and never into a transcript, because a video stream is the one
+ * thing here that is genuinely worthless to replay.
+ */
+const browser = new BrowserHost({ stateDir: join(ROOT, 'state') });
+browser.on('log', (m) => console.log(`[browser] ${m}`));
+
+/** @type {Map<import('ws').WebSocket, {sessionId: string|null, browser: boolean}>} */
 const clients = new Map();
 
 function send(ws, msg) {
@@ -62,6 +71,20 @@ sessions.terminals.on('opened', (t) =>
 sessions.terminals.on('closed', (t) =>
   broadcast({ type: 'terminal.closed', terminalId: t.terminalId }, t.sessionId),
 );
+
+/** Frames go only to clients with the panel open; nobody else pays for them. */
+function broadcastBrowser(msg) {
+  for (const [ws, state] of clients) if (state.browser) send(ws, msg);
+}
+
+browser.on('frame', ({ data }) => broadcastBrowser({ type: 'browser.frame', data }));
+browser.on('status', (status) => broadcastBrowser({ type: 'browser.status', status }));
+
+/** Nobody watching means nothing to encode. */
+function syncScreencast() {
+  const watchers = [...clients.values()].filter((s) => s.browser).length;
+  if (!watchers && browser.streaming) browser.stopScreencast().catch(() => {});
+}
 
 // ------------------------------------------------------------------ requests
 
@@ -147,6 +170,58 @@ const OPS = {
   'terminal.close'(_ws, _state, msg) {
     sessions.terminals.release(msg.terminalId);
   },
+
+  async 'browser.attach'(ws, state, msg) {
+    state.browser = true;
+    if (msg.width && msg.height) await browser.setViewport(msg.width, msg.height);
+    await browser.ensure();
+    send(ws, { type: 'browser.status', status: browser.status });
+    await browser.startScreencast({ maxWidth: msg.maxWidth || 1280 });
+  },
+
+  'browser.detach'(_ws, state) {
+    state.browser = false;
+    syncScreencast();
+  },
+
+  async 'browser.navigate'(_ws, _state, msg) {
+    await browser.navigate(msg.url);
+  },
+
+  async 'browser.click'(_ws, _state, msg) {
+    await browser.click(msg.x, msg.y, { clickCount: msg.clickCount || 1 });
+  },
+
+  async 'browser.scroll'(_ws, _state, msg) {
+    await browser.scroll(msg.x, msg.y, msg.deltaX || 0, msg.deltaY || 0);
+  },
+
+  async 'browser.type'(_ws, _state, msg) {
+    await browser.type(msg.text);
+  },
+
+  async 'browser.key'(_ws, _state, msg) {
+    await browser.key(msg.key);
+  },
+
+  async 'browser.nav'(_ws, _state, msg) {
+    if (msg.action === 'back') await browser.back();
+    else if (msg.action === 'forward') await browser.forward();
+    else if (msg.action === 'reload') await browser.reload();
+  },
+
+  async 'browser.viewport'(_ws, _state, msg) {
+    await browser.setViewport(msg.width, msg.height);
+  },
+
+  async 'browser.shot'() {
+    await browser.screenshot();
+  },
+
+  async 'browser.close'() {
+    await browser.close();
+    broadcastBrowser({ type: 'browser.status', status: browser.status });
+  },
 };
 
 // --------------------------------------------------------------------- http
@@ -214,7 +289,7 @@ const server = createServer((req, res) => {
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', async (ws) => {
-  const state = { sessionId: null };
+  const state = { sessionId: null, browser: false };
   clients.set(ws, state);
 
   send(ws, {
@@ -248,7 +323,10 @@ wss.on('connection', async (ws) => {
     }
   });
 
-  ws.on('close', () => clients.delete(ws));
+  ws.on('close', () => {
+    clients.delete(ws);
+    syncScreencast();
+  });
 });
 
 server.listen(PORT, '0.0.0.0', () => {
@@ -258,6 +336,7 @@ server.listen(PORT, '0.0.0.0', () => {
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, async () => {
     console.log('\n[auto-v2] shutting down');
+    await browser.close().catch(() => {});
     await sessions.stopAll();
     process.exit(0);
   });
