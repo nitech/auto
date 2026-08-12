@@ -136,13 +136,16 @@ try {
   `);
   console.log(`focused         : ${focused}`);
 
-  await cdp.send('Input.insertText', { text: MARKER });
+  // Two lines, because a message from a phone often is: if newlines do not
+  // survive insertion, Auto has to send them another way.
+  await cdp.send('Input.insertText', { text: `${MARKER}\nsecond line` });
   await wait(150);
 
   const after = await readBox(cdp);
   const ok = after.includes(MARKER);
   console.log(`composer after  : ${JSON.stringify(after)}`);
   console.log(`editor took it  : ${ok}`);
+  console.log(`second line kept: ${after.includes('second line')}`);
 
   // Whatever happened, do not leave anything behind: select all, delete.
   await cdp.press('a', 'KeyA', 65, 2);

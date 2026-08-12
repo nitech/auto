@@ -163,6 +163,139 @@ if (existsSync(SRC)) {
     fail(`v2 outbox: ${e.message}`);
   }
 
+  // Typing into Cursor's own window: the transport that no feature switch can
+  // shut. It must land in the right chat, never overwrite someone's half-typed
+  // message, and never leave text behind when it fails.
+  try {
+    const { CursorCdp } = await import('../src/core/cursor-cdp.mjs');
+    const { samePath } = await import('../src/core/cursor-dom.mjs');
+
+    class FakeWindow {
+      constructor(facts, { submits = true, focusable = true } = {}) {
+        this.given = facts;
+        this.box = facts.composerText || '';
+        this.submits = submits;
+        this.focusable = focusable;
+        this.sent = null;
+        this.closed = false;
+      }
+      async facts() {
+        return { ...this.given, composerText: this.box };
+      }
+      async focusComposer() {
+        return this.focusable;
+      }
+      async composerText() {
+        return this.box;
+      }
+      async insertText(text) {
+        this.box += text;
+      }
+      async pressEnter() {
+        if (!this.submits) return;
+        this.sent = this.box;
+        this.box = '';
+      }
+      async clearComposer() {
+        this.box = '';
+      }
+      close() {
+        this.closed = true;
+      }
+    }
+
+    const THREAD = '645a0202-ac6e-4a33-b9c1-472acaf4e4cc';
+    const OTHER = '4e9abaeb-7716-4f4d-a976-18ec10061759';
+    const target = (id) => ({ id, type: 'page', url: `file:///workbench.html?${id}`, title: id });
+
+    /** A machine with these windows open, and nothing else. */
+    const machine = (windows, { owner } = {}) =>
+      new CursorCdp({
+        settleMs: 1,
+        listTargets: async () => Object.keys(windows).map(target),
+        openWindow: async (t) => windows[t.id],
+        owner: owner || (() => null),
+      });
+
+    // The message goes into the window showing that chat, and no other.
+    const mine = new FakeWindow({ threadId: THREAD, hasComposer: true });
+    const theirs = new FakeWindow({ threadId: OTHER, hasComposer: true });
+    let result = await machine({ theirs, mine }).sendText({ threadId: THREAD, text: 'hello' });
+    if (result.status !== 'submitted') fail(`cdp send should submit, got ${JSON.stringify(result)}`);
+    if (mine.sent !== 'hello') fail(`cdp send typed "${mine.sent}" into the right window`);
+    if (theirs.sent !== null) fail('cdp send must not touch another chat');
+    if (!mine.closed || !theirs.closed) fail('cdp send should close every window it opened');
+
+    // No window has the chat open: the caller must fall back, not be told yes.
+    result = await machine({ theirs }).sendText({ threadId: THREAD, text: 'hello' });
+    if (result.status !== 'unknown-thread') fail(`cdp send should not claim a chat it cannot see: ${result.status}`);
+
+    // A message someone is still writing is theirs; leave it alone.
+    const busy = new FakeWindow({ threadId: THREAD, hasComposer: true, composerText: 'half a thou' });
+    result = await machine({ busy }).sendText({ threadId: THREAD, text: 'hello' });
+    if (result.status !== 'not-sendable') fail('cdp send should refuse a box with text in it');
+    if (busy.box !== 'half a thou') fail(`cdp send overwrote what was being typed: "${busy.box}"`);
+
+    // If Enter will not send, the box must be left as it was found.
+    const stuck = new FakeWindow({ threadId: THREAD, hasComposer: true }, { submits: false });
+    result = await machine({ stuck }).sendText({ threadId: THREAD, text: 'hello' });
+    if (result.status !== 'not-sendable') fail('cdp send should report a box that will not send');
+    if (stuck.box !== '') fail(`cdp send left "${stuck.box}" behind in the chat box`);
+
+    // A window with no chat box at all, and one that will not take the caret.
+    const bare = new FakeWindow({ threadId: THREAD, hasComposer: false });
+    if ((await machine({ bare }).sendText({ threadId: THREAD, text: 'x' })).status !== 'not-sendable') {
+      fail('cdp send should refuse a window with no chat box');
+    }
+    const numb = new FakeWindow({ threadId: THREAD, hasComposer: true }, { focusable: false });
+    if ((await machine({ numb }).sendText({ threadId: THREAD, text: 'x' })).status !== 'not-sendable') {
+      fail('cdp send should refuse a box that will not focus');
+    }
+
+    // When a window will not say which chat it shows, the messages on screen
+    // are looked up instead — and an unknown answer sends nothing.
+    const quiet = new FakeWindow({
+      threadId: null,
+      hasComposer: true,
+      rows: [{ id: 'b1' }, { id: 'b2' }],
+    });
+    result = await machine({ quiet }, { owner: () => THREAD }).sendText({
+      threadId: THREAD,
+      text: 'by bubble',
+    });
+    if (result.status !== 'submitted') fail(`cdp send should identify a chat by its messages: ${result.status}`);
+    if (quiet.sent !== 'by bubble') fail('cdp send should type after identifying by messages');
+
+    const nameless = new FakeWindow({ threadId: null, hasComposer: true, rows: [{ id: 'b1' }] });
+    if ((await machine({ nameless }).sendText({ threadId: THREAD, text: 'x' })).status !== 'unknown-thread') {
+      fail('cdp send must not guess which chat a window is showing');
+    }
+
+    // Cursor started without its debugging port: say so, do not throw.
+    const shut = new CursorCdp({ listTargets: async () => [] });
+    if ((await shut.sendText({ threadId: THREAD, text: 'x' })).status !== 'no-cdp') {
+      fail('cdp send should report a missing debug port as no-cdp');
+    }
+    if (await shut.available()) fail('cdp should not claim to be available with no windows');
+    const broken = new CursorCdp({
+      listTargets: async () => {
+        throw new Error('connection refused');
+      },
+    });
+    if ((await broken.sendText({ threadId: THREAD, text: 'x' })).status !== 'no-cdp') {
+      fail('a refused debug port should be no-cdp, not an exception');
+    }
+
+    // Cursor says /d:/Sevenfold/auto where Auto says D:\Sevenfold\auto.
+    if (!samePath('/d:/Sevenfold/auto', 'D:\\Sevenfold\\auto')) fail('samePath should see one folder');
+    if (samePath('/d:/Sevenfold/auto', 'D:\\Sevenfold\\other')) fail('samePath should see two folders');
+    if (samePath(null, 'D:\\Sevenfold\\auto')) fail('samePath should not match nothing');
+
+    if (!failed) ok('v2 core: typing into a Cursor window lands in the right chat, or not at all');
+  } catch (e) {
+    fail(`v2 cursor-cdp: ${e.message}`);
+  }
+
   // Permission broker: parked requests, policy shortcuts, and racing clients.
   try {
     const { PermissionBroker, POLICY } = await import('../src/core/permissions.mjs');

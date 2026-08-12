@@ -26,6 +26,7 @@ import { mapUpdate } from './map-updates.mjs';
 import { PermissionBroker, POLICY } from './permissions.mjs';
 import { TerminalRegistry } from './terminals.mjs';
 import { sendMessage } from './desktop-bridge.mjs';
+import { CursorCdp } from './cursor-cdp.mjs';
 import { DesktopOutbox } from './desktop-outbox.mjs';
 import { ThreadWatcher, readThread } from './desktop-threads.mjs';
 
@@ -62,6 +63,8 @@ export class SessionManager extends EventEmitter {
     this.transcripts = new TranscriptStore(join(stateDir, 'transcripts'));
     this.permissions = new PermissionBroker();
     this.terminals = new TerminalRegistry();
+    /** The Cursor windows themselves, when Cursor was started with its port. */
+    this.cursor = new CursorCdp();
     /** Messages the desktop refused, waiting for it to come back. */
     this.outbox = new DesktopOutbox({
       send: (sessionId, text) => this.#deliverDesktop(sessionId, text),
@@ -705,17 +708,35 @@ export class SessionManager extends EventEmitter {
     return true;
   }
 
-  /** Hand one message to the desktop. The only place that calls the bridge. */
+  /**
+   * Hand one message to the desktop. The only place that talks to the IDE.
+   *
+   * Two ways in, tried in order of how easily they can be shut. Typing into
+   * the window over Cursor's debug port answers to no feature switch, so it
+   * goes first; the bridge, which a window can refuse for as long as it lives,
+   * catches the case where Cursor was started without the port.
+   */
   async #deliverDesktop(id, text) {
     const meta = this.meta.get(id);
     if (!meta?.desktopThreadId) return { status: 'error', message: 'Not a desktop chat' };
     // Claim the echo before sending: the watcher may see the bubble the
     // moment the desktop writes it.
     this.#expectEcho(id, text);
-    return sendMessage({ threadId: meta.desktopThreadId, text }).catch((err) => ({
+
+    const typed = await this.cursor
+      .sendText({ threadId: meta.desktopThreadId, text })
+      .catch((err) => ({ status: 'error', reason: err.message }));
+    if (typed.status === 'submitted') {
+      this.emit('log', `typed a message into Cursor's window for "${meta.title}"`);
+      return { status: 'submitted', via: 'cdp' };
+    }
+
+    const sent = await sendMessage({ threadId: meta.desktopThreadId, text }).catch((err) => ({
       status: 'error',
       message: err.message,
     }));
+    if (sent.status === 'submitted' || sent.status === 'queued') return { ...sent, via: 'bridge' };
+    return { ...sent, cdp: typed.reason || typed.status };
   }
 
   /**
@@ -772,11 +793,19 @@ export class SessionManager extends EventEmitter {
       place > 1 ? `Held it behind ${place - 1} other${place === 2 ? '' : 's'}` : 'Held it here';
     const reason = result.reason || result.message || '';
 
+    // The other way in is typing into the window, which needs Cursor to have
+    // been started with its debugging port. Worth saying when it is missing:
+    // it is the difference between a wait and no wait at all.
+    const noPort = /listening on port/i.test(String(result.cdp || ''))
+      ? ` Typing straight into the window is not available either — Cursor was started without ` +
+        `its debugging port, so both ways in are shut.`
+      : '';
+
     if (/bridge is disabled/i.test(reason)) {
       return (
         `Cursor has its desktop bridge switched off in the running window, so it would not ` +
         `take this. ${waiting} — it goes in as soon as the bridge answers. Restarting Cursor ` +
-        `is what turns it back on; Auto has already set the switches it reads at startup.`
+        `is what turns it back on; Auto has already set the switches it reads at startup.${noPort}`
       );
     }
     if (result.status === 'unknown-thread') {

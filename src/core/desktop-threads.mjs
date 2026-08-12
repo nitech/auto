@@ -24,6 +24,7 @@ const APPDATA = process.env.APPDATA || join(homedir(), 'AppData', 'Roaming');
 const IDE_DB = join(APPDATA, 'Cursor', 'User', 'globalStorage', 'state.vscdb');
 
 const BUBBLE_USER = 1;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * How many more times to look after a turn's generation id disappears, before
@@ -203,6 +204,38 @@ export function threadExists(threadId) {
       db.prepare('SELECT 1 FROM cursorDiskKV WHERE key = ?').get(`composerData:${threadId}`),
     ),
   );
+}
+
+/**
+ * Which thread do these messages belong to?
+ *
+ * Asked when a Cursor window shows messages but will not say which chat they
+ * are from — the answer decides whether Auto is allowed to type into it, so it
+ * has to be unambiguous. Every bubble the desktop stores is keyed by its
+ * thread, so the messages vote and a single winner takes it; a tie means no.
+ *
+ * @param {string[]} bubbleIds  ids read from a window, newest last
+ * @returns {string|null}
+ */
+export function threadOwning(bubbleIds = []) {
+  // A few is plenty to identify a thread, and each one costs a scan.
+  const ids = bubbleIds.filter((id) => UUID.test(String(id || ''))).slice(-4);
+  if (!ids.length) return null;
+
+  return withDb((db) => {
+    const find = db.prepare('SELECT key FROM cursorDiskKV WHERE key LIKE ?');
+    const votes = new Map();
+    for (const id of ids) {
+      for (const row of find.all(`bubbleId:%:${id}`)) {
+        const threadId = String(row.key).split(':')[1];
+        if (threadId) votes.set(threadId, (votes.get(threadId) || 0) + 1);
+      }
+    }
+    const ranked = [...votes].sort((a, b) => b[1] - a[1]);
+    if (!ranked.length) return null;
+    if (ranked[1]?.[1] === ranked[0][1]) return null;
+    return ranked[0][0];
+  });
 }
 
 /**
