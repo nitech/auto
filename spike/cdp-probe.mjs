@@ -96,21 +96,6 @@ class Cdp {
 }
 
 /**
- * Which workspace is this window on?
- *
- * The window title is decorated and changes with the open editor; the
- * workbench's own configuration is not.
- */
-function workspaceOf() {
-  try {
-    const uri = vscode.context.configuration().workspace?.uri;
-    return uri?.path || null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Describe the chat as Cursor currently renders it.
  *
  * Nothing here assumes a class name. It works outwards from the side bar,
@@ -182,9 +167,24 @@ function discover() {
   };
 }
 
-/** What Auto would want to show and act on, using what discovery confirmed. */
+/**
+ * What Auto would want to show and act on, using what discovery confirmed.
+ *
+ * Everything this needs has to be inside it: the whole function is stringified
+ * and evaluated in Cursor's renderer, where nothing of ours exists.
+ */
 function survey() {
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+
+  // The window title is decorated and follows the open editor; the workbench's
+  // own configuration says which folder this really is.
+  let workspace = null;
+  try {
+    workspace = vscode.context.configuration().workspace?.uri?.path || null;
+  } catch {
+    workspace = null;
+  }
+
   const wrappers = [...document.querySelectorAll('[data-flat-index]')];
   const byShape = {};
   for (const w of wrappers) {
@@ -204,7 +204,7 @@ function survey() {
   const lastProse = [...document.querySelectorAll('.markdown-root')].at(-1);
 
   return {
-    workspace: workspaceOf(),
+    workspace,
     messages: wrappers.length,
     shapes: byShape,
     lastProse: clean(lastProse?.textContent).slice(0, 160) || null,
