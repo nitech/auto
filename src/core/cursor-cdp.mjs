@@ -445,10 +445,14 @@ export class CursorCdp {
    * is merely in a background tab. This is the way to fix that before acting:
    * ask for the chat, then send or stop as usual.
    *
+   * A window with a half-written message in it is left alone, since switching
+   * would hide someone's words — unless `force` says otherwise, which is what
+   * putting a window back where it was needs.
+   *
    * @returns {Promise<{ status: 'showing'|'shown'|'no-tab'|'no-cdp'|'error',
    *   reason?: string, title?: string }>}
    */
-  async showThread({ threadId }) {
+  async showThread({ threadId, force = false }) {
     if (!threadId) return { status: 'error', reason: 'no chat was named' };
 
     let targets;
@@ -471,7 +475,7 @@ export class CursorCdp {
           return { status: 'showing', title: facts.title };
         }
         // Switching a window away from a half-written message would hide it.
-        if (facts.composerText) {
+        if (facts.composerText && !force) {
           lastReason = 'there is unsent text in that window';
           continue;
         }
@@ -539,16 +543,33 @@ export class CursorCdp {
       if (facts.hasComposer) await window.focusComposer();
       await window.stopTurn();
       if (await this.#stopped(window, threadId)) {
-        return { status: 'stopped', how: 'keyboard', title: facts.title };
+        return { status: 'stopped', how: 'keyboard', title: facts.title, ...(await this.#tidyUp(window)) };
       }
 
       await window.clickStopIcon();
       if (await this.#stopped(window, threadId)) {
-        return { status: 'stopped', how: 'button', title: facts.title };
+        return { status: 'stopped', how: 'button', title: facts.title, ...(await this.#tidyUp(window)) };
       }
 
       return { status: 'still-running', reason: 'the window would not stop', title: facts.title };
     });
+  }
+
+  /**
+   * Clear the message Cursor hands back when a turn is stopped.
+   *
+   * Stopping puts the prompt back in the chat box, ready to be edited and sent
+   * again — sensible for someone sitting there, and a trap for anyone who is
+   * not. Auto refuses to type over unsent text, so left alone that returned
+   * message would make the chat unreachable from a phone until somebody cleared
+   * it by hand. It is safe to take out: it is already in the transcript, and
+   * what was in the box is reported so it can be shown.
+   */
+  async #tidyUp(window) {
+    const putBack = await window.composerText();
+    if (!putBack) return {};
+    await window.clearComposer();
+    return { putBack };
   }
 
   /** Does the desktop's own record say a turn is in flight? */

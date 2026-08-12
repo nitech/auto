@@ -367,6 +367,20 @@ if (existsSync(SRC)) {
       fail(`stop should use the keyboard first: ${JSON.stringify(stopped)}`);
     }
 
+    // Cursor hands the stopped message back into the chat box. Left there it
+    // would block the next message from a phone, so it is taken out and told.
+    const handedBack = new FakeWindow({ threadId: THREAD, hasComposer: true }, { generating: true });
+    handedBack.stopTurn = async function stopWithPutBack() {
+      this.pressed.push('«keyboard»');
+      this.generating = false;
+      this.box = 'the prompt Cursor gave back';
+    };
+    stopped = await machine({ handedBack }).stop({ threadId: THREAD });
+    if (stopped.putBack !== 'the prompt Cursor gave back') {
+      fail(`stop should report what Cursor put back: ${JSON.stringify(stopped)}`);
+    }
+    if (handedBack.box !== '') fail('a returned message must not be left blocking the chat box');
+
     const byButton = new FakeWindow(
       { threadId: THREAD, hasComposer: true },
       { generating: true, stopsOn: 'button' },

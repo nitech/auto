@@ -467,6 +467,15 @@ export class SessionManager extends EventEmitter {
 
     if (result.status === 'stopped') {
       this.#record(id, KIND.error, { text: 'Interrupted by user.', interrupted: true });
+      if (result.putBack) {
+        // Cursor offers the stopped message back for editing. Nobody is there
+        // to edit it, and leaving it in the box would block the next one.
+        this.#record(id, KIND.notice, {
+          text:
+            `Cursor put the stopped message back in its chat box; Auto took it out so the ` +
+            `chat stays reachable from here. It said: ${result.putBack}`,
+        });
+      }
       this.#update(id, { status: STATUS.idle });
       this.emit('log', `stopped the turn in Cursor's window (${result.how})`);
       return true;
