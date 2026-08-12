@@ -12,6 +12,7 @@
  *   node scripts/desktop-bridge.mjs ls
  *   node scripts/desktop-bridge.mjs send <threadId> <text...> [--force]
  */
+import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,6 +53,25 @@ async function status() {
   console.log(`  discovery dir         : ${discoveryDir()}`);
   console.log(`  reachable instances   : ${live.length}`);
   for (const i of live) console.log(`    - ${i.label}  pid ${i.pid}  ${i.socketPath}`);
+
+  // The rows above are only what is on disk, and a running window decides from
+  // the copy it read at startup — so all four can say true while every send is
+  // refused. The only honest answer comes from asking it. A thread id nobody
+  // has cannot be delivered to, so this reaches the gate and nothing else.
+  if (live.length) {
+    const probe = await sendMessage({ threadId: randomUUID(), text: 'gate probe' }).catch(
+      (err) => ({ status: 'error', message: err.message }),
+    );
+    const shut = /bridge is disabled/i.test(probe.reason || probe.message || '');
+    console.log(`  window takes messages : ${shut ? 'no — gate shut in memory' : 'yes'}`);
+    if (shut) {
+      console.log(
+        '\nCursor reads these switches when it starts, so setting them now cannot reach the\n' +
+          'window that is already running. Restart Cursor to bring the bridge back. Anything\n' +
+          'sent meanwhile waits in Auto and goes in by itself once it answers.',
+      );
+    }
+  }
 
   if (!live.length) {
     console.log(

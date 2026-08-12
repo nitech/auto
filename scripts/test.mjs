@@ -118,6 +118,51 @@ if (existsSync(SRC)) {
     rmSync(tmp, { recursive: true, force: true });
   }
 
+  // Desktop outbox: a refused message waits its turn instead of being lost.
+  try {
+    const { DesktopOutbox } = await import('../src/core/desktop-outbox.mjs');
+
+    let bridge = 'shut';
+    const tried = [];
+    const outbox = new DesktopOutbox({
+      retryMs: 10,
+      send: async (_id, text) => {
+        tried.push(text);
+        return bridge === 'shut'
+          ? { status: 'error', message: 'Desktop bridge is disabled.' }
+          : { status: 'submitted' };
+      },
+    });
+
+    outbox.hold('s', 'first');
+    outbox.hold('s', 'second');
+    if (outbox.queued('s') !== 2) fail(`outbox should hold 2, got ${outbox.queued('s')}`);
+    if ((await outbox.flush()) !== 0) fail('a shut bridge should deliver nothing');
+    if (outbox.queued('s') !== 2) fail('a failed flush must keep everything queued');
+    // One attempt per flush per session: the queue behind a stuck message waits.
+    if (tried.length !== 1) fail(`a shut bridge should be asked once, was ${tried.length}`);
+
+    const sent = [];
+    outbox.on('sent', (e) => sent.push(e.text));
+    bridge = 'open';
+    if ((await outbox.flush()) !== 2) fail('an open bridge should deliver both');
+    if (sent.join(',') !== 'first,second') fail(`order not kept: ${sent.join(',')}`);
+    if (outbox.queued('s') !== 0) fail('delivered messages should leave the queue');
+
+    // What survives a host restart is what was written to the registry.
+    const saved = [{ text: 'held', at: Date.now() - 60_000 }];
+    const revived = new DesktopOutbox({ retryMs: 10, send: async () => ({ status: 'submitted' }) });
+    revived.restore('s', saved);
+    if (revived.queued('s') !== 1) fail('restore should take back a saved queue');
+    if ((await revived.flush()) !== 1) fail('a restored message should still go');
+    outbox.stop();
+    revived.stop();
+
+    if (!failed) ok('v2 core: desktop outbox holds, keeps order, and drains');
+  } catch (e) {
+    fail(`v2 outbox: ${e.message}`);
+  }
+
   // Permission broker: parked requests, policy shortcuts, and racing clients.
   try {
     const { PermissionBroker, POLICY } = await import('../src/core/permissions.mjs');
@@ -636,6 +681,50 @@ if (existsSync(SRC)) {
       put.run(`bubbleId:${thread}:b6`, JSON.stringify({ bubbleId: 'b6', type: 2, text: 'a new reply' }));
       await new Promise((r) => setTimeout(r, 250));
       watcher.stop();
+
+      // A running command: the command line is worth showing while it runs,
+      // the output only exists when it ends — so the bubble must be read twice.
+      const cmd = {
+        bubbleId: 'b7',
+        type: 2,
+        toolFormerData: {
+          name: 'run_terminal_command_v2',
+          status: 'loading',
+          params: JSON.stringify({ command: 'npm test', cwd: 'd:\\repo', parsingResult: { noise: 1 } }),
+        },
+      };
+      bubbles.push(cmd);
+      put.run(`bubbleId:${thread}:b7`, JSON.stringify(cmd));
+      composer();
+
+      const older = new Set(['b1', 'b2', 'b3', 'b4', 'b6']);
+      const started = threads.readThread(thread, { seen: older });
+      const call = started.messages.find((m) => m.kind === 'tool');
+      if (call?.input?.command !== 'npm test') {
+        fail(`a running command should carry its command line, got ${JSON.stringify(call?.input)}`);
+      }
+      if (call.input.parsingResult) fail('the shell parse tree is not worth showing');
+      if (call.output) fail('a command that has not finished has printed nothing');
+      if (started.visited.includes('b7')) fail('a command still running is not finished with');
+
+      put.run(
+        `bubbleId:${thread}:b7`,
+        JSON.stringify({
+          ...cmd,
+          toolFormerData: {
+            ...cmd.toolFormerData,
+            status: 'completed',
+            result: JSON.stringify({ output: 'All checks passed.' }),
+          },
+        }),
+      );
+      const ended = threads.readThread(thread, { seen: older });
+      const done = ended.messages.find((m) => m.kind === 'tool');
+      if (done?.output !== 'All checks passed.') {
+        fail(`a finished command should carry its output, got ${JSON.stringify(done?.output)}`);
+      }
+      if (!ended.visited.includes('b7')) fail('a finished command should count as seen');
+
       store.close();
 
       if (!events.includes('message:a new reply')) {

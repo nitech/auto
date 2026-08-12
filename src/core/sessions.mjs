@@ -26,6 +26,7 @@ import { mapUpdate } from './map-updates.mjs';
 import { PermissionBroker, POLICY } from './permissions.mjs';
 import { TerminalRegistry } from './terminals.mjs';
 import { sendMessage } from './desktop-bridge.mjs';
+import { DesktopOutbox } from './desktop-outbox.mjs';
 import { ThreadWatcher, readThread } from './desktop-threads.mjs';
 
 export const STATUS = {
@@ -61,6 +62,10 @@ export class SessionManager extends EventEmitter {
     this.transcripts = new TranscriptStore(join(stateDir, 'transcripts'));
     this.permissions = new PermissionBroker();
     this.terminals = new TerminalRegistry();
+    /** Messages the desktop refused, waiting for it to come back. */
+    this.outbox = new DesktopOutbox({
+      send: (sessionId, text) => this.#deliverDesktop(sessionId, text),
+    });
     /** @type {Map<string, object>} persisted session metadata */
     this.meta = new Map();
     /** @type {Map<string, object>} live runtime state, keyed by session id */
@@ -80,6 +85,20 @@ export class SessionManager extends EventEmitter {
         options: req.options,
       });
     });
+    this.outbox.on('sent', ({ sessionId, waitedMs, remaining }) => {
+      const mins = Math.max(1, Math.round(waitedMs / 60_000));
+      this.#record(sessionId, KIND.notice, {
+        text:
+          `Cursor took the message that was waiting (about ${mins} minute${mins === 1 ? '' : 's'}).` +
+          (remaining ? ` ${remaining} still queued.` : ''),
+      });
+      this.#update(sessionId, {
+        status: STATUS.busy,
+        outbox: this.outbox.list(sessionId),
+      });
+      this.#watchDesktop(sessionId);
+    });
+
     this.permissions.on('resolved', (res) => {
       this.#record(res.sessionId, KIND.permissionResolved, {
         requestId: res.requestId,
@@ -369,7 +388,13 @@ export class SessionManager extends EventEmitter {
   async prompt(id, { text, images = [] } = {}) {
     const meta = this.meta.get(id);
     if (!meta) throw new Error(`Unknown session ${id}`);
-    if (meta.status === STATUS.busy) throw new Error('Session is already working');
+    // A desktop chat mid-turn is not a reason to refuse: Cursor queues a
+    // message typed while it works, exactly as it does for the chat box, and
+    // if it will not, the outbox holds it. Only our own agent, which has no
+    // such queue, has to be told to wait.
+    if (meta.status === STATUS.busy && meta.kind !== 'desktop') {
+      throw new Error('Session is already working');
+    }
 
     if (meta.kind === 'desktop') {
       if (!text?.trim()) return null;
@@ -575,10 +600,31 @@ export class SessionManager extends EventEmitter {
       return;
     }
     if (message.kind === 'tool') {
+      // The desktop writes a call twice: once when it starts, with what it was
+      // asked to do, and again with what came of it. The second sighting has
+      // to update the card the first one drew, or a command and its output
+      // end up as two unrelated things on the screen.
+      const runtime = this.live.get(id) || {};
+      runtime.toolsDrawn = runtime.toolsDrawn || new Set();
+      this.live.set(id, runtime);
+
+      if (runtime.toolsDrawn.has(message.id)) {
+        this.#record(id, KIND.toolUpdate, {
+          toolCallId: message.id,
+          status: message.status || 'completed',
+          rawOutput: message.output || undefined,
+        });
+        return;
+      }
+
+      runtime.toolsDrawn.add(message.id);
       this.#record(id, KIND.toolCall, {
         toolCallId: message.id,
         title: message.name,
+        toolKind: message.input?.command ? 'execute' : 'other',
         status: message.status || 'completed',
+        rawInput: message.input || undefined,
+        rawOutput: message.output || undefined,
       });
       return;
     }
@@ -659,57 +705,84 @@ export class SessionManager extends EventEmitter {
     return true;
   }
 
-  /** Send to a desktop thread and let the watcher report what comes back. */
-  async #promptDesktop(id, meta, text) {
-    this.#record(id, KIND.userMessage, { text });
+  /** Hand one message to the desktop. The only place that calls the bridge. */
+  async #deliverDesktop(id, text) {
+    const meta = this.meta.get(id);
+    if (!meta?.desktopThreadId) return { status: 'error', message: 'Not a desktop chat' };
     // Claim the echo before sending: the watcher may see the bubble the
     // moment the desktop writes it.
     this.#expectEcho(id, text);
-
-    const result = await sendMessage({ threadId: meta.desktopThreadId, text }).catch((err) => ({
+    return sendMessage({ threadId: meta.desktopThreadId, text }).catch((err) => ({
       status: 'error',
       message: err.message,
     }));
+  }
 
-    switch (result.status) {
-      case 'submitted':
-      case 'queued':
-        if (result.status === 'queued') {
-          this.#record(id, KIND.notice, {
-            text: 'The desktop agent is mid-turn; this will go in when it finishes.',
-          });
-        }
-        this.#update(id, { status: STATUS.busy });
-        this.#watchDesktop(id);
-        return result;
-      // Every refusal below is worth trying again: the desktop's answer says
-      // what to put right, and the words were typed once already. Marking them
-      // retryable is what puts a Retry button on the message instead of
-      // leaving the text on the floor.
-      case 'unknown-thread':
-        this.#record(id, KIND.error, {
-          text: `No Cursor window has this chat open. Open ${meta.folder} in Cursor and try again.`,
-          retryable: true,
+  /**
+   * Send to a desktop thread and let the watcher report what comes back.
+   *
+   * A refusal is not the end of the message. Cursor decides whether its bridge
+   * is open in the window's own memory, so no amount of writing switches from
+   * out here will change a running window's mind — but it does change when it
+   * next starts, and windows open and close all day. So the text waits in the
+   * outbox and goes in the moment the desktop will take it.
+   */
+  async #promptDesktop(id, meta, text) {
+    this.#record(id, KIND.userMessage, { text });
+
+    const result = await this.#deliverDesktop(id, text);
+
+    if (result.status === 'submitted' || result.status === 'queued') {
+      if (result.status === 'queued') {
+        this.#record(id, KIND.notice, {
+          text: 'The desktop agent is mid-turn; this will go in when it finishes.',
         });
-        break;
-      case 'not-sendable':
-        this.#record(id, KIND.error, {
-          // The reason is Cursor's own wording, so say whose it is. "Desktop
-          // bridge is disabled" means Cursor has the switch off in memory —
-          // Auto re-asserts it on disk within the minute, and a reloaded
-          // Cursor window picks it up.
-          text: `Cursor would not take the message: ${result.reason || 'that chat cannot take messages.'}`,
-          retryable: true,
-        });
-        break;
-      default:
-        this.#record(id, KIND.error, {
-          text: result.message || 'The Cursor desktop app did not accept the message.',
-          retryable: true,
-        });
+      }
+      this.#update(id, { status: STATUS.busy });
+      this.#watchDesktop(id);
+      return result;
     }
-    this.#update(id, { status: STATUS.idle });
+
+    const place = this.outbox.hold(id, text);
+    this.#record(id, KIND.notice, { text: this.#whyHeld(meta, result, place) });
+    // Held messages go in the registry, so a host restart does not lose them.
+    this.#update(id, { status: STATUS.idle, outbox: this.outbox.list(id) });
     return result;
+  }
+
+  /**
+   * Take up messages that were still waiting when the host last stopped.
+   * Auto restarts far more often than Cursor does, and a message that
+   * survived the wait should not be lost to our own deploy.
+   */
+  resumeDesktopOutbox() {
+    let waiting = 0;
+    for (const meta of this.meta.values()) {
+      if (meta.kind !== 'desktop' || meta.status === STATUS.archived) continue;
+      if (!meta.outbox?.length) continue;
+      waiting += this.outbox.restore(meta.id, meta.outbox);
+    }
+    if (waiting) this.outbox.flush().catch(() => {});
+    return waiting;
+  }
+
+  /** Say what the desktop refused with, and what actually puts it right. */
+  #whyHeld(meta, result, place) {
+    const waiting =
+      place > 1 ? `Held it behind ${place - 1} other${place === 2 ? '' : 's'}` : 'Held it here';
+    const reason = result.reason || result.message || '';
+
+    if (/bridge is disabled/i.test(reason)) {
+      return (
+        `Cursor has its desktop bridge switched off in the running window, so it would not ` +
+        `take this. ${waiting} — it goes in as soon as the bridge answers. Restarting Cursor ` +
+        `is what turns it back on; Auto has already set the switches it reads at startup.`
+      );
+    }
+    if (result.status === 'unknown-thread') {
+      return `No Cursor window has this chat open. ${waiting} — open ${meta.folder} in Cursor and it goes in by itself.`;
+    }
+    return `Cursor would not take this${reason ? `: ${reason}` : ''}. ${waiting} and will keep trying.`;
   }
 
   async setModel(id, modelId) {

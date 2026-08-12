@@ -40,6 +40,55 @@ const textOf = (row) =>
     ? Buffer.from(row.value).toString('utf8')
     : String(row?.value ?? '');
 
+/** Output worth reading, without the whole of a build log. */
+const OUTPUT_LIMIT = 20_000;
+
+function parse(value) {
+  if (!value || typeof value !== 'string') return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What a tool call ran and what came back.
+ *
+ * The desktop keeps both as JSON strings hanging off the bubble: the arguments
+ * under `params`, the answer under `result`. A running command is the one
+ * people actually want to read, so its command line and its output are pulled
+ * out by name; everything else passes through as its arguments, minus the
+ * shell parse tree Cursor keeps for its own purposes.
+ */
+function toolDetail(tool) {
+  const params = parse(tool.params) || parse(tool.rawArgs) || {};
+  const result = parse(tool.result);
+
+  let input = null;
+  if (params.command) {
+    input = { command: params.command, ...(params.cwd ? { cwd: params.cwd } : {}) };
+  } else if (Object.keys(params).length) {
+    const { parsingResult, ...rest } = params;
+    input = rest;
+  }
+
+  // Only prose is worth putting on a screen. A file edit answers with content
+  // hashes, which say nothing to anyone and would bury the commands that do.
+  let output = null;
+  for (const key of ['output', 'stdout', 'text', 'error', 'message']) {
+    if (typeof result?.[key] === 'string' && result[key]) {
+      output = result[key];
+      break;
+    }
+  }
+  if (output && output.length > OUTPUT_LIMIT) {
+    output = `${output.slice(0, OUTPUT_LIMIT)}\n… ${output.length - OUTPUT_LIMIT} more characters`;
+  }
+
+  return { input, output };
+}
+
 /** What a bubble is worth showing, if anything. */
 function messageOf(bubble) {
   if (!bubble || typeof bubble !== 'object') return null;
@@ -47,11 +96,19 @@ function messageOf(bubble) {
 
   const tool = bubble.toolFormerData;
   if (tool) {
+    const status = tool.status || null;
+    const { input, output } = toolDetail(tool);
     return {
       role,
       kind: 'tool',
       name: tool.name || tool.tool || 'tool',
-      status: tool.status || null,
+      status,
+      input,
+      output,
+      // A call still running will be written again with what it printed, so
+      // this bubble is not finished with us yet. Anything else is as final as
+      // it is going to get, output or no output.
+      pending: !status || status === 'loading' || status === 'running',
       text: '',
     };
   }
@@ -111,10 +168,12 @@ export function readThread(threadId, { seen, tail } = {}) {
 
       const message = messageOf(bubble);
       // An empty bubble is one the desktop has created but not filled in yet,
-      // so leave it unvisited and look again on the next pass.
+      // so leave it unvisited and look again on the next pass. A tool call
+      // waiting on its output is the same case: something is there to show,
+      // but it is not the whole of it.
       if (!message) continue;
 
-      visited.push(bubbleId);
+      if (!message.pending) visited.push(bubbleId);
       messages.push({ id: bubbleId, at: bubble.createdAt || null, ...message });
     }
 
@@ -158,6 +217,8 @@ export class ThreadWatcher extends EventEmitter {
     this.idleMs = idleMs;
     this.busyMs = busyMs;
     this.seen = new Set();
+    /** bubbleId -> what we last said about it, for calls read more than once */
+    this.echoed = new Map();
     this.running = false;
     this.title = null;
     this.timer = null;
@@ -202,7 +263,18 @@ export class ThreadWatcher extends EventEmitter {
 
     if (state) {
       for (const id of state.visited) this.seen.add(id);
-      for (const message of state.messages) this.emit('message', message);
+      for (const message of state.messages) {
+        // An unfinished call is read again every pass. Say something only when
+        // there is something new to say.
+        if (message.pending) {
+          const print = `${message.status}:${message.output?.length || 0}`;
+          if (this.echoed.get(message.id) === print) continue;
+          this.echoed.set(message.id, print);
+        } else {
+          this.echoed.delete(message.id);
+        }
+        this.emit('message', message);
+      }
 
       if (state.title && state.title !== this.title) {
         this.title = state.title;

@@ -200,12 +200,15 @@ const OPS = {
     }
   },
 
-  async prompt(_ws, state, msg) {
+  async prompt(ws, state, msg) {
     const id = msg.sessionId || state.sessionId;
     // Deliberately not awaited: the turn streams over the socket, and the
     // caller should not be blocked for its whole duration.
     sessions.prompt(id, { text: msg.text, images: msg.images || [] }).catch((err) => {
       console.error(`[prompt] ${err.message}`);
+      // Whoever typed it is owed the reason. This used to be logged and
+      // nowhere else, so a refused message just vanished from the screen.
+      send(ws, { type: 'error', message: err.message });
     });
   },
 
@@ -625,7 +628,10 @@ function keepBridgeEnabled() {
     }
   };
   tick();
-  setInterval(tick, 60_000).unref();
+  // Often, because the only moment that matters is the one Cursor happens to
+  // start in: whatever the flag says then is what that window believes for the
+  // rest of its life. A minute of being wrong was a whole day without a bridge.
+  setInterval(tick, 15_000).unref();
 }
 
 server.listen(PORT, HOST, () => {
@@ -636,6 +642,8 @@ server.listen(PORT, HOST, () => {
   // them back up: a reply typed into Cursor should still reach the phone.
   const watching = sessions.watchDesktopThreads();
   if (watching) console.log(`[auto] following ${watching} desktop thread(s)`);
+  const waiting = sessions.resumeDesktopOutbox();
+  if (waiting) console.log(`[auto] ${waiting} message(s) still waiting for the desktop`);
   // Pick up sessions started outside Auto. Costs one short-lived agent
   // process, so do it once at boot rather than on every attach.
   sessions

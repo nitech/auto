@@ -382,6 +382,15 @@ function renderToolCall(rec) {
   card.dataset.contentCount = String((rec.content || []).length);
   if (rec.toolCallId) state.toolCards.set(rec.toolCallId, card);
   add(card);
+
+  // Replayed history arrives already finished, so the card is drawn once with
+  // everything on it rather than growing as it did the first time.
+  const failed = rec.status === 'failed';
+  if (rec.status === 'completed' || failed) {
+    card.classList.add(failed ? 'failed' : 'done');
+    card.querySelector('.state').textContent = failed ? 'failed' : 'done';
+  }
+  appendOutput(card, rec.rawOutput, failed);
 }
 
 function renderToolUpdate(rec) {
@@ -412,7 +421,13 @@ function renderToolUpdate(rec) {
     scrollDown(stickForContent);
   }
 
+  appendOutput(card, out, failed);
+}
+
+/** Put what a tool printed under its card. */
+function appendOutput(card, out, failed) {
   if (!out) return;
+  const body = card.querySelector('.body');
 
   let text = '';
   if (typeof out === 'object') {
