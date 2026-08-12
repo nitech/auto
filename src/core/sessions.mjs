@@ -871,7 +871,9 @@ export class SessionManager extends EventEmitter {
     this.#expectEcho(id, text);
 
     const typed = await this.cursor
-      .sendText({ threadId: meta.desktopThreadId, text })
+      // A chat in a background tab is still this chat: bring it forward rather
+      // than making someone open it in Cursor before their message will go.
+      .sendText({ threadId: meta.desktopThreadId, text, bringForward: true })
       .catch((err) => ({ status: 'error', reason: err.message }));
     if (typed.status === 'submitted') {
       this.emit('log', `typed a message into Cursor's window for "${meta.title}"`);

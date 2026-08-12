@@ -42,7 +42,7 @@ import {
   samePath,
   showThread,
 } from './cursor-dom.mjs';
-import { threadOwning } from './desktop-threads.mjs';
+import { readThread, threadOwning } from './desktop-threads.mjs';
 
 export const DEFAULT_PORT = Number(process.env.CURSOR_CDP_PORT || 9222);
 
@@ -271,13 +271,19 @@ export class CursorCdp {
    * @param {(target: object) => Promise<CursorWindow>} [opts.openWindow]  for tests
    * @param {(bubbleIds: string[]) => string|null} [opts.owner]  which thread
    *   owns these messages, when a window will not say which chat it shows
+   * @param {(threadId: string) => boolean} [opts.isGenerating]  whether a turn
+   *   is in flight, from the desktop's own records
    * @param {number} [opts.settleMs]
    */
-  constructor({ port = DEFAULT_PORT, listTargets, openWindow, owner, settleMs } = {}) {
+  constructor({ port = DEFAULT_PORT, listTargets, openWindow, owner, isGenerating, settleMs } = {}) {
     this.port = port;
     this.listTargets = listTargets || (() => defaultTargets(port));
     this.openWindow = openWindow || ((target) => CursorWindow.open(target));
     this.owner = owner || ((ids) => threadOwning(ids));
+    // The window shows whether a turn is running, but the desktop's database
+    // says so outright, and it was right when the window was wrong.
+    this.isGenerating =
+      isGenerating || ((threadId) => Boolean(readThread(threadId, { tail: 0 })?.generating));
     this.settleMs = settleMs ?? SUBMIT_SETTLE_MS;
   }
 
@@ -380,15 +386,31 @@ export class CursorCdp {
   /**
    * Put a message into a chat, as if it had been typed there.
    *
+   * With `bringForward`, a chat sitting in a background tab is brought to the
+   * front first. Without it, only the chat already on screen can be written to.
+   * Someone part-way through typing in the window keeps it either way: their
+   * unsent words are reason enough to leave the window alone.
+   *
    * @param {object} opts
    * @param {string} opts.threadId  the desktop chat this must land in
    * @param {string} opts.text
+   * @param {boolean} [opts.bringForward]
    * @returns {Promise<{ status: 'submitted'|'unknown-thread'|'not-sendable'|'no-cdp'|'error',
    *   reason?: string, title?: string }>} `submitted` and only `submitted`
    *   means Cursor has it
    */
-  async sendText({ threadId, text }) {
+  async sendText({ threadId, text, bringForward = false }) {
     if (!String(text || '').trim()) return { status: 'error', reason: 'nothing to send' };
+
+    const typed = await this.#withThread(threadId, (window, facts) =>
+      this.#typeInto(window, facts, text),
+    );
+    if (!bringForward || typed.status !== 'unknown-thread') return typed;
+
+    const shown = await this.showThread({ threadId });
+    if (shown.status !== 'shown') {
+      return shown.status === 'no-tab' ? typed : { status: 'not-sendable', reason: shown.reason };
+    }
     return this.#withThread(threadId, (window, facts) => this.#typeInto(window, facts, text));
   }
 
@@ -406,7 +428,7 @@ export class CursorCdp {
       const named = (c) => c.label || c.text;
       return {
         status: 'ok',
-        generating,
+        generating: generating || this.#running(threadId),
         asking: controls.filter(
           (c) => !c.disabled && isApproval(named(c)) && !/^stop\b/i.test(named(c)),
         ),
@@ -447,6 +469,11 @@ export class CursorCdp {
         const facts = await window.facts();
         if (this.#threadOf(facts) === threadId) {
           return { status: 'showing', title: facts.title };
+        }
+        // Switching a window away from a half-written message would hide it.
+        if (facts.composerText) {
+          lastReason = 'there is unsent text in that window';
+          continue;
         }
         if (!(await window.showThread(threadId))) continue;
 
@@ -505,16 +532,18 @@ export class CursorCdp {
   async stop({ threadId }) {
     return this.#withThread(threadId, async (window, facts) => {
       const before = await window.actions();
-      if (!before.generating) return { status: 'not-running', title: facts.title };
+      if (!before.generating && !this.#running(threadId)) {
+        return { status: 'not-running', title: facts.title };
+      }
 
       if (facts.hasComposer) await window.focusComposer();
       await window.stopTurn();
-      if (await this.#stopped(window)) {
+      if (await this.#stopped(window, threadId)) {
         return { status: 'stopped', how: 'keyboard', title: facts.title };
       }
 
       await window.clickStopIcon();
-      if (await this.#stopped(window)) {
+      if (await this.#stopped(window, threadId)) {
         return { status: 'stopped', how: 'button', title: facts.title };
       }
 
@@ -522,11 +551,21 @@ export class CursorCdp {
     });
   }
 
-  async #stopped(window) {
+  /** Does the desktop's own record say a turn is in flight? */
+  #running(threadId) {
+    try {
+      return Boolean(this.isGenerating(threadId));
+    } catch {
+      return false;
+    }
+  }
+
+  /** Stopped means both the window and the desktop's record say so. */
+  async #stopped(window, threadId) {
     for (let look = 0; look < STOP_LOOKS; look += 1) {
       await wait(this.settleMs);
       const { generating } = await window.actions();
-      if (!generating) return true;
+      if (!generating && !this.#running(threadId)) return true;
     }
     return false;
   }

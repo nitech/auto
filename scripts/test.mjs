@@ -199,6 +199,11 @@ if (existsSync(SRC)) {
         this.pressed.push(named(target));
         return { clicked: true, name: named(target), where: target.where, of: matches.length };
       }
+      async showThread(id) {
+        if (!(this.given.tabs || []).includes(id)) return false;
+        this.given = { ...this.given, threadId: id };
+        return true;
+      }
       async stopTurn() {
         this.pressed.push('«keyboard»');
         if (this.stopsOn === 'keyboard') this.generating = false;
@@ -234,13 +239,17 @@ if (existsSync(SRC)) {
     const OTHER = '4e9abaeb-7716-4f4d-a976-18ec10061759';
     const target = (id) => ({ id, type: 'page', url: `file:///workbench.html?${id}`, title: id });
 
-    /** A machine with these windows open, and nothing else. */
-    const machine = (windows, { owner } = {}) =>
+    /**
+     * A machine with these windows open, and nothing else. The desktop's
+     * database is not consulted unless a test says what it would answer.
+     */
+    const machine = (windows, { owner, isGenerating } = {}) =>
       new CursorCdp({
         settleMs: 1,
         listTargets: async () => Object.keys(windows).map(target),
         openWindow: async (t) => windows[t.id],
         owner: owner || (() => null),
+        isGenerating: isGenerating || (() => false),
       });
 
     // The message goes into the window showing that chat, and no other.
@@ -291,6 +300,34 @@ if (existsSync(SRC)) {
     });
     if (result.status !== 'submitted') fail(`cdp send should identify a chat by its messages: ${result.status}`);
     if (quiet.sent !== 'by bubble') fail('cdp send should type after identifying by messages');
+
+    // A chat in a background tab: brought forward, then written to. Only when
+    // asked, and never over someone's half-written message.
+    const background = new FakeWindow({ threadId: OTHER, hasComposer: true, tabs: [OTHER, THREAD] });
+    result = await machine({ background }).sendText({ threadId: THREAD, text: 'from a tab', bringForward: true });
+    if (result.status !== 'submitted') fail(`a chat in a tab should be reachable: ${JSON.stringify(result)}`);
+    if (background.sent !== 'from a tab') fail('bringing a chat forward should then type into it');
+
+    const untouched = new FakeWindow({ threadId: OTHER, hasComposer: true, tabs: [OTHER, THREAD] });
+    if ((await machine({ untouched }).sendText({ threadId: THREAD, text: 'x' })).status !== 'unknown-thread') {
+      fail('a background chat should stay in the background unless asked for');
+    }
+    if (untouched.given.threadId !== OTHER) fail('an unasked-for switch must not happen');
+
+    const writing = new FakeWindow({
+      threadId: OTHER,
+      hasComposer: true,
+      composerText: 'mid-sentence',
+      tabs: [OTHER, THREAD],
+    });
+    result = await machine({ writing }).sendText({ threadId: THREAD, text: 'x', bringForward: true });
+    if (result.status === 'submitted') fail('a window with unsent text must not be switched away');
+    if (writing.box !== 'mid-sentence') fail(`unsent text was disturbed: "${writing.box}"`);
+
+    const noTab = new FakeWindow({ threadId: OTHER, hasComposer: true, tabs: [OTHER] });
+    if ((await machine({ noTab }).sendText({ threadId: THREAD, text: 'x', bringForward: true })).status !== 'unknown-thread') {
+      fail('a chat with no tab anywhere is still unknown-thread');
+    }
 
     const nameless = new FakeWindow({ threadId: null, hasComposer: true, rows: [{ id: 'b1' }] });
     if ((await machine({ nameless }).sendText({ threadId: THREAD, text: 'x' })).status !== 'unknown-thread') {
@@ -352,6 +389,32 @@ if (existsSync(SRC)) {
       fail('stopping an idle chat should say there is nothing to stop');
     }
     if (idle.pressed.length) fail('stopping an idle chat must press nothing');
+
+    // The window's own idea of "running" is not the last word. A chat that has
+    // edited no files shows no Stop, and looked idle while it was working — so
+    // the desktop's record can start a stop, and has to agree it finished.
+    const quietlyBusy = new FakeWindow({ threadId: THREAD, hasComposer: true }, { generating: false });
+    let dbRunning = true;
+    stopped = await machine(
+      { quietlyBusy },
+      {
+        isGenerating: () => {
+          // Stops when the keystroke arrives, as the desktop would record it.
+          if (quietlyBusy.pressed.includes('«keyboard»')) dbRunning = false;
+          return dbRunning;
+        },
+      },
+    ).stop({ threadId: THREAD });
+    if (stopped.status !== 'stopped') {
+      fail(`a turn the window does not show should still be stoppable: ${JSON.stringify(stopped)}`);
+    }
+
+    // And the window saying "stopped" is not enough while the record disagrees.
+    const lying = new FakeWindow({ threadId: THREAD, hasComposer: true }, { generating: true });
+    stopped = await machine({ lying }, { isGenerating: () => true }).stop({ threadId: THREAD });
+    if (stopped.status !== 'still-running') {
+      fail(`a turn the desktop still records must not be called stopped: ${stopped.status}`);
+    }
     if ((await machine({ theirs }).stop({ threadId: THREAD })).status !== 'unknown-thread') {
       fail('stop must not reach into a chat it cannot see');
     }

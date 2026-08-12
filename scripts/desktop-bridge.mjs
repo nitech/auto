@@ -125,6 +125,15 @@ async function windowStatus() {
         `${w.threadId ? `chat ${w.threadId}` : 'no chat id on screen'}, ` +
         `box ${w.hasComposer ? 'ready' : 'missing'}`,
     );
+
+    if (!w.threadId) continue;
+    const state = await cursor.waitingOn({ threadId: w.threadId });
+    if (state.status !== 'ok') continue;
+    const asking = (state.asking || []).map((c) => c.label || c.text);
+    console.log(
+      `      turn ${state.generating ? 'running' : 'idle'}` +
+        (asking.length ? `, waiting on: ${asking.join(' / ')}` : ''),
+    );
   }
   return true;
 }

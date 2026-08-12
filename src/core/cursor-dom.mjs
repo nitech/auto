@@ -249,8 +249,13 @@ export const ACTIONS = `(() => {
 ${HELPERS}
 ${PRESSABLE}
   const found = __pressable();
+  // Two signs of a turn in flight, because the obvious one is not general: the
+  // word "Stop" belongs to the bar offering to review file changes, so a chat
+  // that has edited nothing never shows it. The stop icon beside the chat box
+  // is always there while the agent works.
+  const stopIcon = ${list(SELECTORS.stopIcon)}.some((s) => __pane().querySelector(s));
   return {
-    generating: found.some((c) => /^stop\\b/i.test(__named(c))),
+    generating: stopIcon || found.some((c) => /^stop\\b/i.test(__named(c))),
     controls: found.map(({ label, text, where, disabled }) => ({ label, text, where, disabled })),
   };
 })()`;
