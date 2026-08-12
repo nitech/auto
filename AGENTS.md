@@ -63,6 +63,12 @@ Do not skip the commit — uncommitted fixes are invisible to anyone
 restarting later, which has silently lost fixes before. Do not skip the
 push either; an unpushed commit exists only on this machine.
 
+**Testing a send goes to a scratch chat, not this one.** A message delivered
+into the session you are working in becomes a prompt: it interrupts the turn
+mid-thought, and every copy costs another one. Proving delivery cost five
+turns of "no reply needed" once. Attach a throwaway desktop chat and send
+there, or check the transcript records rather than sending at all.
+
 ## Restarting
 
 The `AutoSupervise` scheduled task runs `scripts/supervise.mjs`, which keeps
