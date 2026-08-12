@@ -85,7 +85,9 @@ value as setup documentation is fine.
 - **Telegram says what is running; the web says what it printed.** Command
   output goes to the web transcript, which has room to scroll and rewrites in
   place. Telegram gets the command line and, for a failure, the exit code —
-  quoting a build log there buries the reply it came with.
+  quoting a build log there buries the reply it came with. A card folded up is
+  still expected to show the last lines it printed and its exit code: output
+  that needs a tap to find reads as a chat where nothing printed anything.
 - **The file-review bar is not a question.** "Keep All" and "Undo All" sit there
   for as long as a chat has unreviewed edits, and offering them as approvals
   meant offering to throw work away by accident. They are excluded from the
