@@ -434,6 +434,9 @@ function renderToolUpdate(rec) {
   const failed =
     rec.status === 'failed' || (out && typeof out === 'object' && out.exitCode > 0);
 
+  // A name that only turns up once the call is under way, as an MCP call's does.
+  if (rec.title) card.querySelector('.label').textContent = rec.title;
+
   if (rec.status === 'completed' || rec.status === 'failed' || rec.status === 'cancelled') {
     card.classList.remove('running');
     card.classList.add(failed ? 'failed' : 'done');

@@ -820,18 +820,27 @@ export class SessionManager extends EventEmitter {
       // end up as two unrelated things on the screen.
       const runtime = this.live.get(id) || {};
       runtime.toolsDrawn = runtime.toolsDrawn || new Set();
+      runtime.toolNames = runtime.toolNames || new Map();
       this.live.set(id, runtime);
 
       if (runtime.toolsDrawn.has(message.id)) {
+        // Cursor writes an MCP call before it knows what it is calling, so the
+        // card was drawn as "mcp--" and stayed that way for good. If the name
+        // has arrived since, send it along with the update.
+        const better =
+          message.name && message.name !== runtime.toolNames.get(message.id) ? message.name : null;
+        if (better) runtime.toolNames.set(message.id, better);
         this.#record(id, KIND.toolUpdate, {
           toolCallId: message.id,
           status: message.status || 'completed',
           rawOutput: desktopOutput(message),
+          ...(better ? { title: better } : {}),
         });
         return;
       }
 
       runtime.toolsDrawn.add(message.id);
+      runtime.toolNames.set(message.id, message.name);
       this.#record(id, KIND.toolCall, {
         toolCallId: message.id,
         title: message.name,

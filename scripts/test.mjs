@@ -1232,6 +1232,25 @@ if (existsSync(SRC)) {
       fail('a tool with no command keeps its name');
       failed = true;
     }
+
+    // Cursor writes an MCP call before it knows what it is calling.
+    const { toolName } = await import('../src/core/desktop-threads.mjs');
+    if (toolName({ name: 'mcp--' }) !== 'tool') {
+      fail(`a call Cursor has not named yet should not be labelled "mcp--": ${toolName({ name: 'mcp--' })}`);
+      failed = true;
+    }
+    if (toolName({ name: 'mcp-cursor-ide-browser-browser_cdp' }) !== 'cursor-ide-browser: browser_cdp') {
+      fail(`an MCP call should read as server and tool: ${toolName({ name: 'mcp-cursor-ide-browser-browser_cdp' })}`);
+      failed = true;
+    }
+    if (toolName({ name: 'run_terminal_cmd' }) !== 'run_terminal_cmd') {
+      fail('an ordinary tool keeps the name Cursor gave it');
+      failed = true;
+    }
+    if (toolName({}) !== 'tool') {
+      fail('a nameless call still needs a label');
+      failed = true;
+    }
     const long = toolLabel({ rawInput: { command: `echo ${'x'.repeat(200)}` } });
     if (long.length > 70 || !long.endsWith('…')) {
       fail(`a long command should be cut down for a phone: ${long.length} chars`);

@@ -113,6 +113,27 @@ function toolDetail(tool) {
 }
 
 /**
+ * What to call a tool call.
+ *
+ * Cursor names an MCP call `mcp-<server>-<tool>`, but writes the bubble the
+ * moment the call starts — when both halves are still empty and the name reads
+ * "mcp--". Sixteen cards in one conversation said that and nothing else. The
+ * server and tool are worth separating too: "cursor-ide-browser: browser_cdp"
+ * is a thing a person can read on a phone.
+ */
+export function toolName(tool) {
+  const raw = String(tool?.name || tool?.tool || '').trim();
+  if (!raw) return 'tool';
+  const mcp = raw.match(/^mcp-(.*)$/);
+  if (!mcp) return raw;
+  const rest = mcp[1].replace(/^-+|-+$/g, '');
+  if (!rest) return 'tool';
+  // The tool's own name is the last part; everything before it is the server.
+  const cut = rest.lastIndexOf('-');
+  return cut > 0 ? `${rest.slice(0, cut)}: ${rest.slice(cut + 1)}` : rest;
+}
+
+/**
  * How a tool call went, in the words the rest of Auto uses.
  *
  * Cursor's own marks cannot answer this alone. `status` sits at "loading" while
@@ -149,7 +170,10 @@ function messageOf(bubble, { generating = false } = {}) {
     return {
       role,
       kind: 'tool',
-      name: tool.name || tool.tool || 'tool',
+      // An MCP call is written before Cursor knows what it is calling, and it
+      // writes "mcp--" in the meantime. Say nothing rather than that; the name
+      // arrives with a later write.
+      name: toolName(tool),
       status,
       input: detail.input,
       output: detail.output,

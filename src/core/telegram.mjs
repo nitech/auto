@@ -727,6 +727,8 @@ export class TelegramBridge extends EventEmitter {
 
       case 'tool_update': {
         const tool = turn.tools.get(rec.toolCallId);
+        // An MCP call is named only once it is under way; take the name late.
+        if (tool && rec.title) tool.label = toolLabel(rec);
         if (tool && rec.status) {
           tool.status = rec.status;
           // A command that broke is the one thing worth quoting on a phone.
