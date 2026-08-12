@@ -37,7 +37,7 @@ off — a bot token allows only one poller).
 | | |
 | --- | --- |
 | **Projects** | The folders Cursor itself knows: what is open in a window right now, then everything it remembers. Sessions are grouped under them, and you can start work in any of them from the phone. |
-| **Desktop chats** | Chats you started in the Cursor app, listed per project and continued here — the agent picks up with the full conversation. Continuing copies the chat, so it and the desktop go their separate ways from that point. |
+| **Desktop chats** | Chats you started in the Cursor app, listed per project and carried on here — the same chat, not a copy. Send from the phone and it appears in the IDE's thread; reply in the IDE and it appears on the phone. Needs the bridge (`npm run bridge:enable`, Cursor closed). |
 | **Sessions** | Many at once, each with its own folder, agent process and transcript. They persist across restarts and resume where they left off. Sessions started outside Auto — from a terminal, say — are adopted at boot and resume too. |
 | **Full fidelity** | Everything the agent emits is recorded and rendered. Nothing is summarised or truncated. |
 | **Approvals** | Auto-approve by default (`AUTO_POLICY` in `.env`); switch a session to ask-before-writes or ask-every-time and that choice sticks. Answer from web or Telegram. |
@@ -68,7 +68,9 @@ the `auth.json` the telegram-notify skill writes. Copy `.env.example` to
 | `src/acp/` | JSON-RPC client for the agent's ACP mode |
 | `src/core/sessions.mjs` | Session lifecycle, registry, resume |
 | `src/core/projects.mjs` | The machine's projects, read from Cursor's own state |
-| `src/core/desktop-chats.mjs` | Listing and continuing chats from the Cursor app |
+| `src/core/desktop-chats.mjs` | Listing the Cursor app's own chats, per project |
+| `src/core/desktop-bridge.mjs` | Sending into a live desktop thread |
+| `src/core/desktop-threads.mjs` | Following a desktop thread's replies |
 | `src/core/transcript.mjs` | Append-only JSONL transcripts with replay |
 | `src/core/permissions.mjs` | Approval broker and policies |
 | `src/core/terminals.mjs` | PTY registry, for the agent and for you |

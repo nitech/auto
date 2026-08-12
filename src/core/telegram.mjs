@@ -323,7 +323,7 @@ export class TelegramBridge extends EventEmitter {
         }
         return this.send(
           `<b>Desktop chats</b> — <code>${esc(folder)}</code>\n` +
-            'Pick one to continue it here.\n' +
+            'Pick one to carry on here — the same chat Cursor has.\n' +
             chats
               .map(
                 (c) =>

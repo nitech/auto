@@ -585,7 +585,8 @@ function renderRail() {
 
 /**
  * Chats you had in the desktop app. They are not Auto's, so they only load
- * when you ask for them — and continuing one copies it into a session here.
+ * when you ask for them; opening one gives you a session pointing at the
+ * IDE's own thread, which both ends then share.
  */
 function desktopChatsBlock(project) {
   if (!project.desktopChats || !project.path) return null;

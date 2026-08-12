@@ -597,6 +597,10 @@ export class SessionManager extends EventEmitter {
     this.live.set(id, { ...(existing || {}), watcher });
 
     watcher.on('message', (message) => {
+      // Our own message comes back to us: it was written into the transcript
+      // when we sent it, and the desktop stores it as a bubble like any
+      // other. Show it once.
+      if (message.role === 'user' && this.#consumeEcho(id, message.text)) return;
       this.#recordDesktopMessage(id, message);
     });
     watcher.on('running', (running) => {
@@ -632,9 +636,36 @@ export class SessionManager extends EventEmitter {
     return watched;
   }
 
+  /**
+   * Remember a message we just sent, so the copy the desktop stores of it
+   * does not show up as a second one. Unmatched entries expire: a duplicate
+   * is a smaller sin than swallowing something you typed later.
+   */
+  #expectEcho(id, text) {
+    const runtime = this.live.get(id) || {};
+    const now = Date.now();
+    runtime.echoes = [...(runtime.echoes || []), { text: String(text).trim(), at: now }].filter(
+      (e) => now - e.at < 120_000,
+    );
+    this.live.set(id, runtime);
+  }
+
+  #consumeEcho(id, text) {
+    const runtime = this.live.get(id);
+    if (!runtime?.echoes?.length) return false;
+    const at = runtime.echoes.findIndex((e) => e.text === String(text).trim());
+    if (at < 0) return false;
+    runtime.echoes.splice(at, 1);
+    return true;
+  }
+
   /** Send to a desktop thread and let the watcher report what comes back. */
   async #promptDesktop(id, meta, text) {
     this.#record(id, KIND.userMessage, { text });
+    // Claim the echo before sending: the watcher may see the bubble the
+    // moment the desktop writes it.
+    this.#expectEcho(id, text);
+
     const result = await sendMessage({ threadId: meta.desktopThreadId, text }).catch((err) => ({
       status: 'error',
       message: err.message,

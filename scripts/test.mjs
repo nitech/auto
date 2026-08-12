@@ -617,30 +617,38 @@ if (existsSync(SRC)) {
       // The watcher must report a new bubble and the end of the turn.
       const watcher = new threads.ThreadWatcher(thread, { idleMs: 40, busyMs: 40 });
       watcher.markSeen(read.visited);
-      const seenMessages = [];
-      const running = [];
-      watcher.on('message', (m) => seenMessages.push(m.text));
-      watcher.on('running', (r) => running.push(r));
+      const events = [];
+      watcher.on('message', (m) => events.push(`message:${m.text}`));
+      watcher.on('running', (r) => events.push(`running:${r}`));
       watcher.start();
 
       await new Promise((r) => setTimeout(r, 120));
-      bubbles.push({ bubbleId: 'b6', type: 2, text: 'a new reply' });
+      // A turn in flight, then the shape that used to trip us up: the desktop
+      // clears the generation id while the reply's bubble is still empty, and
+      // fills it in a moment later. The end of the turn must not be announced
+      // before the answer it belongs to.
+      bubbles.push({ bubbleId: 'b6', type: 2, text: '' });
       put.run(`bubbleId:${thread}:b6`, JSON.stringify(bubbles.at(-1)));
       composer({ chatGenerationUUID: 'abc' });
       await new Promise((r) => setTimeout(r, 150));
       composer();
-      await new Promise((r) => setTimeout(r, 150));
+      await new Promise((r) => setTimeout(r, 45));
+      put.run(`bubbleId:${thread}:b6`, JSON.stringify({ bubbleId: 'b6', type: 2, text: 'a new reply' }));
+      await new Promise((r) => setTimeout(r, 250));
       watcher.stop();
       store.close();
 
-      if (!seenMessages.includes('a new reply')) {
-        fail(`the watcher should report new messages, saw ${JSON.stringify(seenMessages)}`);
+      if (!events.includes('message:a new reply')) {
+        fail(`the watcher should report new messages, saw ${JSON.stringify(events)}`);
       }
-      if (seenMessages.includes('hello from the IDE')) {
+      if (events.includes('message:hello from the IDE')) {
         fail('the watcher should not repeat bubbles it was told about');
       }
-      if (!(running[0] === true && running.at(-1) === false)) {
-        fail(`the watcher should see a turn start and end, saw ${JSON.stringify(running)}`);
+      if (events[0] !== 'running:true' || events.at(-1) !== 'running:false') {
+        fail(`the watcher should see a turn start and end, saw ${JSON.stringify(events)}`);
+      }
+      if (events.indexOf('message:a new reply') > events.lastIndexOf('running:false')) {
+        fail(`the turn ended before its reply arrived: ${JSON.stringify(events)}`);
       }
 
       if (!failed) ok('v2 core: desktop thread read, filtered, and followed');

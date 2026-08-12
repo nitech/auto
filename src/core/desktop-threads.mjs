@@ -162,6 +162,7 @@ export class ThreadWatcher extends EventEmitter {
     this.title = null;
     this.timer = null;
     this.stopped = true;
+    this.settling = false;
   }
 
   /** Treat these bubbles as already dealt with. */
@@ -207,9 +208,26 @@ export class ThreadWatcher extends EventEmitter {
         this.title = state.title;
         this.emit('title', state.title);
       }
-      if (state.generating !== this.running) {
-        this.running = state.generating;
-        this.emit('running', this.running);
+
+      if (state.generating && !this.running) {
+        this.running = true;
+        this.settling = false;
+        this.emit('running', true);
+      } else if (!state.generating && this.running) {
+        // The desktop clears the generation id before the last message is
+        // written, so calling the turn over now would put the end of it
+        // above the answer. Look once more first.
+        if (this.settling) {
+          this.settling = false;
+          this.running = false;
+          this.emit('running', false);
+        } else {
+          this.settling = true;
+          this.#schedule(this.busyMs);
+          return;
+        }
+      } else if (state.generating) {
+        this.settling = false;
       }
     }
 
