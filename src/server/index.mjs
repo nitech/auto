@@ -18,6 +18,11 @@ import { BrowserHost } from '../core/browser.mjs';
 import { TelegramBridge } from '../core/telegram.mjs';
 import { listProjects, workspaceIdFor } from '../core/projects.mjs';
 import { desktopChats } from '../core/desktop-chats.mjs';
+import {
+  assertSwitches,
+  gateState,
+  storageAvailable,
+} from '../core/desktop-bridge-gate.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -562,9 +567,37 @@ function announceRestart() {
     .catch(() => {});
 }
 
+/**
+ * Keep Cursor's desktop bridge able to start.
+ *
+ * Cursor wipes the flag that permits local feature-gate overrides whenever it
+ * refreshes its server config, and only reads that flag at startup — so the
+ * bridge works until the next restart and then silently stops. Re-asserting
+ * costs a read, writes only when something was cleared, and means Auto can
+ * still reach the desktop's threads tomorrow. Only worth doing once someone
+ * has turned the bridge on: never enable it behind the user's back.
+ */
+function keepBridgeEnabled() {
+  const tick = () => {
+    try {
+      if (!storageAvailable()) return;
+      const state = gateState();
+      // A gate we never set is not ours to turn on.
+      if (!state.userEnabled) return;
+      const changed = assertSwitches();
+      if (changed.length) console.log(`[bridge] re-asserted ${changed.length} switch(es)`);
+    } catch (err) {
+      console.error(`[bridge] could not check the desktop bridge switches: ${err.message}`);
+    }
+  };
+  tick();
+  setInterval(tick, 60_000).unref();
+}
+
 server.listen(PORT, HOST, () => {
   console.log(`[auto] http://127.0.0.1:${PORT}  (${sessions.list().length} sessions)`);
   announceRestart();
+  keepBridgeEnabled();
   // Pick up sessions started outside Auto. Costs one short-lived agent
   // process, so do it once at boot rather than on every attach.
   sessions

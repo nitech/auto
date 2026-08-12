@@ -13,7 +13,15 @@
  *   3. If the host is running, its health and session API answer.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -514,6 +522,55 @@ if (existsSync(SRC)) {
     }
 
     if (!failed) ok('v2 core: desktop bridge discovery and guards');
+
+    // The switches: setting them must be idempotent, and a snapshot taken
+    // first must restore exactly — including keys that did not exist. Run
+    // against a stand-in database so the real Cursor is never touched.
+    const fakeAppData = join(tmp, 'appdata');
+    const storageDir = join(fakeAppData, 'Cursor', 'User', 'globalStorage');
+    mkdirSync(storageDir, { recursive: true });
+    const { DatabaseSync } = await import('node:sqlite');
+    const seed = new DatabaseSync(join(storageDir, 'state.vscdb'));
+    seed.exec('CREATE TABLE ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)');
+    seed.prepare('INSERT INTO ItemTable (key, value) VALUES (?, ?)').run(
+      'cursorai/serverConfig',
+      JSON.stringify({ somethingElse: 'must survive' }),
+    );
+    seed.close();
+
+    const realAppData = process.env.APPDATA;
+    process.env.APPDATA = fakeAppData;
+    try {
+      const gate = await import(`../src/core/desktop-bridge-gate.mjs?t=${Date.now()}`);
+      const before = gate.snapshot();
+
+      if (gate.gateState().allOn) fail('a fresh install should not look enabled');
+      const first = gate.assertSwitches();
+      if (first.length !== 4) fail(`enabling should set four switches, set ${first.length}`);
+      if (!gate.gateState().allOn) fail('all four switches should read as on afterwards');
+      if (gate.assertSwitches().length) fail('asserting twice should change nothing');
+
+      gate.restoreSwitches(before);
+      const after = gate.gateState();
+      if (after.allOn || after.override || after.devEligible || after.userEnabled) {
+        fail(`restoring should undo every switch, got ${JSON.stringify(after)}`);
+      }
+
+      // Unrelated settings inside the shared config blob must come back intact.
+      const check = new DatabaseSync(join(storageDir, 'state.vscdb'), { readOnly: true });
+      const config = JSON.parse(
+        String(check.prepare('SELECT value FROM ItemTable WHERE key = ?').get('cursorai/serverConfig').value),
+      );
+      check.close();
+      if (config.somethingElse !== 'must survive') {
+        fail('restoring the switches must not disturb the rest of the server config');
+      }
+
+      if (!failed) ok('v2 core: desktop bridge switches set once, undo cleanly');
+    } finally {
+      if (realAppData === undefined) delete process.env.APPDATA;
+      else process.env.APPDATA = realAppData;
+    }
   } catch (e) {
     fail(`v2 desktop bridge: ${e.message}`);
   } finally {
