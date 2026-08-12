@@ -42,6 +42,27 @@ value as setup documentation is fine.
   bridge can shut itself mid-session. So Cursor wants starting with
   `--remote-debugging-port=9222` — `node scripts/desktop-bridge.mjs status`
   says whether it was.
+- **The window can be pressed, not just typed into.** Over the same port Auto
+  stops a turn, brings a chat in a background tab to the front, and presses a
+  control by the words on it. Every one of those first proves the window is
+  showing the chat it was asked about, so acting on the wrong conversation is
+  not possible; `force` exists only for putting a window back where it was.
+  Controls are found by what they say, never by class name — Cursor's are
+  generated — and what a conversation says is excluded, or a message beginning
+  "Run this…" reads as a Run button. It did once.
+- **Cursor's own approvals go to the phone.** While a desktop turn runs, Auto
+  watches the window for controls whose words mean it is waiting for a person,
+  parks them in the same broker as an agent's own permission requests, and
+  presses whichever option comes back — withdrawing the question if it gets
+  answered in the IDE first. Never proven in the wild: with Cursor set to run
+  everything automatically it never asks, so the vocabulary in `cursor-dom.mjs`
+  has not met a real prompt. Treat the first sighting as a chance to learn the
+  words Cursor actually uses.
+- **Whether a turn is running comes from the database.** The window is a poor
+  witness: the word "Stop" belongs to the bar offering to review file changes,
+  so a chat that edited nothing looks idle while it works. Stopping is confirmed
+  by both. Stopping also hands the message back into the chat box, which Auto
+  clears and reports — left there it blocks the next message from a phone.
 - **Live-only by exception.** Browser frames are the sole thing deliberately
   never recorded; a video stream is not worth replaying.
 - **The web and Telegram are projections.** Neither owns state. Anything one
