@@ -467,6 +467,11 @@ if (existsSync(SRC)) {
     if (isApproval('Copy message') || isApproval('Ran command') || isApproval('Review')) {
       fail('approval vocabulary should not catch ordinary controls');
     }
+    // A message that begins with "Run…" is a message. Auto asked to approve one
+    // of these before the length test existed.
+    if (isApproval('Run exactly this command and wait for it: powershell -NoProfile')) {
+      fail('a sentence starting with Run is not a button');
+    }
 
     if (!failed) ok('v2 core: Auto can stop a Cursor turn and press what Cursor asks');
   } catch (e) {

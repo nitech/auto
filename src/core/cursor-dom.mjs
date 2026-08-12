@@ -33,6 +33,20 @@ export const SELECTORS = {
   stopIcon: ['span.codicon-debug-stop', '[aria-label="Stop"]'],
   /** A chat's tab, which names the chat it belongs to. */
   tab: [{ selector: '[data-resource-name]', attribute: 'data-resource-name' }],
+  /**
+   * Things that look pressable and are not controls.
+   *
+   * Cursor styles message text with a pointer cursor, so a message that happens
+   * to begin "Run this command…" reads exactly like a Run button. One did, and
+   * Auto asked to approve it — so the words in a conversation are ruled out
+   * before anything is read as a control.
+   */
+  notControls: [
+    '.composer-human-message',
+    '.aislash-editor-input-readonly',
+    '.ui-markdown',
+    '.ui-shell-tool-call__output',
+  ],
 };
 
 /**
@@ -55,9 +69,13 @@ export const STOP_TURN_KEY = { key: 'Backspace', code: 'Backspace', keyCode: 8, 
 const APPROVAL_WORDS =
   /^(run|run command|run anyway|accept|accept all|apply|allow|allow once|always allow|approve|reject|reject all|deny|skip|cancel|continue|resume|keep|undo|move on|yes|no)\b/i;
 
+/** Past this many characters it is a sentence, not a button. */
+const APPROVAL_MAX = 24;
+
 /** Does this control look like an answer to a question Cursor is asking? */
 export function isApproval(label) {
-  return APPROVAL_WORDS.test(String(label || '').trim());
+  const name = String(label || '').trim();
+  return name.length <= APPROVAL_MAX && APPROVAL_WORDS.test(name);
 }
 
 const list = (names) => JSON.stringify(names);
@@ -208,6 +226,8 @@ const PRESSABLE = `
         if (getComputedStyle(el).cursor !== 'pointer') continue;
         if (el.querySelector("button, [role='button']")) continue;
       }
+      // What a conversation says is not something to press.
+      if (el.closest(${JSON.stringify(SELECTORS.notControls.join(', '))})) continue;
       candidates.push({ el, rect });
     }
 
