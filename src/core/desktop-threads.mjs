@@ -25,6 +25,14 @@ const IDE_DB = join(APPDATA, 'Cursor', 'User', 'globalStorage', 'state.vscdb');
 
 const BUBBLE_USER = 1;
 
+/**
+ * How many more times to look after a turn's generation id disappears, before
+ * accepting that the turn really is over. Four polls is a couple of seconds in
+ * practice: long enough for the desktop to finish writing its last message,
+ * short enough that nobody notices the turn ending late.
+ */
+const SETTLE_LOOKS = 4;
+
 function withDb(fn) {
   if (!existsSync(IDE_DB)) return null;
   const db = new DatabaseSync(IDE_DB, { readOnly: true });
@@ -223,7 +231,7 @@ export class ThreadWatcher extends EventEmitter {
     this.title = null;
     this.timer = null;
     this.stopped = true;
-    this.settling = false;
+    this.settleLooks = 0;
   }
 
   /** Treat these bubbles as already dealt with. */
@@ -263,6 +271,7 @@ export class ThreadWatcher extends EventEmitter {
 
     if (state) {
       for (const id of state.visited) this.seen.add(id);
+      let said = 0;
       for (const message of state.messages) {
         // An unfinished call is read again every pass. Say something only when
         // there is something new to say.
@@ -273,6 +282,7 @@ export class ThreadWatcher extends EventEmitter {
         } else {
           this.echoed.delete(message.id);
         }
+        said += 1;
         this.emit('message', message);
       }
 
@@ -283,23 +293,25 @@ export class ThreadWatcher extends EventEmitter {
 
       if (state.generating && !this.running) {
         this.running = true;
-        this.settling = false;
+        this.settleLooks = SETTLE_LOOKS;
         this.emit('running', true);
       } else if (!state.generating && this.running) {
         // The desktop clears the generation id before the last message is
-        // written, so calling the turn over now would put the end of it
-        // above the answer. Look once more first.
-        if (this.settling) {
-          this.settling = false;
-          this.running = false;
-          this.emit('running', false);
-        } else {
-          this.settling = true;
+        // written, so calling the turn over now would put the end of it above
+        // the answer. Keep looking for a moment: the reply ends the wait as
+        // soon as it lands, and a turn with nothing left to say ends when the
+        // looks run out. One look was not enough — a write a poll or two late
+        // was announced in the wrong order.
+        if (!said && this.settleLooks > 0) {
+          this.settleLooks -= 1;
           this.#schedule(this.busyMs);
           return;
         }
+        this.settleLooks = SETTLE_LOOKS;
+        this.running = false;
+        this.emit('running', false);
       } else if (state.generating) {
-        this.settling = false;
+        this.settleLooks = SETTLE_LOOKS;
       }
     }
 
