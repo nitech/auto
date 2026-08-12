@@ -46,6 +46,24 @@ export const STATUS = {
 const UPSTREAM_ERROR_RE =
   /\b(RetriableError|ConnectError|\[unavailable\]|PING timed out|rate.?limit(ed)?|upstream (error|timeout))\b/i;
 
+/**
+ * A command's output in the shape the views already know how to draw.
+ *
+ * Sent as an object rather than a bare string so the exit code and how long it
+ * took travel with it — a failed command is worth marking as failed on a phone,
+ * and "exit 1" is the whole story more often than the output is.
+ */
+function desktopOutput(message) {
+  if (!message.output && message.exitCode === null && !message.durationMs) return undefined;
+  return {
+    ...(message.output ? { text: message.output } : {}),
+    ...(message.exitCode === null || message.exitCode === undefined
+      ? {}
+      : { exitCode: message.exitCode }),
+    ...(message.durationMs ? { durationMs: message.durationMs } : {}),
+  };
+}
+
 export class SessionManager extends EventEmitter {
   /**
    * @param {object} opts
@@ -658,7 +676,7 @@ export class SessionManager extends EventEmitter {
         this.#record(id, KIND.toolUpdate, {
           toolCallId: message.id,
           status: message.status || 'completed',
-          rawOutput: message.output || undefined,
+          rawOutput: desktopOutput(message),
         });
         return;
       }
@@ -670,7 +688,7 @@ export class SessionManager extends EventEmitter {
         toolKind: message.input?.command ? 'execute' : 'other',
         status: message.status || 'completed',
         rawInput: message.input || undefined,
-        rawOutput: message.output || undefined,
+        rawOutput: desktopOutput(message),
       });
       return;
     }

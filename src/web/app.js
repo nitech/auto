@@ -379,6 +379,11 @@ function renderToolCall(rec) {
     body.appendChild(pre);
   }
   renderContent(body, rec.content, card);
+  // Opening a card by hand means you want it open: it stays that way when the
+  // command finishes, instead of folding itself up under your thumb.
+  card.querySelector('summary').addEventListener('click', () => {
+    card.dataset.opened = '1';
+  });
   card.dataset.contentCount = String((rec.content || []).length);
   if (rec.toolCallId) state.toolCards.set(rec.toolCallId, card);
   add(card);
@@ -389,8 +394,12 @@ function renderToolCall(rec) {
   if (rec.status === 'completed' || failed) {
     card.classList.add(failed ? 'failed' : 'done');
     card.querySelector('.state').textContent = failed ? 'failed' : 'done';
+  } else if (rec.toolKind === 'execute') {
+    // A command that is still going is the one thing worth watching, so its
+    // output is shown as it arrives instead of behind a tap.
+    card.classList.add('running');
   }
-  appendOutput(card, rec.rawOutput, failed);
+  showOutput(card, rec.rawOutput, failed);
 }
 
 function renderToolUpdate(rec) {
@@ -403,9 +412,12 @@ function renderToolUpdate(rec) {
   const failed =
     rec.status === 'failed' || (out && typeof out === 'object' && out.exitCode > 0);
 
-  if (rec.status === 'completed' || rec.status === 'failed') {
+  if (rec.status === 'completed' || rec.status === 'failed' || rec.status === 'cancelled') {
+    card.classList.remove('running');
     card.classList.add(failed ? 'failed' : 'done');
-    stateEl.textContent = failed ? 'failed' : 'done';
+    stateEl.textContent = failed ? 'failed' : rec.status === 'cancelled' ? 'stopped' : 'done';
+    // Finished and fine: fold it away again, unless it was opened by hand.
+    if (!failed && !card.dataset.opened) card.open = false;
   } else if (rec.status) {
     stateEl.textContent = rec.status.replace('_', ' ');
   }
@@ -421,31 +433,51 @@ function renderToolUpdate(rec) {
     scrollDown(stickForContent);
   }
 
-  appendOutput(card, out, failed);
+  showOutput(card, out, failed);
 }
 
-/** Put what a tool printed under its card. */
-function appendOutput(card, out, failed) {
-  if (!out) return;
-  const body = card.querySelector('.body');
+/** What a tool printed, as one lot of text. */
+function outputText(out) {
+  if (!out) return '';
+  if (typeof out !== 'object') return String(out);
 
   let text = '';
-  if (typeof out === 'object') {
-    if (out.stdout) text += out.stdout;
-    if (out.stderr) text += (text ? '\n' : '') + out.stderr;
-    if (!text) text = JSON.stringify(out, null, 2);
-    if (out.exitCode !== undefined && out.exitCode !== null) text += `\n[exit ${out.exitCode}]`;
-  } else {
-    text = String(out);
-  }
+  // `text` is a command's two streams already in the order a terminal showed
+  // them; stdout and stderr apart is how the agent's own tools report.
+  if (out.text) text += out.text;
+  if (out.stdout) text += (text ? '\n' : '') + out.stdout;
+  if (out.stderr) text += (text ? '\n' : '') + out.stderr;
+  if (!text) text = JSON.stringify(out, null, 2);
+
+  const notes = [];
+  if (out.exitCode !== undefined && out.exitCode !== null) notes.push(`exit ${out.exitCode}`);
+  if (out.durationMs) notes.push(`${(out.durationMs / 1000).toFixed(1)}s`);
+  return notes.length ? `${text}\n[${notes.join(', ')}]` : text;
+}
+
+/**
+ * Put what a tool printed under its card.
+ *
+ * Replaced rather than added to: a command reports as it goes, each time with
+ * everything it has printed so far, so appending gave the same output three and
+ * four times over on a phone.
+ */
+function showOutput(card, out, failed) {
+  const text = outputText(out);
+  if (!text) return;
+  const body = card.querySelector('.body');
 
   const stick = nearBottom();
-  body.appendChild(div('cap', 'output'));
-  const pre = document.createElement('pre');
+  let pre = card.querySelector('.body > pre.out');
+  if (!pre) {
+    body.appendChild(div('cap', 'output'));
+    pre = document.createElement('pre');
+    pre.className = 'out';
+    body.appendChild(pre);
+  }
   pre.innerHTML = `<code>${esc(text)}</code>`;
-  body.appendChild(pre);
-  // Failures are what you actually want to read, so open them by default.
-  if (failed) card.open = true;
+  // What you actually want to read: a command that broke, and one still going.
+  if (failed || card.classList.contains('running')) card.open = true;
   scrollDown(stick);
 }
 

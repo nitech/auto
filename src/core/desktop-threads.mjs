@@ -16,6 +16,7 @@
  */
 import { DatabaseSync } from 'node:sqlite';
 import { EventEmitter } from 'node:events';
+import { decodeToolBinary } from './tool-binary.mjs';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -64,19 +65,23 @@ function parse(value) {
 /**
  * What a tool call ran and what came back.
  *
- * The desktop keeps both as JSON strings hanging off the bubble: the arguments
- * under `params`, the answer under `result`. A running command is the one
- * people actually want to read, so its command line and its output are pulled
- * out by name; everything else passes through as its arguments, minus the
- * shell parse tree Cursor keeps for its own purposes.
+ * There are two eras of bubble here. Older ones keep the arguments and the
+ * answer as JSON strings (`params`, `result`). Current ones keep no answer at
+ * all: the command, everything it printed and what it exited with are a
+ * protobuf blob in `toolCallBinary`, and the JSON `result` never appears — which
+ * is why commands reached phones with no output and stuck at "loading". The blob
+ * is read first and the JSON is still honoured, so old threads keep working.
  */
 function toolDetail(tool) {
   const params = parse(tool.params) || parse(tool.rawArgs) || {};
   const result = parse(tool.result);
+  const blob = tool.toolCallBinary ? decodeToolBinary(tool.toolCallBinary) : null;
 
   let input = null;
-  if (params.command) {
-    input = { command: params.command, ...(params.cwd ? { cwd: params.cwd } : {}) };
+  const command = blob?.command || params.command;
+  if (command) {
+    const cwd = blob?.cwd || params.cwd;
+    input = { command, ...(cwd ? { cwd } : {}) };
   } else if (Object.keys(params).length) {
     const { parsingResult, ...rest } = params;
     input = rest;
@@ -84,40 +89,76 @@ function toolDetail(tool) {
 
   // Only prose is worth putting on a screen. A file edit answers with content
   // hashes, which say nothing to anyone and would bury the commands that do.
-  let output = null;
-  for (const key of ['output', 'stdout', 'text', 'error', 'message']) {
-    if (typeof result?.[key] === 'string' && result[key]) {
-      output = result[key];
-      break;
+  let output = blob?.output || null;
+  if (!output) {
+    for (const key of ['output', 'stdout', 'text', 'error', 'message']) {
+      if (typeof result?.[key] === 'string' && result[key]) {
+        output = result[key];
+        break;
+      }
     }
   }
   if (output && output.length > OUTPUT_LIMIT) {
     output = `${output.slice(0, OUTPUT_LIMIT)}\n… ${output.length - OUTPUT_LIMIT} more characters`;
   }
 
-  return { input, output };
+  return {
+    input,
+    output,
+    exitCode: blob?.exitCode ?? null,
+    durationMs: blob?.durationMs ?? null,
+    failed: Boolean(blob?.failed),
+    finished: Boolean(blob?.finished),
+  };
+}
+
+/**
+ * How a tool call went, in the words the rest of Auto uses.
+ *
+ * Cursor's own marks cannot answer this alone. `status` sits at "loading" while
+ * a command runs and `additionalData` reads "cancelled" the whole time it is in
+ * flight — trusting that literally reported running commands as stopped and
+ * threw away the output that arrived afterwards. So a call is over when Cursor
+ * says so or when its answer is actually there, and one that is not over is only
+ * still running if the chat is: nothing can be running in an idle chat.
+ *
+ * `cancelled` is worth keeping apart from `failed`: one is somebody pressing
+ * stop, the other is a command that broke.
+ */
+export function toolStatus({ said, finished, verdict, failed, generating }) {
+  const done = said === 'completed' || finished;
+  if (!done) return generating ? 'in_progress' : 'cancelled';
+  return failed || verdict === 'error' ? 'failed' : 'completed';
 }
 
 /** What a bubble is worth showing, if anything. */
-function messageOf(bubble) {
+function messageOf(bubble, { generating = false } = {}) {
   if (!bubble || typeof bubble !== 'object') return null;
   const role = bubble.type === BUBBLE_USER ? 'user' : 'assistant';
 
   const tool = bubble.toolFormerData;
   if (tool) {
-    const status = tool.status || null;
-    const { input, output } = toolDetail(tool);
+    const detail = toolDetail(tool);
+    const status = toolStatus({
+      said: tool.status,
+      finished: detail.finished,
+      verdict: tool.additionalData?.status || null,
+      failed: detail.failed,
+      generating,
+    });
     return {
       role,
       kind: 'tool',
       name: tool.name || tool.tool || 'tool',
       status,
-      input,
-      output,
+      input: detail.input,
+      output: detail.output,
+      exitCode: detail.exitCode,
+      durationMs: detail.durationMs,
       // A call still running will be written again with what it printed, so
       // this bubble is not finished with us yet. Anything else is as final as
       // it is going to get, output or no output.
-      pending: !status || status === 'loading' || status === 'running',
+      pending: status === 'in_progress',
       text: '',
     };
   }
@@ -160,6 +201,10 @@ export function readThread(threadId, { seen, tail } = {}) {
     const headers = data.fullConversationHeadersOnly || [];
     const messages = [];
     const visited = [];
+    // The stored status lags; a generation id means a turn is in flight. Read
+    // before the bubbles, because whether one is still running depends on it.
+    const generating =
+      Boolean(data.chatGenerationUUID) || Boolean(data.generatingBubbleIds?.length);
 
     for (const header of headers) {
       const bubbleId = header?.bubbleId;
@@ -175,7 +220,7 @@ export function readThread(threadId, { seen, tail } = {}) {
         continue;
       }
 
-      const message = messageOf(bubble);
+      const message = messageOf(bubble, { generating });
       // An empty bubble is one the desktop has created but not filled in yet,
       // so leave it unvisited and look again on the next pass. A tool call
       // waiting on its output is the same case: something is there to show,
@@ -188,8 +233,7 @@ export function readThread(threadId, { seen, tail } = {}) {
 
     return {
       title: data.name || 'Desktop chat',
-      // The stored status lags; a generation id means a turn is in flight.
-      generating: Boolean(data.chatGenerationUUID) || Boolean(data.generatingBubbleIds?.length),
+      generating,
       messages: tail && messages.length > tail ? messages.slice(-tail) : messages,
       visited,
       total: headers.length,

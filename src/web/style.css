@@ -644,8 +644,14 @@ details.think .body {
 .tool.done .state { color: var(--green); }
 .tool.failed .state { color: var(--red); }
 .tool.failed { border-color: var(--error-border); }
+.tool.running { border-color: var(--amber); }
+.tool.running .state { color: var(--amber); }
 .tool .body { border-top: 1px solid var(--line); padding: 10px 12px; }
-.tool .body pre { margin: 6px 0 0; background: var(--bg); max-height: 420px; }
+/* Long output scrolls in place; clipping it hid the end, which is the part
+   that says whether the thing worked. */
+.tool .body pre { margin: 6px 0 0; background: var(--bg); max-height: 420px; overflow: auto; }
+/* What a command printed, in a size a phone can actually read. */
+.tool .body pre.out { max-height: 300px; font-size: 12px; line-height: 1.45; }
 .tool .body .cap { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
 
 /* diffs */

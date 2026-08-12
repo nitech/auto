@@ -761,6 +761,145 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1e2. Reading the blob Cursor keeps a tool call in. Built by hand rather than
+// captured, so the test says what the shape is instead of only that it once was.
+{
+  try {
+    const { decodeToolBinary } = await import('../src/core/tool-binary.mjs');
+    let failed = false;
+
+    /** Protobuf, enough of it to write a message: field number, then bytes. */
+    const varint = (n) => {
+      const out = [];
+      let v = BigInt(n);
+      do {
+        const byte = Number(v & 0x7fn);
+        v >>= 7n;
+        out.push(v ? byte | 0x80 : byte);
+      } while (v);
+      return Buffer.from(out);
+    };
+    const bytes = (field, value) => {
+      const buf = Buffer.isBuffer(value) ? value : Buffer.from(String(value), 'utf8');
+      return Buffer.concat([varint((field << 3) | 2), varint(buf.length), buf]);
+    };
+    const number = (field, value) => Buffer.concat([varint(field << 3), varint(value)]);
+    const msg = (...parts) => Buffer.concat(parts);
+    const call = (request, result) => msg(bytes(1, msg(bytes(1, request), bytes(2, result)))).toString('base64');
+
+    // A command that worked: both streams, in the order a terminal showed them.
+    const ran = decodeToolBinary(
+      call(
+        msg(bytes(1, 'npm test'), bytes(2, 'D:\\repo')),
+        bytes(1, msg(bytes(5, 'all good'), bytes(6, 'a warning'), number(13, 1922))),
+      ),
+    );
+    if (ran.command !== 'npm test' || ran.cwd !== 'D:\\repo') {
+      fail(`the command and its folder should be read: ${JSON.stringify(ran)}`);
+      failed = true;
+    }
+    if (ran.output !== 'all good\na warning') {
+      fail(`both streams should come back in order: ${JSON.stringify(ran.output)}`);
+      failed = true;
+    }
+    if (ran.exitCode !== 0 || ran.failed || !ran.finished || ran.durationMs !== 1922) {
+      fail(`a finished command should read as finished and fine: ${JSON.stringify(ran)}`);
+      failed = true;
+    }
+
+    // A command that broke: the answer sits in the other branch, with its code.
+    const broke = decodeToolBinary(
+      call(bytes(1, 'rg nothing'), bytes(2, msg(number(3, 1), bytes(6, 'no matches'), number(12, 40)))),
+    );
+    if (!broke.failed || broke.exitCode !== 1 || broke.output !== 'no matches') {
+      fail(`a failed command should be read as failed: ${JSON.stringify(broke)}`);
+      failed = true;
+    }
+
+    // Still running: an answer that is not there yet invents nothing.
+    const running = decodeToolBinary(msg(bytes(1, msg(bytes(1, bytes(1, 'sleep 90'))))).toString('base64'));
+    if (running.finished || running.output || running.exitCode !== null) {
+      fail(`a running command has no answer to report: ${JSON.stringify(running)}`);
+      failed = true;
+    }
+
+    // Escape codes are noise on a phone; carriage returns are noise anywhere.
+    const coloured = decodeToolBinary(
+      call(bytes(1, 'ls'), bytes(1, bytes(5, '\u001b[31mred\u001b[0m\r\ndone'))),
+    );
+    if (coloured.output !== 'red\ndone') {
+      fail(`escape codes should be stripped: ${JSON.stringify(coloured.output)}`);
+      failed = true;
+    }
+
+    // Rubbish in, nothing out — never a throw, since this reads foreign bytes.
+    for (const bad of [null, '', 'not base64 at all!!', Buffer.from([0xff, 0xff]).toString('base64')]) {
+      const got = decodeToolBinary(bad);
+      if (got.command || got.output || got.finished) {
+        fail(`unreadable input should give nothing: ${JSON.stringify(bad)}`);
+        failed = true;
+      }
+    }
+
+    if (!failed) ok('v2 core: a tool call reads back with its command, output and exit code');
+  } catch (e) {
+    fail(`v2 tool-binary: ${e.message}`);
+  }
+}
+
+// 1e3. Whether a command is still running. Cursor's own marks are misleading
+// here, and reading them literally lost the output of every command.
+{
+  try {
+    const { toolStatus } = await import('../src/core/desktop-threads.mjs');
+    let failed = false;
+    const check = (what, got, want) => {
+      if (got !== want) {
+        fail(`${what}: expected ${want}, got ${got}`);
+        failed = true;
+      }
+    };
+
+    // Cursor writes "cancelled" for the whole time a command is in flight.
+    check(
+      'a command in flight in a running chat',
+      toolStatus({ said: 'loading', finished: false, verdict: 'cancelled', generating: true }),
+      'in_progress',
+    );
+    // Nothing can be running in a chat that is not.
+    check(
+      'the same command once the chat is idle',
+      toolStatus({ said: 'loading', finished: false, verdict: 'cancelled', generating: false }),
+      'cancelled',
+    );
+    check(
+      'a command whose answer has arrived',
+      toolStatus({ said: 'loading', finished: true, verdict: 'success', generating: true }),
+      'completed',
+    );
+    check(
+      'a command that broke',
+      toolStatus({ said: 'completed', finished: true, failed: true, generating: true }),
+      'failed',
+    );
+    check(
+      "the desktop's own verdict of error",
+      toolStatus({ said: 'completed', finished: true, verdict: 'error', generating: false }),
+      'failed',
+    );
+    // Tools that are not commands have no answer branch to wait for.
+    check(
+      'a file edit Cursor calls done',
+      toolStatus({ said: 'completed', finished: false, generating: true }),
+      'completed',
+    );
+
+    if (!failed) ok('v2 core: a running command is told apart from a stopped one');
+  } catch (e) {
+    fail(`v2 tool status: ${e.message}`);
+  }
+}
+
 // 1f. Telegram turn rendering: status on top, prose escaped, size bounded.
 {
   try {
@@ -804,7 +943,46 @@ if (existsSync(SRC)) {
       failed = true;
     }
 
-    if (!failed) ok('v2 telegram: turn rendering, escaping, limits');
+    // A command line says what a tool name cannot, and a failure is worth
+    // quoting: Telegram used to show only "run_terminal_command_v2".
+    const { toolLabel, failureNote } = await import('../src/core/telegram.mjs');
+    if (
+      toolLabel({ title: 'run_terminal_command_v2', rawInput: { command: 'npm test -- --watch' } }) !==
+      'npm test -- --watch'
+    ) {
+      fail('a shell tool should be labelled with its command');
+      failed = true;
+    }
+    if (toolLabel({ title: 'read_file' }) !== 'read_file') {
+      fail('a tool with no command keeps its name');
+      failed = true;
+    }
+    const long = toolLabel({ rawInput: { command: `echo ${'x'.repeat(200)}` } });
+    if (long.length > 70 || !long.endsWith('…')) {
+      fail(`a long command should be cut down for a phone: ${long.length} chars`);
+      failed = true;
+    }
+    if (toolLabel({ rawInput: { command: 'git commit -m "one\ntwo"' } }).includes('\n')) {
+      fail('a label must stay on one line');
+      failed = true;
+    }
+
+    if (failureNote({ status: 'completed', rawOutput: { text: 'fine', exitCode: 0 } })) {
+      fail('a command that worked needs no note');
+      failed = true;
+    }
+    const note = failureNote({ status: 'failed', rawOutput: { text: 'boom\nnot found', exitCode: 1 } });
+    if (!note?.includes('exit 1') || !note.includes('not found')) {
+      fail(`a failure should say the exit code and the end of the output: ${note}`);
+      failed = true;
+    }
+    const shown = renderTurn({ tools: [{ label: 'rg missing', status: 'failed', failure: 'exit 1: nope' }] });
+    if (!shown.includes('✗') || !shown.includes('exit 1: nope')) {
+      fail('a failed command should show its reason in the message');
+      failed = true;
+    }
+
+    if (!failed) ok('v2 telegram: turn rendering, commands, failures, limits');
   } catch (e) {
     fail(`v2 telegram: ${e.message}`);
   }
@@ -1062,7 +1240,9 @@ if (existsSync(SRC)) {
       };
       bubbles.push(cmd);
       put.run(`bubbleId:${thread}:b7`, JSON.stringify(cmd));
-      composer();
+      // A chat with a command in flight has a turn in flight, and that is what
+      // says the command is running: Cursor's own marks on the bubble do not.
+      composer({ chatGenerationUUID: 'running-a-command' });
 
       const older = new Set(['b1', 'b2', 'b3', 'b4', 'b6']);
       const started = threads.readThread(thread, { seen: older });
@@ -1085,12 +1265,23 @@ if (existsSync(SRC)) {
           },
         }),
       );
+      composer();
       const ended = threads.readThread(thread, { seen: older });
       const done = ended.messages.find((m) => m.kind === 'tool');
       if (done?.output !== 'All checks passed.') {
         fail(`a finished command should carry its output, got ${JSON.stringify(done?.output)}`);
       }
+      if (done.status !== 'completed') fail(`a finished command should read as completed, got ${done.status}`);
       if (!ended.visited.includes('b7')) fail('a finished command should count as seen');
+
+      // The same bubble left unfinished in a chat that has stopped: whatever it
+      // was doing, it is not doing it now.
+      put.run(`bubbleId:${thread}:b7`, JSON.stringify(cmd));
+      const abandoned = threads.readThread(thread, { seen: older });
+      const stopped = abandoned.messages.find((m) => m.kind === 'tool');
+      if (stopped.status !== 'cancelled' || stopped.pending) {
+        fail(`a command left running in an idle chat is stopped, got ${stopped.status}`);
+      }
 
       store.close();
 

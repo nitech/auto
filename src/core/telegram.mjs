@@ -66,7 +66,42 @@ function clamp(text, max) {
   return s.length <= max ? s : `…${s.slice(s.length - max + 1)}`;
 }
 
-const ICON = { pending: '◦', in_progress: '▸', completed: '✓', failed: '✗' };
+const ICON = {
+  pending: '◦',
+  in_progress: '▸',
+  completed: '✓',
+  failed: '✗',
+  cancelled: '■',
+};
+
+/** How long a command may be before it is cut down for a phone screen. */
+const TOOL_LABEL_MAX = 70;
+/** How much of a failed command's output is worth quoting. */
+const FAILURE_MAX = 160;
+
+/**
+ * What a tool call did, said in one line.
+ *
+ * The command itself, where there is one: "run_terminal_command_v2" tells you
+ * nothing, and the command line tells you everything. Newlines are folded so a
+ * heredoc cannot take over the message.
+ */
+export function toolLabel(rec) {
+  const command = rec?.rawInput?.command;
+  const name = String(command || rec?.title || rec?.toolKind || 'tool').replace(/\s+/g, ' ').trim();
+  return name.length > TOOL_LABEL_MAX ? `${name.slice(0, TOOL_LABEL_MAX - 1)}…` : name;
+}
+
+/** The end of what a failed command printed, or nothing if it did not fail. */
+export function failureNote(rec) {
+  const out = rec?.rawOutput;
+  const failed = rec?.status === 'failed' || (out && typeof out === 'object' && out.exitCode > 0);
+  if (!failed) return null;
+  const text = typeof out === 'object' ? out.text || out.stderr || out.stdout || '' : String(out || '');
+  const tail = clamp(String(text).replace(/\n+/g, '\n').trim(), FAILURE_MAX);
+  const exit = out && typeof out === 'object' && out.exitCode ? `exit ${out.exitCode}` : null;
+  return [exit, tail].filter(Boolean).join(': ') || null;
+}
 
 /**
  * Render one turn into a single Telegram message: what the agent is doing on
@@ -74,7 +109,12 @@ const ICON = { pending: '◦', in_progress: '▸', completed: '✓', failed: '�
  * answer cannot push the status out of view.
  */
 export function renderTurn({ text = '', tools = [] } = {}) {
-  const head = tools.map((t) => `${ICON[t.status] || '▸'} <i>${esc(t.label)}</i>`).join('\n');
+  const head = tools
+    .map((t) => {
+      const line = `${ICON[t.status] || '▸'} <i>${esc(t.label)}</i>`;
+      return t.failure ? `${line}\n   <code>${esc(t.failure)}</code>` : line;
+    })
+    .join('\n');
   const body = esc(String(text).trim());
   const room = LIMIT - head.length - 8;
   return [head, clamp(body, Math.max(500, room))].filter(Boolean).join('\n\n') || '…';
@@ -612,8 +652,9 @@ export class TelegramBridge extends EventEmitter {
 
       case 'tool_call':
         turn.tools.set(rec.toolCallId || `t${turn.tools.size}`, {
-          label: rec.title || rec.toolKind || 'tool',
+          label: toolLabel(rec),
           status: rec.status || 'in_progress',
+          failure: failureNote(rec),
         });
         this.#schedule(sessionId);
         break;
@@ -622,6 +663,8 @@ export class TelegramBridge extends EventEmitter {
         const tool = turn.tools.get(rec.toolCallId);
         if (tool && rec.status) {
           tool.status = rec.status;
+          // A command that broke is the one thing worth quoting on a phone.
+          tool.failure = failureNote(rec) || tool.failure;
           this.#schedule(sessionId);
         }
         break;
