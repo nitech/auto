@@ -10,6 +10,13 @@ Auto is Simon's always-on remote control for Cursor's agent: one host
 `cursor-agent` sessions over ACP. Any session working in this repo — one of
 Auto's own sessions or a manual one — follows the rules below.
 
+## Reporting back
+
+Finish every piece of work with a short bullet list of what changed — not
+prose. Simon reads these on a phone, often from Telegram. Lead with the
+outcome, one bullet per thing that actually changed, and say plainly what you
+did not do. Long explanations belong in the commit message or the wiki.
+
 ## Agent independence
 
 Auto's docs and wiki describe behaviour, not models. The agent behind a
