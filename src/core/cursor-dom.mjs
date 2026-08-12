@@ -31,6 +31,8 @@ export const SELECTORS = {
   message: ['[data-message-id]'],
   /** The stop button beside the chat box, as an icon rather than a word. */
   stopIcon: ['span.codicon-debug-stop', '[aria-label="Stop"]'],
+  /** A chat's tab, which names the chat it belongs to. */
+  tab: [{ selector: '[data-resource-name]', attribute: 'data-resource-name' }],
 };
 
 /**
@@ -78,6 +80,30 @@ const HELPERS = `
     return null;
   };
   const __text = (el) => (el?.textContent || '').trim();
+
+  /**
+   * Press something that wants a mouse rather than a click.
+   *
+   * Cursor's chat is React and answers a plain click, but the editor tabs are
+   * the workbench's own and act on the button going down. Sending the whole
+   * sequence satisfies both without having to know which is which.
+   */
+  const __mouse = (el) => {
+    const rect = el.getBoundingClientRect();
+    const at = {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      button: 0,
+      buttons: 1,
+      clientX: Math.round(rect.left + rect.width / 2),
+      clientY: Math.round(rect.top + rect.height / 2),
+    };
+    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+      const Ctor = type.startsWith('pointer') && window.PointerEvent ? PointerEvent : MouseEvent;
+      el.dispatchEvent(new Ctor(type, type === 'pointerup' || type === 'mouseup' ? { ...at, buttons: 0 } : at));
+    }
+  };
 `;
 
 /**
@@ -248,6 +274,27 @@ ${PRESSABLE}
   const target = matches[matches.length - 1];
   target.el.click();
   return { clicked: true, name: __named(target), where: target.where, of: matches.length };
+})()`;
+
+/**
+ * Point the window at a chat by pressing its tab.
+ *
+ * Cursor keeps a tab per open chat and writes the chat's id on it, which is a
+ * far better handle than the title on its face: titles repeat, change, and get
+ * renamed by the agent mid-conversation. Ids do not.
+ */
+export const showThread = (threadId) => `(() => {
+${HELPERS}
+  const pane = __pane();
+  const wanted = ${JSON.stringify(String(threadId))};
+  for (const { selector, attribute } of ${list(SELECTORS.tab)}) {
+    for (const el of pane.querySelectorAll(selector)) {
+      if (el.getAttribute(attribute) !== wanted) continue;
+      __mouse(el);
+      return true;
+    }
+  }
+  return false;
 })()`;
 
 /**

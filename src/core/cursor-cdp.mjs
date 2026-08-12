@@ -40,6 +40,7 @@ import {
   clickAction,
   isApproval,
   samePath,
+  showThread,
 } from './cursor-dom.mjs';
 import { threadOwning } from './desktop-threads.mjs';
 
@@ -52,6 +53,8 @@ const SUBMIT_SETTLE_MS = 250;
 const SUBMIT_LOOKS = 8;
 /** How long to give a turn to actually stop before trying the other way. */
 const STOP_LOOKS = 6;
+/** How long a pressed tab gets to bring its chat forward. */
+const SHOW_LOOKS = 8;
 
 /** JSON-RPC over one page's debugger socket. */
 class CdpSocket {
@@ -210,6 +213,11 @@ export class CursorWindow {
   stopTurn() {
     const { key, code, keyCode, modifiers } = STOP_TURN_KEY;
     return this.#key(key, code, keyCode, modifiers);
+  }
+
+  /** Bring a chat to the front of this window by pressing its tab. */
+  showThread(threadId) {
+    return this.evaluate(showThread(threadId));
   }
 
   /** The same, by pressing the stop icon beside the chat box. */
@@ -405,6 +413,61 @@ export class CursorCdp {
         controls,
       };
     });
+  }
+
+  /**
+   * Bring a chat to the front of whichever window has it open.
+   *
+   * Everything else here refuses to act on a chat no window is showing, which
+   * is the right instinct but leaves Auto unable to reach a conversation that
+   * is merely in a background tab. This is the way to fix that before acting:
+   * ask for the chat, then send or stop as usual.
+   *
+   * @returns {Promise<{ status: 'showing'|'shown'|'no-tab'|'no-cdp'|'error',
+   *   reason?: string, title?: string }>}
+   */
+  async showThread({ threadId }) {
+    if (!threadId) return { status: 'error', reason: 'no chat was named' };
+
+    let targets;
+    try {
+      targets = (await this.listTargets()).filter(isWindow);
+    } catch (err) {
+      return { status: 'no-cdp', reason: err.message };
+    }
+    if (!targets.length) {
+      return { status: 'no-cdp', reason: `no Cursor window is listening on port ${this.port}` };
+    }
+
+    let lastReason = null;
+    for (const target of targets) {
+      let window;
+      try {
+        window = await this.openWindow(target);
+        const facts = await window.facts();
+        if (this.#threadOf(facts) === threadId) {
+          return { status: 'showing', title: facts.title };
+        }
+        if (!(await window.showThread(threadId))) continue;
+
+        // Trust the window's own answer, not the click: pressing a tab and
+        // arriving at the chat are different claims.
+        for (let look = 0; look < SHOW_LOOKS; look += 1) {
+          await wait(this.settleMs);
+          const now = await window.facts();
+          if (this.#threadOf(now) === threadId) return { status: 'shown', title: now.title };
+        }
+        lastReason = 'the tab was pressed but the chat did not come forward';
+      } catch (err) {
+        lastReason = err.message;
+      } finally {
+        window?.close();
+      }
+    }
+
+    return lastReason
+      ? { status: 'error', reason: lastReason }
+      : { status: 'no-tab', reason: 'no window has a tab for this chat' };
   }
 
   /**
