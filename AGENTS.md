@@ -78,10 +78,26 @@ value as setup documentation is fine.
   as an agent ignoring the question. The outbox holds words only: a held message
   says its images have to be sent again.
 - **A busy session takes another task.** Prompts sent mid-turn used to be
-  refused with "Session is already working" — fine at a keyboard, useless from a
-  phone. They now queue: the message goes into the transcript when it is added
-  and into the agent when the turn ends. The queue is memory only, and stopping
-  a turn drops what was queued behind it, because stopping means stopping.
+ refused with "Session is already working" — fine at a keyboard, useless from a
+ phone. They now queue: the message goes into the transcript when it is added
+ and into the agent when the turn ends. The queue is memory only, and stopping
+ a turn drops what was queued behind it, because stopping means stopping.
+- **What is waiting can be seen and changed.** The web shows the queue above the
+ chat box the way the IDE does, with the same three actions per row: reword,
+ send now, delete. For a desktop chat the queue belongs to *Cursor* — Auto typed
+ the message in and the IDE is holding it — so it is read out of the window and
+ pressed through Cursor's own buttons. A row is found by its words, never its
+ position: a turn can end between a phone drawing the list and a thumb landing,
+ and deleting whatever moved into second place would delete the wrong message.
+ Those buttons carry no words at all, so they alone are found by `codicon` name —
+ VS Code's icon vocabulary, not Cursor's generated classes. Rewording Cursor's
+ queue takes the message out and sends the new words, because its edit button
+ opens an editor inside the IDE; with several waiting, the reworded one moves to
+ the back. Auto's own queue is edited in place, and send-now makes a message next
+ rather than interrupting the turn already running — one agent, one turn.
+ Reading Cursor's queue needs the chat on screen, so an explicit ask brings the
+ tab forward; the poll that runs through a turn does not, since seizing someone's
+ window every two seconds to look at a list is worse than not showing it.
 - **Telegram says what is running; the web says what it printed.** Command
   output goes to the web transcript, which has room to scroll and rewrites in
   place. Telegram gets the command line and, for a failure, the exit code —

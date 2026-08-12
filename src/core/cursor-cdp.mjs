@@ -620,11 +620,21 @@ export class CursorCdp {
    * shows, and it comes from whichever window has the chat, so it is that chat's
    * queue and no other's.
    */
-  async queue({ threadId }) {
-    return this.#withThread(threadId, async (window) => {
-      const seen = await window.queue();
-      return { status: 'ok', ...seen };
-    });
+  async queue({ threadId, bringForward = false }) {
+    const read = (window) => window.queue().then((seen) => ({ status: 'ok', ...seen }));
+    const seen = await this.#withThread(threadId, read);
+    // Cursor draws the queue for the chat on screen and no other, so a chat in a
+    // background tab has no queue to read. A phone asking for its own chat's
+    // queue means it, and gets the tab brought forward; the poll that runs
+    // through a turn does not, because taking over someone's window every two
+    // seconds to look at a list is worse than not showing the list.
+    if (!bringForward || seen.status !== 'unknown-thread') return seen;
+
+    const shown = await this.showThread({ threadId });
+    if (shown.status !== 'shown') {
+      return shown.status === 'no-tab' ? seen : { status: 'error', reason: shown.reason };
+    }
+    return this.#withThread(threadId, read);
   }
 
   /**
@@ -643,6 +653,17 @@ export class CursorCdp {
    * @param {'drop'|'now'} opts.which
    */
   async queueAct({ threadId, text, which }) {
+    // Pressing a row means the row has to be on screen, so this always brings
+    // the chat forward first — the same bargain as sending a message to a chat
+    // in a background tab.
+    const here = await this.#withThread(threadId, (window) => window.facts());
+    if (here?.status === 'unknown-thread') {
+      const shown = await this.showThread({ threadId });
+      if (shown.status !== 'showing' && shown.status !== 'shown') {
+        return { status: shown.status === 'no-tab' ? 'unknown-thread' : 'error', reason: shown.reason };
+      }
+    }
+
     return this.#withThread(threadId, async (window) => {
       const before = await window.queue();
       if (!before.items.some((item) => same(item.text, text))) {

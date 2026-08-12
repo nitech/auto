@@ -526,7 +526,9 @@ export class SessionManager extends EventEmitter {
 
     if (meta.kind === 'desktop') {
       const seen = await this.cursor
-        .queue({ threadId: meta.desktopThreadId })
+        // Somebody asked for this chat's queue, so it is worth bringing the chat
+        // forward to answer — the passive watcher does not.
+        .queue({ threadId: meta.desktopThreadId, bringForward: true })
         .catch((err) => ({ status: 'error', reason: err.message }));
       if (seen.status !== 'ok') {
         return { waiting: 0, items: [], owner: 'cursor', reason: seen.reason || seen.status };
