@@ -730,6 +730,13 @@ export class SessionManager extends EventEmitter {
       this.emit('log', `typed a message into Cursor's window for "${meta.title}"`);
       return { status: 'submitted', via: 'cdp' };
     }
+    // Say why the better way in was not taken. A silent fallback cost an
+    // afternoon of guessing at which of the two transports had refused.
+    this.emit(
+      'log',
+      `Cursor's window would not take a message (${typed.status}` +
+        `${typed.reason ? `: ${typed.reason}` : ''}); trying the bridge`,
+    );
 
     const sent = await sendMessage({ threadId: meta.desktopThreadId, text }).catch((err) => ({
       status: 'error',

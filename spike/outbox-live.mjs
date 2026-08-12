@@ -13,6 +13,7 @@ if (!sessionId) throw new Error('need a session id');
 
 const ws = new WebSocket('ws://127.0.0.1:4331');
 const seen = [];
+let sent = false;
 
 ws.on('open', () => ws.send(JSON.stringify({ op: 'attach', sessionId, fromSeq: 0 })));
 
@@ -20,7 +21,10 @@ ws.on('message', (raw) => {
   const msg = JSON.parse(raw);
   // The host announces the active session too, which is not the one we asked
   // about — prompting on that one would send this to a stranger.
-  if (msg.type === 'attached' && msg.meta?.id === sessionId) {
+  // The host announces attachment more than once when the session asked for
+  // happens to be the active one. Once is once.
+  if (msg.type === 'attached' && msg.meta?.id === sessionId && !sent) {
+    sent = true;
     console.log(`attached: ${msg.meta?.title} (${msg.meta?.kind}) status=${msg.meta?.status}`);
     console.log(`sending: ${text}`);
     ws.send(JSON.stringify({ op: 'prompt', sessionId, text }));

@@ -569,7 +569,12 @@ async function restartHost({ reason = 'requested', maxWaitMs = 180_000 } = {}) {
   restartPending = true;
 
   broadcast({ type: 'host.restarting', reason });
-  const busy = () => sessions.list().some((s) => s.status === 'busy');
+  // Only our own agents live in this process's children. A desktop chat's turn
+  // belongs to Cursor and carries on whatever the host does, so waiting for one
+  // is waiting for someone else's work — it held a restart for eleven minutes
+  // while the change that restart was meant to apply sat unused.
+  const busy = () =>
+    sessions.list().some((s) => s.status === 'busy' && s.kind !== 'desktop');
   if (busy()) {
     await telegram.send('Restarting once the current turn finishes…').catch(() => {});
     const until = Date.now() + maxWaitMs;

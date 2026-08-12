@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { discoveryDir, instances, listThreads, sendMessage } from '../src/core/desktop-bridge.mjs';
+import { CursorCdp, DEFAULT_PORT } from '../src/core/cursor-cdp.mjs';
 import {
   assertSwitches,
   cursorProcessCount,
@@ -58,19 +59,25 @@ async function status() {
   // the copy it read at startup — so all four can say true while every send is
   // refused. The only honest answer comes from asking it. A thread id nobody
   // has cannot be delivered to, so this reaches the gate and nothing else.
+  let shut = false;
   if (live.length) {
     const probe = await sendMessage({ threadId: randomUUID(), text: 'gate probe' }).catch(
       (err) => ({ status: 'error', message: err.message }),
     );
-    const shut = /bridge is disabled/i.test(probe.reason || probe.message || '');
+    shut = /bridge is disabled/i.test(probe.reason || probe.message || '');
     console.log(`  window takes messages : ${shut ? 'no — gate shut in memory' : 'yes'}`);
-    if (shut) {
-      console.log(
-        '\nCursor reads these switches when it starts, so setting them now cannot reach the\n' +
-          'window that is already running. Restart Cursor to bring the bridge back. Anything\n' +
-          'sent meanwhile waits in Auto and goes in by itself once it answers.',
-      );
-    }
+  }
+
+  const typing = await windowStatus();
+
+  if (shut) {
+    console.log(
+      '\nCursor reads these switches when it starts, so setting them now cannot reach the\n' +
+        'window that is already running. Restart Cursor to bring the bridge back.' +
+        (typing
+          ? ' Meanwhile\nAuto types into the window instead, so messages still arrive.'
+          : ' Anything\nsent meanwhile waits in Auto and goes in by itself once it answers.'),
+    );
   }
 
   if (!live.length) {
@@ -80,6 +87,46 @@ async function status() {
         : '\nRun `npm run bridge:enable` with Cursor closed to turn it on.',
     );
   }
+}
+
+/**
+ * The other way in: typing into the window over Cursor's debug port.
+ *
+ * Nothing in Cursor's settings governs this one, which is the whole point of
+ * it — when the gate above is shut, this is the difference between a message
+ * arriving and a message waiting. Reporting it is read-only.
+ *
+ * @returns {Promise<boolean>} whether Cursor is reachable this way
+ */
+async function windowStatus() {
+  const cursor = new CursorCdp();
+  const listening = await cursor.available();
+
+  console.log('\nTyping into the window');
+  console.log(`  debug port ${String(DEFAULT_PORT).padEnd(10)}: ${listening ? 'listening' : 'not listening'}`);
+
+  if (!listening) {
+    console.log(
+      '\nCursor was started without its debugging port, so the bridge above is the only way\n' +
+        'in. To have both, quit Cursor and start it like this:\n\n' +
+        '  & "$env:LOCALAPPDATA\\Programs\\cursor\\Cursor.exe" --remote-debugging-port=9222 "D:\\Sevenfold\\auto"',
+    );
+    return false;
+  }
+
+  for (const w of await cursor.windows()) {
+    if (w.error) {
+      console.log(`    - ${w.title}: unreadable (${w.error})`);
+      continue;
+    }
+    console.log(`    - ${w.title}`);
+    console.log(
+      `      ${w.workspace || 'no folder'} — ` +
+        `${w.threadId ? `chat ${w.threadId}` : 'no chat id on screen'}, ` +
+        `box ${w.hasComposer ? 'ready' : 'missing'}`,
+    );
+  }
+  return true;
 }
 
 function enable() {
