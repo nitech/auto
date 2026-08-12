@@ -60,6 +60,14 @@ value as setup documentation is fine.
   Nothing is believed from the click: Cursor's stored record keeps the model a
   chat was last *sent* with, so the word on the picker is the proof, and asking
   for what it is already on presses nothing.
+- **A mirrored answer arrives in pieces.** Cursor writes a reply into its bubble
+  as it is spoken, so what is in the database mid-turn is a prefix. Reading a
+  bubble once and marking it seen published whatever was written at that instant
+  and threw the rest away — a long answer reached the phone cut off mid-word.
+  Prose is therefore unfinished business while the chat is generating, re-read as
+  it grows, and announced again only when it changed; what goes into the
+  transcript is the new tail, because clients append. A bubble Cursor rewrites
+  rather than extends goes out whole.
 - **A picture gets in by being pasted.** There is no protocol command for
   attaching a file, so an image from a phone goes onto the Windows clipboard and
   the window is told to run its own `paste` editing command — a real Ctrl+V,

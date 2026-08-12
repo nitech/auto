@@ -805,7 +805,8 @@ export class SessionManager extends EventEmitter {
       return;
     }
     if (message.kind === 'thinking') {
-      this.#record(id, KIND.agentThought, { text: message.text });
+      const words = this.#newWordsOf(id, message);
+      if (words) this.#record(id, KIND.agentThought, { text: words });
       return;
     }
     if (message.kind === 'tool') {
@@ -846,7 +847,34 @@ export class SessionManager extends EventEmitter {
       });
       return;
     }
-    this.#record(id, KIND.agentDelta, { text: message.text });
+    const words = this.#newWordsOf(id, message);
+    if (words) this.#record(id, KIND.agentDelta, { text: words });
+  }
+
+  /**
+   * The part of a mirrored message that has not been said yet.
+   *
+   * A desktop bubble is read repeatedly while it is being written, and each read
+   * holds the whole answer so far. Clients append what they are given, so what
+   * goes into the transcript is the new tail — record the whole bubble each time
+   * and the reply reads as the same paragraph over and over.
+   *
+   * If the text is not an extension of what we published, Cursor rewrote the
+   * bubble rather than adding to it; the new version goes out in full, since a
+   * message repeated is recoverable and a message lost is not.
+   */
+  #newWordsOf(id, message) {
+    const runtime = this.live.get(id) || {};
+    runtime.textSaid = runtime.textSaid || new Map();
+    this.live.set(id, runtime);
+
+    const said = runtime.textSaid.get(message.id) || '';
+    const whole = String(message.text || '');
+    // A bubble that is finished with needs no further bookkeeping.
+    if (message.pending) runtime.textSaid.set(message.id, whole);
+    else runtime.textSaid.delete(message.id);
+
+    return newWords(said, whole);
   }
 
   /** Start following a desktop thread, if we are not already. */
@@ -871,7 +899,12 @@ export class SessionManager extends EventEmitter {
       // A turn can start because someone typed in the IDE, so the transcript
       // should show one either way.
       if (running) this.#record(id, KIND.turnStart, {});
-      else this.#record(id, KIND.turnEnd, { stopReason: 'end_turn' });
+      else {
+        this.#record(id, KIND.turnEnd, { stopReason: 'end_turn' });
+        // Nothing written in a finished turn will grow again, so the record of
+        // what was published can go rather than sit there for the session's life.
+        this.live.get(id)?.textSaid?.clear();
+      }
       this.#update(id, { status: running ? STATUS.busy : STATUS.idle });
       if (running) this.#watchDesktopAsks(id);
     });
@@ -1229,6 +1262,23 @@ export class SessionManager extends EventEmitter {
     await Promise.all([...this.live.keys()].map((id) => this.stop(id)));
     this.terminals.releaseAll();
   }
+}
+
+/**
+ * The part of a mirrored message that has not been published yet.
+ *
+ * Clients append what the transcript gives them, so a bubble read again as it
+ * grows must contribute only its new tail. Cursor rewriting a bubble instead of
+ * extending it sends the new version whole: a paragraph shown twice can be read
+ * past, a paragraph never shown cannot.
+ *
+ * @param {string} said  what has already gone into the transcript
+ * @param {string} whole  what the bubble holds now
+ */
+export function newWords(said, whole) {
+  if (!said) return whole;
+  if (whole === said) return '';
+  return whole.startsWith(said) ? whole.slice(said.length) : whole;
 }
 
 export { POLICY };

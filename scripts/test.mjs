@@ -1613,6 +1613,63 @@ if (existsSync(SRC)) {
       await new Promise((r) => setTimeout(r, 250));
       watcher.stop();
 
+      // A reply is written into its bubble as it is spoken. Reading it once and
+      // calling it done published a prefix and threw the rest away — a long
+      // answer reached the phone cut off mid-word. So a bubble of prose is
+      // unfinished while the chat is generating, read again as it grows, and
+      // announced once more only if it actually changed.
+      const grow = (text) =>
+        put.run(`bubbleId:${thread}:b8`, JSON.stringify({ bubbleId: 'b8', type: 2, text }));
+      bubbles.push({ bubbleId: 'b8', type: 2, text: '' });
+      composer({ chatGenerationUUID: 'writing-a-long-answer' });
+      grow('The first half of an answer');
+
+      const growing = new threads.ThreadWatcher(thread, { idleMs: 30, busyMs: 30 });
+      growing.markSeen(['b1', 'b2', 'b3', 'b4', 'b6']);
+      const spoken = [];
+      growing.on('message', (m) => spoken.push(m.text));
+      growing.start();
+      await new Promise((r) => setTimeout(r, 120));
+      grow('The first half of an answer, and the second half of it too');
+      await new Promise((r) => setTimeout(r, 120));
+      composer();
+      await new Promise((r) => setTimeout(r, 150));
+      growing.stop();
+
+      const whole = 'The first half of an answer, and the second half of it too';
+      if (spoken.at(-1) !== whole) {
+        fail(`the whole answer should arrive, saw ${JSON.stringify(spoken)}`);
+      }
+      if (spoken.filter((t) => t === whole).length !== 1) {
+        fail(`a finished answer should be announced once, saw ${JSON.stringify(spoken)}`);
+      }
+      if (!spoken.includes('The first half of an answer')) {
+        fail(`a reply should show while it is written, saw ${JSON.stringify(spoken)}`);
+      }
+      if (!threads.readThread(thread, { seen: new Set() }).visited.includes('b8')) {
+        fail('a reply in an idle chat is finished and should count as seen');
+      }
+      composer({ chatGenerationUUID: 'still-writing' });
+      const midFlight = threads
+        .readThread(thread, { seen: new Set(['b1', 'b2', 'b3', 'b4', 'b6']) })
+        .messages.find((m) => m.id === 'b8');
+      if (!midFlight?.pending) fail('a reply being written is not finished with');
+      composer();
+
+      // What reaches the transcript is the tail, since clients append: record
+      // the whole bubble each pass and the answer reads as itself repeated.
+      const { newWords } = await import('../src/core/sessions.mjs');
+      if (newWords('', 'The first half') !== 'The first half') {
+        fail('a first sighting is all new');
+      }
+      if (newWords('The first half', 'The first half and the rest') !== ' and the rest') {
+        fail(`only the new tail belongs in the transcript, got ${JSON.stringify(newWords('The first half', 'The first half and the rest'))}`);
+      }
+      if (newWords('same', 'same') !== '') fail('nothing new is nothing to say');
+      if (newWords('an early draft', 'a rewritten answer') !== 'a rewritten answer') {
+        fail('a rewritten bubble goes out whole rather than being lost');
+      }
+
       // A running command: the command line is worth showing while it runs,
       // the output only exists when it ends — so the bubble must be read twice.
       const cmd = {

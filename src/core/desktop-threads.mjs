@@ -152,6 +152,16 @@ export function toolStatus({ said, finished, verdict, failed, generating }) {
   return failed || verdict === 'error' ? 'failed' : 'completed';
 }
 
+/**
+ * A short print of what a bubble is saying now, to tell a re-read of the same
+ * thing from a bubble that has moved on. Length is enough: text and output only
+ * ever grow.
+ */
+function printOf(message) {
+  if (message.kind === 'tool') return `${message.status}:${message.output?.length || 0}`;
+  return `${message.kind}:${message.text?.length || 0}`;
+}
+
 /** What a bubble is worth showing, if anything. */
 function messageOf(bubble, { generating = false } = {}) {
   if (!bubble || typeof bubble !== 'object') return null;
@@ -188,10 +198,18 @@ function messageOf(bubble, { generating = false } = {}) {
   }
 
   const text = String(bubble.text || '').trim();
-  if (text) return { role, kind: 'text', text };
+  // An answer is written into its bubble as it is spoken, so what is there
+  // mid-turn is a prefix, not the message. Reading it once and calling it done
+  // published whatever happened to be written at that instant — a long reply
+  // arrived on the phone cut off in the middle of a word. While the chat is
+  // generating, a bubble of prose is unfinished business, exactly like a
+  // command that has not printed yet. Someone else's message is never a
+  // prefix: the desktop writes it whole before the turn starts.
+  const growing = generating && role === 'assistant';
+  if (text) return { role, kind: 'text', text, pending: growing };
 
   const thinking = String(bubble.thinking?.text || '').trim();
-  if (thinking) return { role, kind: 'thinking', text: thinking };
+  if (thinking) return { role, kind: 'thinking', text: thinking, pending: growing };
 
   return null;
 }
@@ -421,15 +439,18 @@ export class ThreadWatcher extends EventEmitter {
       for (const id of state.visited) this.seen.add(id);
       let said = 0;
       for (const message of state.messages) {
-        // An unfinished call is read again every pass. Say something only when
-        // there is something new to say.
-        if (message.pending) {
-          const print = `${message.status}:${message.output?.length || 0}`;
-          if (this.echoed.get(message.id) === print) continue;
-          this.echoed.set(message.id, print);
-        } else {
-          this.echoed.delete(message.id);
+        // Anything unfinished is read again every pass — a call waiting on its
+        // output, a reply still being written. Say something only when there is
+        // something new to say, including on the pass where it becomes final:
+        // otherwise every message would be announced twice, once mid-flight
+        // and once again the moment the turn ends.
+        const print = printOf(message);
+        if (this.echoed.get(message.id) === print) {
+          if (!message.pending) this.echoed.delete(message.id);
+          continue;
         }
+        if (message.pending) this.echoed.set(message.id, print);
+        else this.echoed.delete(message.id);
         said += 1;
         this.emit('message', message);
       }
