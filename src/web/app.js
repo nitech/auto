@@ -55,6 +55,8 @@ const state = {
   permCards: new Map(),
   stream: null,
   streamKind: null,
+  /** the thinking block being written to, so it can be folded when it ends */
+  thinking: null,
   lastPrompt: '',
   /** images waiting to go with the next prompt: {mimeType, data, url} */
   attachments: [],
@@ -183,8 +185,23 @@ function syncToBottom() {
   els.toBottom.hidden = nearBottom();
 }
 
+/**
+ * Fold away the thinking once it has stopped.
+ *
+ * Reasoning is worth reading while it is the only thing happening and worth
+ * getting out of the way the moment anything else is, so a thinking block is
+ * born open and closed by whatever comes next — including the end of the turn,
+ * which lands here too.
+ */
+function closeThinking() {
+  if (!state.thinking) return;
+  state.thinking.open = false;
+  state.thinking = null;
+}
+
 function add(node, { keepStream = false } = {}) {
   if (!keepStream) {
+    closeThinking();
     state.stream = null;
     state.streamKind = null;
   }
@@ -223,11 +240,16 @@ function renderStreaming(rec) {
       const d = document.createElement('details');
       d.className = 'think';
       d.innerHTML = '<summary>Thinking</summary><div class="body"></div>';
+      // Open while it runs: on a phone this is the only sign of life between a
+      // prompt and the first words of an answer.
+      d.open = true;
       add(d, { keepStream: true });
+      state.thinking = d;
       state.stream = d.querySelector('.body');
       state.stream.dataset.raw = '';
     } else {
       const d = div('msg agent');
+      closeThinking();
       add(d, { keepStream: true });
       state.stream = d;
       state.stream.dataset.raw = '';
@@ -894,16 +916,27 @@ function applyMeta(meta) {
   els.status.className = `chip ${meta.status === 'busy' ? 'busy' : meta.status === 'error' ? 'error' : ''}`;
 }
 
+/**
+ * Both buttons while a turn runs: stop it, or add to it.
+ *
+ * Sending used to be impossible until the agent was free, which meant holding a
+ * thought until you noticed the turn had ended. Anything sent now joins a queue
+ * and goes in when the turn finishes, so the button stays live and says which of
+ * the two it is doing.
+ */
 function setBusy(busy) {
   state.busy = busy;
   els.stop.hidden = !busy;
-  els.send.hidden = busy;
+  els.send.title = busy ? 'Add to the queue' : 'Send';
+  els.send.setAttribute('aria-label', els.send.title);
+  els.send.classList.toggle('queueing', busy);
+  els.box.placeholder = busy ? 'Add to the queue…' : 'Message the agent…';
   syncSend();
 }
 
 /** Send is only live when there is something to send. */
 function syncSend() {
-  els.send.disabled = state.busy || !(els.box.value.trim() || state.attachments.length);
+  els.send.disabled = !(els.box.value.trim() || state.attachments.length);
 }
 
 // ------------------------------------------------------------------ socket
@@ -923,6 +956,7 @@ function attach(sessionId) {
   state.toolCards.clear();
   state.permCards.clear();
   state.stream = null;
+  state.thinking = null;
   resetTerminals();
   setRail(false);
   sendOp({ op: 'attach', sessionId, fromSeq: 0 });
@@ -976,6 +1010,7 @@ function connect() {
         state.toolCards.clear();
         state.permCards.clear();
         state.stream = null;
+        state.thinking = null;
         resetTerminals();
       }
       renderModels(msg.catalog?.models);
@@ -1109,7 +1144,8 @@ function addImage(file) {
 function submit(text) {
   const body = (text ?? els.box.value).trim();
   const images = state.attachments.map(({ mimeType, data }) => ({ mimeType, data }));
-  if ((!body && !images.length) || state.busy) return;
+  // A turn already running is no reason to refuse: the host queues it.
+  if (!body && !images.length) return;
   state.lastPrompt = body;
   sendOp({ op: 'prompt', sessionId: state.sessionId, text: body, images });
   state.attachments = [];

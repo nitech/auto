@@ -35,14 +35,16 @@ import {
   COMPOSER_TEXT,
   FACTS,
   FOCUS_COMPOSER,
+  MENU_ITEMS,
   SELECTORS,
   STOP_TURN_KEY,
   clickAction,
   isApproval,
+  pickerAt,
   samePath,
   showThread,
 } from './cursor-dom.mjs';
-import { readThread, threadOwning } from './desktop-threads.mjs';
+import { readSettings, readThread, threadOwning } from './desktop-threads.mjs';
 
 export const DEFAULT_PORT = Number(process.env.CURSOR_CDP_PORT || 9222);
 
@@ -55,6 +57,8 @@ const SUBMIT_LOOKS = 8;
 const STOP_LOOKS = 6;
 /** How long a pressed tab gets to bring its chat forward. */
 const SHOW_LOOKS = 8;
+/** How long a menu gets to open, and a picker to admit it changed. */
+const MENU_LOOKS = 10;
 
 /** JSON-RPC over one page's debugger socket. */
 class CdpSocket {
@@ -199,6 +203,40 @@ export class CursorWindow {
     return this.#key('Enter', 'Enter', 13);
   }
 
+  /** Shut whatever is open, the way a person gets out of a menu. */
+  pressEscape() {
+    return this.#key('Escape', 'Escape', 27);
+  }
+
+  /**
+   * Press a point in the window with a real mouse.
+   *
+   * Cursor's chat answers a click dispatched onto an element, but its dropdowns
+   * do not: they open on input the window believes came from a mouse, and a
+   * synthetic event is not that however it is shaped. Pressing where something
+   * is, rather than pressing the thing itself, is the only way in — so the
+   * caller has to find out where it is first.
+   */
+  async mouseAt({ x, y }) {
+    const at = { x: Math.round(x), y: Math.round(y) };
+    // Move first: a control that only shows itself on hover is a real thing.
+    await this.socket.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      ...at,
+      button: 'none',
+      buttons: 0,
+    });
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await this.socket.send('Input.dispatchMouseEvent', {
+        type,
+        ...at,
+        button: 'left',
+        buttons: type === 'mousePressed' ? 1 : 0,
+        clickCount: 1,
+      });
+    }
+  }
+
   /** What the chat is offering to be pressed, and whether a turn is running. */
   actions() {
     return this.evaluate(ACTIONS);
@@ -218,6 +256,16 @@ export class CursorWindow {
   /** Bring a chat to the front of this window by pressing its tab. */
   showThread(threadId) {
     return this.evaluate(showThread(threadId));
+  }
+
+  /** Where the model or mode picker is, and what it says now. */
+  pickerAt(which) {
+    return this.evaluate(pickerAt(which));
+  }
+
+  /** What the open menu offers, and where each item is. */
+  menuItems() {
+    return this.evaluate(MENU_ITEMS);
   }
 
   /** The same, by pressing the stop icon beside the chat box. */
@@ -248,6 +296,57 @@ export class CursorWindow {
   }
 }
 
+/** How close two rows have to be to count as the same one. */
+const SAME_ROW_PX = 12;
+
+const plain = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+/**
+ * Which menu item does this name mean, and what has to be pressed to get it?
+ *
+ * Names are matched as a person would read them: the whole label first, then a
+ * label the request begins with, which is how a variant is asked for — "Opus 5
+ * High" is the row "Opus 5" and the badge "High" sitting on it. A badge is only
+ * accepted from that row, since every row has one saying the same word, and a
+ * name matching several rows is refused outright. Choosing the wrong model is
+ * not the sort of mistake that announces itself.
+ *
+ * @param {{ label: string, x: number, y: number }[]} items
+ * @param {string} wanted
+ * @returns {{ item?: object, press: object[], reason?: string }}
+ */
+export function pickItem(items, wanted) {
+  const want = plain(wanted);
+  const at = (item) => ({ x: item.x, y: item.y });
+
+  const exact = items.filter((item) => plain(item.label) === want);
+  if (exact.length === 1) return { item: exact[0], press: [at(exact[0])] };
+  if (exact.length > 1) {
+    return { press: [], reason: `more than one row says "${wanted}"` };
+  }
+
+  // "<row> <variant>": the longest label the request starts with is the row.
+  const starts = items
+    .filter((item) => want.startsWith(`${plain(item.label)} `))
+    .sort((a, b) => plain(b.label).length - plain(a.label).length);
+  for (const row of starts) {
+    const rest = want.slice(plain(row.label).length).trim();
+    const onRow = items.filter(
+      (item) => plain(item.label) === rest && Math.abs(item.y - row.y) <= SAME_ROW_PX,
+    );
+    if (onRow.length === 1) return { item: onRow[0], press: [at(row), at(onRow[0])] };
+    if (onRow.length > 1) return { press: [], reason: `"${rest}" is on that row more than once` };
+  }
+  if (starts.length) {
+    return { press: [], reason: `"${wanted.slice(plain(starts[0].label).length).trim()}" is not on that row` };
+  }
+
+  const loose = items.filter((item) => plain(item.label).startsWith(want));
+  if (loose.length === 1) return { item: loose[0], press: [at(loose[0])] };
+
+  return { press: [], reason: `nothing in the menu is called "${wanted}"` };
+}
+
 /** Cursor's windows are the pages with a workbench in them. */
 function isWindow(target) {
   return target?.type === 'page' && /workbench/i.test(String(target.url || ''));
@@ -273,9 +372,19 @@ export class CursorCdp {
    *   owns these messages, when a window will not say which chat it shows
    * @param {(threadId: string) => boolean} [opts.isGenerating]  whether a turn
    *   is in flight, from the desktop's own records
+   * @param {(threadId: string) => object|null} [opts.readSettings]  what a chat
+   *   is set to, from the desktop's own records
    * @param {number} [opts.settleMs]
    */
-  constructor({ port = DEFAULT_PORT, listTargets, openWindow, owner, isGenerating, settleMs } = {}) {
+  constructor({
+    port = DEFAULT_PORT,
+    listTargets,
+    openWindow,
+    owner,
+    isGenerating,
+    readSettings: settingsOf,
+    settleMs,
+  } = {}) {
     this.port = port;
     this.listTargets = listTargets || (() => defaultTargets(port));
     this.openWindow = openWindow || ((target) => CursorWindow.open(target));
@@ -284,6 +393,7 @@ export class CursorCdp {
     // says so outright, and it was right when the window was wrong.
     this.isGenerating =
       isGenerating || ((threadId) => Boolean(readThread(threadId, { tail: 0 })?.generating));
+    this.readSettings = settingsOf || ((threadId) => readSettings(threadId));
     this.settleMs = settleMs ?? SUBMIT_SETTLE_MS;
   }
 
@@ -524,6 +634,144 @@ export class CursorCdp {
         ? { status: 'pressed', name: done.name, where: done.where, of: done.of }
         : { status: 'not-pressed', reason: done?.reason || 'nothing was pressed' };
     });
+  }
+
+  /**
+   * What a chat is set to.
+   *
+   * The desktop's own records answer this, so it costs no window and works for
+   * chats nothing has open. The window is asked only for what it displays, which
+   * is worth having because it is what the user is looking at: "Opus 5 High"
+   * where the database says `claude-opus-5` and `effort: high` separately.
+   */
+  async settings({ threadId }) {
+    const stored = this.readSettings(threadId);
+    if (!stored) return { status: 'unknown-thread', reason: 'no such chat in the desktop' };
+
+    const shown = await this.#withThread(threadId, async (window) => ({
+      status: 'ok',
+      model: (await window.pickerAt('model'))?.label || null,
+      mode: (await window.pickerAt('mode'))?.label || null,
+    }));
+
+    return {
+      status: 'ok',
+      ...stored,
+      shown: shown.status === 'ok' ? { model: shown.model, mode: shown.mode } : null,
+    };
+  }
+
+  /**
+   * The models or modes a chat could be switched to.
+   *
+   * Opens the picker, writes down what is in it and closes it again, because
+   * there is nowhere else to read this from: the list depends on the account,
+   * and Cursor keeps it in the window rather than in the database.
+   */
+  async choices({ threadId, picker }) {
+    return this.#withThread(threadId, (window) => this.#inMenu(window, picker, null));
+  }
+
+  /**
+   * Switch a chat's model or mode, by the name the menu gives it.
+   *
+   * A variant may be named after the model — "Opus 5 High" — and is pressed on
+   * the model's own row, which is how the menu offers it. Anything ambiguous is
+   * refused rather than guessed at: the same word appears on every row.
+   *
+   * @param {object} opts
+   * @param {string} opts.threadId
+   * @param {'model'|'mode'} opts.picker
+   * @param {string} opts.wanted
+   */
+  async choose({ threadId, picker, wanted }) {
+    if (!String(wanted || '').trim()) {
+      return { status: 'error', reason: 'nothing was named to switch to' };
+    }
+    return this.#withThread(threadId, (window) => this.#inMenu(window, picker, String(wanted)));
+  }
+
+  /**
+   * Open a picker, do one thing in it, and never leave it open.
+   *
+   * With nothing wanted this only reads. With something wanted it presses it and
+   * then checks the desktop's own records agree, because a menu closing proves
+   * nothing about what it did.
+   */
+  async #inMenu(window, picker, wanted) {
+    const which = picker === 'mode' ? 'mode' : 'model';
+    const at = await window.pickerAt(which);
+    if (!at) return { status: 'no-picker', reason: `this window has no ${which} picker` };
+
+    // Asking for what it is already on is not a mistake and not work either.
+    if (wanted && flatten(at.label).toLowerCase() === flatten(wanted).toLowerCase()) {
+      return { status: 'already', picker: which, was: at.label };
+    }
+
+    await window.mouseAt(at);
+    const menu = await this.#menuOpened(window);
+    if (!menu.items.length) {
+      await this.#closeMenu(window);
+      return { status: 'no-menu', reason: `the ${which} picker did not open` };
+    }
+
+    const options = [...new Set(menu.items.map((item) => item.label))];
+    if (!wanted) {
+      await this.#closeMenu(window);
+      return { status: 'ok', picker: which, was: at.label, options };
+    }
+
+    const found = pickItem(menu.items, wanted);
+    if (!found.item) {
+      await this.#closeMenu(window);
+      return { status: 'no-such-option', reason: found.reason, picker: which, options };
+    }
+
+    for (const step of found.press) await window.mouseAt(step);
+    await this.#closeMenu(window);
+
+    const now = await this.#settled(window, which, at.label);
+    return now === at.label
+      ? { status: 'unchanged', reason: `it still says ${now}`, picker: which, was: at.label }
+      : { status: 'set', picker: which, was: at.label, now };
+  }
+
+  /** Wait for a menu to appear, and say what is in it. */
+  async #menuOpened(window) {
+    let seen = { open: 0, items: [] };
+    for (let look = 0; look < MENU_LOOKS; look += 1) {
+      await wait(this.settleMs);
+      seen = (await window.menuItems()) || seen;
+      if (seen.items.length) return seen;
+    }
+    return seen;
+  }
+
+  /**
+   * Leave nothing open.
+   *
+   * A menu left up covers the chat box and swallows the next keystroke, so this
+   * is not tidiness: the next message from a phone depends on it.
+   */
+  async #closeMenu(window) {
+    for (let tries = 0; tries < 2; tries += 1) {
+      const still = await window.menuItems();
+      if (!still?.open) return true;
+      await window.pressEscape();
+      await wait(this.settleMs);
+    }
+    return !(await window.menuItems())?.open;
+  }
+
+  /** What the picker says once it has had a moment to catch up. */
+  async #settled(window, which, was) {
+    let now = was;
+    for (let look = 0; look < MENU_LOOKS; look += 1) {
+      await wait(this.settleMs);
+      now = (await window.pickerAt(which))?.label ?? now;
+      if (now !== was) return now;
+    }
+    return now;
   }
 
   /**

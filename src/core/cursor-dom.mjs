@@ -34,6 +34,31 @@ export const SELECTORS = {
   /** A chat's tab, which names the chat it belongs to. */
   tab: [{ selector: '[data-resource-name]', attribute: 'data-resource-name' }],
   /**
+   * The mode dropdown, which writes the mode it is set to on itself.
+   *
+   * Three things in the composer carry that attribute: the bar holding both
+   * pickers, an icon button with no words at all, and the dropdown itself. Taking
+   * the first found meant pressing the icon button in a new chat and reporting
+   * that the mode picker would not open, so the specific one is asked for first
+   * and the attribute is only a fallback.
+   */
+  modeBox: [
+    { selector: '.composer-unified-dropdown[data-mode]', attribute: 'data-mode' },
+    { selector: '[data-mode]', attribute: 'data-mode' },
+  ],
+  /** The model button, and the text inside it naming the current model. */
+  modelName: ['.ui-model-picker__trigger-text'],
+  modelButton: ['button[aria-haspopup="menu"]'],
+  /**
+   * A menu, once one is open.
+   *
+   * The two pickers do not agree on what a menu is: models open a proper
+   * `role=menu`, modes open the same popover Cursor uses for @-mentions. Both
+   * are listed, and neither is in the chat pane — they render near the root of
+   * the page, so a menu is looked for in the whole document.
+   */
+  menu: ['[role="menu"]', '.typeahead-popover'],
+  /**
    * Things that look pressable and are not controls.
    *
    * Cursor styles message text with a pointer cursor, so a message that happens
@@ -67,7 +92,19 @@ export const STOP_TURN_KEY = { key: 'Backspace', code: 'Backspace', keyCode: 8, 
  * the first real approval teaches us the words we actually needed.
  */
 const APPROVAL_WORDS =
-  /^(run|run command|run anyway|accept|accept all|apply|allow|allow once|always allow|approve|reject|reject all|deny|skip|cancel|continue|resume|keep|undo|move on|yes|no)\b/i;
+  /^(run|run command|run anyway|accept|allow|allow once|always allow|approve|reject|deny|skip|cancel|continue|resume|move on|yes|no)\b/i;
+
+/**
+ * Words that belong to the bar offering to review file changes.
+ *
+ * These were in the vocabulary above and should never have been. That bar is
+ * not a question: it stands there for as long as a chat has edits nobody has
+ * looked at, so a phone was offered "Keep All" and "Undo All" as if answering
+ * them would get a turn moving again. It would not — and "Undo All" throws away
+ * work, which makes offering it by accident the worst button on the screen.
+ * File changes deserve their own deliberate action, not a mystery approval.
+ */
+const REVIEW_WORDS = /^(keep|undo|revert|accept all|reject all|apply|discard)\b/i;
 
 /** Past this many characters it is a sentence, not a button. */
 const APPROVAL_MAX = 24;
@@ -75,7 +112,13 @@ const APPROVAL_MAX = 24;
 /** Does this control look like an answer to a question Cursor is asking? */
 export function isApproval(label) {
   const name = String(label || '').trim();
-  return name.length <= APPROVAL_MAX && APPROVAL_WORDS.test(name);
+  if (name.length > APPROVAL_MAX || REVIEW_WORDS.test(name)) return false;
+  return APPROVAL_WORDS.test(name);
+}
+
+/** Does this control act on file changes rather than answer a question? */
+export function isFileReview(label) {
+  return REVIEW_WORDS.test(String(label || '').trim());
 }
 
 const list = (names) => JSON.stringify(names);
@@ -320,6 +363,126 @@ ${HELPERS}
     }
   }
   return false;
+})()`;
+
+/**
+ * Where a picker is, so that it can be pressed with a real mouse.
+ *
+ * Neither dropdown opens for a dispatched click — they act on input the window
+ * believes came from a mouse — so what is wanted here is not the element but the
+ * point it occupies. See `CursorWindow.mouseAt`.
+ *
+ * @param {'model'|'mode'} which
+ */
+export const pickerAt = (which) => `(() => {
+${HELPERS}
+  const pane = __pane();
+  let el = null;
+  if (${JSON.stringify(which)} === 'mode') {
+    for (const { selector, attribute } of ${list(SELECTORS.modeBox)}) {
+      // Of the things carrying the attribute, the dropdown is the one whose
+      // words are the mode itself; the bar around it also says the model, and
+      // the icon button beside it says nothing.
+      const boxes = [...pane.querySelectorAll(selector)].filter((candidate) => {
+        const said = __text(candidate).replace(/\\s+/g, ' ').toLowerCase();
+        return said && said === (candidate.getAttribute(attribute) || '').toLowerCase();
+      });
+      // A custom mode is named something the attribute does not say, so fall
+      // back to whichever of them says the least — never the bar.
+      const box =
+        boxes[0] ||
+        [...pane.querySelectorAll(selector)]
+          .filter((candidate) => __text(candidate))
+          .sort((a, b) => __text(a).length - __text(b).length)[0];
+      if (!box) continue;
+      // The dropdown holds both pickers. Take the side without the model in it.
+      const modelBit = ${list(SELECTORS.modelName)}
+        .map((s) => box.querySelector(s))
+        .find(Boolean);
+      el =
+        [...box.children].find((kid) => !modelBit || !kid.contains(modelBit)) || box;
+      break;
+    }
+  } else {
+    for (const s of ${list(SELECTORS.modelName)}) {
+      const found = pane.querySelector(s);
+      if (found) {
+        el = found.closest('button') || found;
+        break;
+      }
+    }
+    if (!el) {
+      for (const s of ${list(SELECTORS.modelButton)}) {
+        const found = [...pane.querySelectorAll(s)].pop();
+        if (found) {
+          el = found;
+          break;
+        }
+      }
+    }
+  }
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return {
+    label: __text(el).replace(/\\s+/g, ' ').slice(0, 60),
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  };
+})()`;
+
+/**
+ * What the open menu offers, and where each of those things is.
+ *
+ * An item is named by the words belonging to it and not to its children. A model
+ * row is written as its name with badges inside it — "Opus 5" holding a "High" —
+ * so reading whole subtrees produced names no menu ever showed, like "Opus 5
+ * HighEdit", and made "Auto" ambiguous with the wrapper repeating it. Taking
+ * only an element's own text gives the row its name, each badge its own, and
+ * every one of them a place to be pressed, which is what choosing a variant
+ * needs. The keystroke printed next to a row is not an item.
+ */
+export const MENU_ITEMS = `(() => {
+  const clean = (s) =>
+    String(s ?? '')
+      // The model menu pads its badges with zero-width spaces.
+      .replace(/[\\u200b\\u200c\\u200d\\ufeff]/g, '')
+      .replace(/\\s+/g, ' ')
+      .trim();
+  const shortcut = /^(Ctrl|Alt|Shift|Cmd|⌘|⌥|⇧)[+\\-]?/i;
+
+  const menus = ${list(SELECTORS.menu)}
+    .flatMap((s) => [...document.querySelectorAll(s)])
+    .filter((el) => {
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+
+  const items = [];
+  for (const menu of menus) {
+    for (const el of menu.querySelectorAll('*')) {
+      const own = [...el.childNodes]
+        .filter((node) => node.nodeType === 3)
+        .map((node) => node.textContent)
+        .join(' ');
+      const label = clean(own);
+      if (!label || label.length > 60 || shortcut.test(label)) continue;
+      const rect = el.getBoundingClientRect();
+      if (!rect.width || !rect.height) continue;
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      // The same words in the same place are one item however many elements
+      // Cursor built it from.
+      if (items.some((kept) => kept.label === label && Math.abs(kept.y - y) < 2)) continue;
+      const state =
+        el.getAttribute('aria-checked') ??
+        el.getAttribute('aria-selected') ??
+        el.closest('[aria-checked],[aria-selected]')?.getAttribute('aria-checked') ??
+        null;
+      items.push({ label, x, y, current: state === 'true' });
+    }
+  }
+  return { open: menus.length, items };
 })()`;
 
 /**

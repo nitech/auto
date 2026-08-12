@@ -50,6 +50,29 @@ value as setup documentation is fine.
   Controls are found by what they say, never by class name — Cursor's are
   generated — and what a conversation says is excluded, or a message beginning
   "Run this…" reads as a Run button. It did once.
+- **A chat's model and mode can be set from the phone.** The pickers beside
+  Cursor's chat box are the one part of the window that ignores a dispatched
+  click — they open only on input the window believes came from a mouse — so
+  they are pressed *where they are* over the debug port. The menus disagree with
+  each other (models are a `role=menu`, modes are the @-mention popover) and an
+  item is named by its own text, never its subtree, or "Opus 5" holding a "High"
+  badge reads as "Opus 5 HighEdit". A variant is the row then the badge on it.
+  Nothing is believed from the click: Cursor's stored record keeps the model a
+  chat was last *sent* with, so the word on the picker is the proof, and asking
+  for what it is already on presses nothing.
+- **A busy session takes another task.** Prompts sent mid-turn used to be
+  refused with "Session is already working" — fine at a keyboard, useless from a
+  phone. They now queue: the message goes into the transcript when it is added
+  and into the agent when the turn ends. The queue is memory only, and stopping
+  a turn drops what was queued behind it, because stopping means stopping.
+- **Telegram says what is running; the web says what it printed.** Command
+  output goes to the web transcript, which has room to scroll and rewrites in
+  place. Telegram gets the command line and, for a failure, the exit code —
+  quoting a build log there buries the reply it came with.
+- **The file-review bar is not a question.** "Keep All" and "Undo All" sit there
+  for as long as a chat has unreviewed edits, and offering them as approvals
+  meant offering to throw work away by accident. They are excluded from the
+  approval vocabulary and belong to a deliberate action instead.
 - **Cursor's own approvals go to the phone.** While a desktop turn runs, Auto
   watches the window for controls whose words mean it is waiting for a person,
   parks them in the same broker as an agent's own permission requests, and

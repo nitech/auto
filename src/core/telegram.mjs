@@ -76,8 +76,6 @@ const ICON = {
 
 /** How long a command may be before it is cut down for a phone screen. */
 const TOOL_LABEL_MAX = 70;
-/** How much of a failed command's output is worth quoting. */
-const FAILURE_MAX = 160;
 
 /**
  * What a tool call did, said in one line.
@@ -92,15 +90,21 @@ export function toolLabel(rec) {
   return name.length > TOOL_LABEL_MAX ? `${name.slice(0, TOOL_LABEL_MAX - 1)}…` : name;
 }
 
-/** The end of what a failed command printed, or nothing if it did not fail. */
+/**
+ * How a failed command ended — and only that.
+ *
+ * Telegram says what is running, never what it printed. Output belongs on a
+ * screen with room to scroll: quoting a build log into a chat buries the reply
+ * it came with, and the same message gets rewritten several times a second while
+ * a command streams. The web transcript has all of it. So a failure is worth one
+ * word here, the code it exited with, which is usually the whole story anyway.
+ */
 export function failureNote(rec) {
   const out = rec?.rawOutput;
-  const failed = rec?.status === 'failed' || (out && typeof out === 'object' && out.exitCode > 0);
+  const code = out && typeof out === 'object' ? out.exitCode : null;
+  const failed = rec?.status === 'failed' || code > 0;
   if (!failed) return null;
-  const text = typeof out === 'object' ? out.text || out.stderr || out.stdout || '' : String(out || '');
-  const tail = clamp(String(text).replace(/\n+/g, '\n').trim(), FAILURE_MAX);
-  const exit = out && typeof out === 'object' && out.exitCode ? `exit ${out.exitCode}` : null;
-  return [exit, tail].filter(Boolean).join(': ') || null;
+  return code === null || code === undefined ? 'failed' : `exit ${code}`;
 }
 
 /**
@@ -112,7 +116,8 @@ export function renderTurn({ text = '', tools = [] } = {}) {
   const head = tools
     .map((t) => {
       const line = `${ICON[t.status] || '▸'} <i>${esc(t.label)}</i>`;
-      return t.failure ? `${line}\n   <code>${esc(t.failure)}</code>` : line;
+      // One word, on the same line: a phone has better uses for its rows.
+      return t.failure ? `${line} — ${esc(t.failure)}` : line;
     })
     .join('\n');
   const body = esc(String(text).trim());
@@ -417,16 +422,21 @@ export class TelegramBridge extends EventEmitter {
         return this.send(stopped ? 'Interrupted.' : 'Nothing was interrupted — see the chat.');
       }
 
-      case '/mode':
+      case '/mode': {
         if (!active) return this.send('No active session.');
+        // A Cursor chat has Cursor's own modes, which are more than three and
+        // not ours to name. Ask the window what it offers.
+        if (active.kind === 'desktop') return this.#pickInCursor(active, 'mode', arg);
         if (!['agent', 'plan', 'ask'].includes(arg)) {
           return this.send(`Mode is <b>${esc(active.mode)}</b>. Use /mode agent|plan|ask.`);
         }
         await this.sessions.setMode(active.id, arg);
         return this.send(`Mode → <b>${esc(arg)}</b>`);
+      }
 
       case '/model': {
         if (!active) return this.send('No active session.');
+        if (active.kind === 'desktop') return this.#pickInCursor(active, 'model', arg);
         const models = this.sessions.catalog?.models || [];
         if (!models.length) {
           // Starting the agent takes a moment; do not hold up the poll loop.
@@ -500,6 +510,51 @@ export class TelegramBridge extends EventEmitter {
     }
   }
 
+  /**
+   * Pick a Cursor chat's model or mode from a phone.
+   *
+   * The list comes from the window rather than from us, because it is Cursor's
+   * account that decides it — so with no name given the menu is read and offered
+   * as buttons, and with one it is set outright. Both open a menu in the desktop
+   * for a moment; that is the price of there being nowhere else to ask.
+   */
+  async #pickInCursor(active, picker, arg) {
+    if (arg) {
+      const done =
+        picker === 'mode'
+          ? await this.sessions.setMode(active.id, arg)
+          : await this.sessions.setModel(active.id, arg);
+      // The session records why in the transcript either way; keep this short.
+      return this.send(
+        done
+          ? `${picker === 'mode' ? 'Mode' : 'Model'} → <b>${esc(arg)}</b>`
+          : `Cursor would not set that ${picker}. See the chat for why.`,
+      );
+    }
+
+    const offer = await this.sessions.desktopChoices(active.id, picker);
+    if (offer.status !== 'ok') {
+      return this.send(
+        `Cannot read Cursor's ${picker} list: ${esc(offer.reason || offer.status)}.`,
+      );
+    }
+
+    const rows = [];
+    const options = offer.options.filter((o) => !/^(add models|new|edit)$/i.test(o));
+    for (let i = 0; i < options.length; i += 2) {
+      rows.push(
+        options.slice(i, i + 2).map((label) => ({
+          text: `${label === offer.was ? '● ' : ''}${label}`.slice(0, 40),
+          callback_data: this.tokenFor({ kind: 'cursorPick', picker, label }),
+        })),
+      );
+    }
+    return this.send(
+      `Cursor's ${picker} for this chat is <b>${esc(offer.was || 'unknown')}</b>`,
+      { reply_markup: { inline_keyboard: rows } },
+    );
+  }
+
   /** Toast shown on the tapped button. Overridable so tests stay offline. */
   answerCallback(queryId, text) {
     return tgApi(this.auth.token, 'answerCallbackQuery', {
@@ -555,6 +610,17 @@ export class TelegramBridge extends EventEmitter {
         await answer(err.message.slice(0, 190));
         await this.send(`⚠️ ${esc(err.message)}`);
       }
+      return;
+    }
+
+    if (payload.kind === 'cursorPick') {
+      const id = this.sessions.activeId;
+      const set =
+        payload.picker === 'mode'
+          ? await this.sessions.setMode(id, payload.label)
+          : await this.sessions.setModel(id, payload.label);
+      await answer(set ? `${payload.picker}: ${payload.label}` : 'Cursor would not take that.');
+      if (set) await this.send(`${payload.picker === 'mode' ? 'Mode' : 'Model'} → <b>${esc(payload.label)}</b>`);
       return;
     }
 

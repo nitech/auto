@@ -171,7 +171,18 @@ if (existsSync(SRC)) {
     const { samePath } = await import('../src/core/cursor-dom.mjs');
 
     class FakeWindow {
-      constructor(facts, { submits = true, focusable = true, controls = [], stopsOn = 'keyboard', generating = false } = {}) {
+      constructor(
+        facts,
+        {
+          submits = true,
+          focusable = true,
+          controls = [],
+          stopsOn = 'keyboard',
+          generating = false,
+          pickers = null,
+          menus = null,
+        } = {},
+      ) {
         this.given = facts;
         this.box = facts.composerText || '';
         this.submits = submits;
@@ -179,9 +190,58 @@ if (existsSync(SRC)) {
         this.controls = controls;
         this.stopsOn = stopsOn;
         this.generating = generating;
+        /** what each picker currently says, e.g. { mode: 'Agent' } */
+        this.pickers = pickers;
+        /** what each picker's menu offers: { mode: [{ label, x, y }] } */
+        this.menus = menus || {};
+        this.openMenu = null;
+        this.clicks = [];
         this.pressed = [];
         this.sent = null;
         this.closed = false;
+      }
+      /** Both pickers sit in a row at the bottom, so give them fixed places. */
+      async pickerAt(which) {
+        if (!this.pickers?.[which]) return null;
+        return { label: this.pickers[which], x: which === 'mode' ? 10 : 60, y: 400 };
+      }
+      async menuItems() {
+        const items = this.openMenu ? this.menus[this.openMenu] || [] : [];
+        return { open: this.openMenu ? 1 : 0, items };
+      }
+      async pressEscape() {
+        this.pressed.push('«escape»');
+        this.openMenu = null;
+      }
+      /**
+       * A real mouse press: on a picker it opens that menu, inside an open menu
+       * it chooses, and choosing changes what the picker says — as Cursor's does.
+       */
+      async mouseAt({ x, y }) {
+        this.clicks.push({ x, y });
+        const item = (this.menus[this.openMenu] || []).find(
+          (i) => Math.abs(i.x - x) < 1 && Math.abs(i.y - y) < 1,
+        );
+        if (item) {
+          this.pressed.push(item.label);
+          // A model row with badges beside it does not commit on its own: the
+          // variant sitting on that row is what gets chosen, so the menu stays.
+          const beside = (this.menus[this.openMenu] || []).filter(
+            (i) => i !== item && Math.abs(i.y - item.y) < 2,
+          );
+          if (beside.length && !item.becomes) return;
+          if (!item.inert) this.pickers[this.openMenu] = item.becomes || item.label;
+          this.openMenu = null;
+          return;
+        }
+        for (const which of ['mode', 'model']) {
+          const at = await this.pickerAt(which);
+          if (at && Math.abs(at.x - x) < 1 && Math.abs(at.y - y) < 1) {
+            this.openMenu = this.menus[which] ? which : null;
+            this.pressed.push(`«open ${which}»`);
+            return;
+          }
+        }
       }
       async facts() {
         return { ...this.given, composerText: this.box };
@@ -357,7 +417,7 @@ if (existsSync(SRC)) {
     if (!failed) ok('v2 core: typing into a Cursor window lands in the right chat, or not at all');
 
     // Pressing Cursor's own buttons: stopping a turn, and answering what it asks.
-    const { isApproval } = await import('../src/core/cursor-dom.mjs');
+    const { isApproval, isFileReview } = await import('../src/core/cursor-dom.mjs');
 
     // Stopping goes by keyboard first, because that is what Cursor's Stop
     // button advertises, and by the button only if the keystroke was ignored.
@@ -461,11 +521,20 @@ if (existsSync(SRC)) {
       fail('pressing a control that does not exist should be refused');
     }
 
-    if (!isApproval('Run command') || !isApproval('Skip') || !isApproval('Accept all')) {
+    if (!isApproval('Run command') || !isApproval('Skip') || !isApproval('Allow once')) {
       fail('approval vocabulary should recognise Cursor asking');
     }
     if (isApproval('Copy message') || isApproval('Ran command') || isApproval('Review')) {
       fail('approval vocabulary should not catch ordinary controls');
+    }
+    // The bar offering to review file changes is not a question, and offering
+    // "Undo All" to a phone as if it were one is how work gets thrown away.
+    for (const word of ['Keep All', 'Undo All', 'Accept all', 'Reject all', 'Revert']) {
+      if (isApproval(word)) fail(`${word} belongs to file review, not to approvals`);
+      if (!isFileReview(word)) fail(`${word} should be recognised as a file-review control`);
+    }
+    if (isFileReview('Run') || isFileReview('Skip')) {
+      fail('answering a question is not reviewing files');
     }
     // A message that begins with "Run…" is a message. Auto asked to approve one
     // of these before the length test existed.
@@ -474,6 +543,107 @@ if (existsSync(SRC)) {
     }
 
     if (!failed) ok('v2 core: Auto can stop a Cursor turn and press what Cursor asks');
+
+    // Setting a chat's model and mode: the menu is opened, one item is pressed,
+    // and nothing is believed until the picker itself says something new.
+    const { pickItem } = await import('../src/core/cursor-cdp.mjs');
+    let picking = false;
+    const withPickers = () =>
+      new FakeWindow(
+        { threadId: THREAD, hasComposer: true },
+        {
+          pickers: { mode: 'Agent', model: 'Opus 5 High' },
+          menus: {
+            mode: [
+              { label: 'Agent', x: 200, y: 100 },
+              { label: 'Plan', x: 200, y: 130 },
+              { label: 'Ask', x: 200, y: 160 },
+            ],
+            model: [
+              { label: 'Opus 5', x: 300, y: 100 },
+              { label: 'High', x: 380, y: 100, becomes: 'Opus 5 High' },
+              { label: 'Kimi K3', x: 300, y: 130 },
+              { label: 'Max', x: 380, y: 130, becomes: 'Kimi K3 Max' },
+            ],
+          },
+        },
+      );
+
+    // What is on offer, without changing anything.
+    const listing = withPickers();
+    const offer = await machine({ listing }).choices({ threadId: THREAD, picker: 'mode' });
+    if (offer.status !== 'ok' || offer.options.join(',') !== 'Agent,Plan,Ask') {
+      picking = fail(`the mode menu should list what it offers: ${JSON.stringify(offer)}`) ?? true;
+    }
+    if (offer.was !== 'Agent') picking = fail(`listing should say what it is on: ${offer.was}`) ?? true;
+    if (listing.openMenu) picking = fail('a menu opened to be read must be closed again') ?? true;
+    if (listing.pickers.mode !== 'Agent') picking = fail('reading a menu must not change anything') ?? true;
+
+    const switching = withPickers();
+    const set = await machine({ switching }).choose({ threadId: THREAD, picker: 'mode', wanted: 'Plan' });
+    if (set.status !== 'set' || set.now !== 'Plan' || set.was !== 'Agent') {
+      picking = fail(`choosing a mode should set it: ${JSON.stringify(set)}`) ?? true;
+    }
+    if (switching.openMenu) picking = fail('choosing must not leave the menu open') ?? true;
+
+    // A variant is a badge on the model's row: press the row, then the badge.
+    const variant = withPickers();
+    const chose = await machine({ variant }).choose({
+      threadId: THREAD,
+      picker: 'model',
+      wanted: 'Kimi K3 Max',
+    });
+    if (chose.status !== 'set' || chose.now !== 'Kimi K3 Max') {
+      picking = fail(`a model variant should be reachable: ${JSON.stringify(chose)}`) ?? true;
+    }
+    if (!variant.pressed.includes('Kimi K3') || !variant.pressed.includes('Max')) {
+      picking = fail(`a variant is pressed on its own row: ${variant.pressed.join(',')}`) ?? true;
+    }
+
+    // Asking for what it is already on presses nothing at all.
+    const same = withPickers();
+    const already = await machine({ same }).choose({ threadId: THREAD, picker: 'mode', wanted: 'agent' });
+    if (already.status !== 'already') picking = fail(`already-on should say so: ${already.status}`) ?? true;
+    if (same.pressed.length) picking = fail('nothing should be pressed to stay where we are') ?? true;
+
+    // A name nothing answers to, and a menu that presses but does not take.
+    const missing = withPickers();
+    const nope = await machine({ missing }).choose({ threadId: THREAD, picker: 'model', wanted: 'Clippy 9' });
+    if (nope.status !== 'no-such-option' || !nope.options?.length) {
+      picking = fail(`an unknown model should be refused with the list: ${JSON.stringify(nope)}`) ?? true;
+    }
+    if (missing.openMenu) picking = fail('a refused choice must still close the menu') ?? true;
+
+    const deafMenu = withPickers();
+    deafMenu.menus.mode = deafMenu.menus.mode.map((i) => ({ ...i, inert: true }));
+    const ignored = await machine({ deafMenu }).choose({ threadId: THREAD, picker: 'mode', wanted: 'Plan' });
+    if (ignored.status !== 'unchanged') {
+      picking = fail(`a press that changes nothing is not a success: ${JSON.stringify(ignored)}`) ?? true;
+    }
+
+    const noPicker = new FakeWindow({ threadId: THREAD, hasComposer: true });
+    if ((await machine({ noPicker }).choices({ threadId: THREAD, picker: 'mode' })).status !== 'no-picker') {
+      picking = fail('a window with no picker should say so') ?? true;
+    }
+    if ((await machine({ listing }).choose({ threadId: OTHER, picker: 'mode', wanted: 'Plan' })).status !== 'unknown-thread') {
+      picking = fail('a chat no window shows must not have its mode changed') ?? true;
+    }
+
+    // Matching names the way a reader does, and refusing what is ambiguous.
+    const rows = [
+      { label: 'Opus 5', x: 1, y: 10 },
+      { label: 'High', x: 9, y: 10 },
+      { label: 'Kimi K3', x: 1, y: 40 },
+      { label: 'High', x: 9, y: 40 },
+    ];
+    if (pickItem(rows, 'opus 5').press.length !== 1) picking = fail('case should not matter') ?? true;
+    if (pickItem(rows, 'Opus 5 High').press.length !== 2) {
+      picking = fail('a variant needs the row and the badge') ?? true;
+    }
+    if (pickItem(rows, 'High').item) picking = fail('a badge on every row is ambiguous') ?? true;
+    if (pickItem(rows, 'Opus 5 Max').item) picking = fail('a variant not on that row is not a match') ?? true;
+
+    if (!picking) ok('v2 core: a chat’s model and mode can be set from its own menus');
   } catch (e) {
     fail(`v2 cursor-cdp: ${e.message}`);
   }
@@ -761,6 +931,111 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1e3. Adding to a session that is already working. A second prompt used to be
+// turned away with "Session is already working", which from a phone means
+// remembering to send it again later.
+{
+  const dir = mkdtempSync(join(tmpdir(), 'auto-queue-'));
+  try {
+    const { SessionManager } = await import('../src/core/sessions.mjs');
+    let failed = false;
+
+    const sessions = new SessionManager({ stateDir: dir, defaultFolder: ROOT }).init();
+    const id = sessions.list()[0].id;
+    // Starting the agent is what normally opens the transcript, and this test
+    // never starts one.
+    await sessions.transcript(id);
+
+    // A stand-in agent whose turn lasts exactly as long as the test allows.
+    const turns = [];
+    let release = null;
+    sessions.ensureLive = async () => {
+      const runtime = sessions.live.get(id) || {};
+      runtime.acpSessionId = 'acp-1';
+      runtime.client = {
+        running: true,
+        prompt: async ({ prompt }) => {
+          turns.push(prompt.map((p) => p.text).join(''));
+          await new Promise((resolve) => {
+            release = resolve;
+          });
+          return { stopReason: 'end_turn' };
+        },
+        cancel: () => {},
+      };
+      sessions.live.set(id, runtime);
+      return runtime;
+    };
+
+    const first = sessions.prompt(id, { text: 'one' });
+    await new Promise((r) => setTimeout(r, 10));
+    if (sessions.get(id).status !== 'busy') {
+      fail('a session running a turn should be busy');
+      failed = true;
+    }
+
+    const queued = await sessions.prompt(id, { text: 'two' });
+    if (queued?.status !== 'queued' || queued.waiting !== 1) {
+      fail(`a prompt sent mid-turn should be queued, not refused: ${JSON.stringify(queued)}`);
+      failed = true;
+    }
+    const alsoQueued = await sessions.prompt(id, { text: 'three' });
+    if (alsoQueued?.waiting !== 2) {
+      fail(`a second addition should join the queue: ${JSON.stringify(alsoQueued)}`);
+      failed = true;
+    }
+    if (turns.length !== 1) {
+      fail(`nothing queued may reach the agent early: ${JSON.stringify(turns)}`);
+      failed = true;
+    }
+
+    // It shows in the transcript when it is added, not when it is sent, so
+    // whoever typed it can see it landed.
+    const history = await sessions.history(id, 0);
+    const asked = history.filter((r) => r.kind === 'user_message').map((r) => r.text);
+    if (asked.join('|') !== 'one|two|three') {
+      fail(`queued messages should be in the transcript in order: ${asked.join('|')}`);
+      failed = true;
+    }
+    if (!history.some((r) => r.kind === 'notice' && /goes in as soon as/.test(r.text || ''))) {
+      fail('a queued message should say when it will go in');
+      failed = true;
+    }
+
+    // The turn ends: the next one goes in by itself, and is not written twice.
+    release();
+    await first;
+    await new Promise((r) => setTimeout(r, 30));
+    if (turns[1] !== 'two') {
+      fail(`the queue should drain in order: ${JSON.stringify(turns)}`);
+      failed = true;
+    }
+    const again = (await sessions.history(id, 0)).filter((r) => r.kind === 'user_message');
+    if (again.length !== 3) {
+      fail(`a queued message must not be written to the transcript twice: ${again.length}`);
+      failed = true;
+    }
+
+    // Stopping means stopping: what was queued behind the turn goes with it.
+    if (!(await sessions.cancel(id))) {
+      fail('cancelling a running turn should report that it did something');
+      failed = true;
+    }
+    if (sessions.get(id).waiting) {
+      fail('a cancelled turn should leave nothing queued behind it');
+      failed = true;
+    }
+    if (release) release();
+    await new Promise((r) => setTimeout(r, 20));
+
+    if (!failed) ok('v2 core: a task can be added to a session that is already working');
+  } catch (e) {
+    fail(`v2 queue: ${e.message}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // 1e2. Reading the blob Cursor keeps a tool call in. Built by hand rather than
 // captured, so the test says what the shape is instead of only that it once was.
 {
@@ -971,14 +1246,24 @@ if (existsSync(SRC)) {
       fail('a command that worked needs no note');
       failed = true;
     }
+    // Telegram says what ran and how it ended, never what it printed: output
+    // belongs where there is room to scroll.
     const note = failureNote({ status: 'failed', rawOutput: { text: 'boom\nnot found', exitCode: 1 } });
-    if (!note?.includes('exit 1') || !note.includes('not found')) {
-      fail(`a failure should say the exit code and the end of the output: ${note}`);
+    if (note !== 'exit 1') {
+      fail(`a failure should say only how it ended: ${note}`);
       failed = true;
     }
-    const shown = renderTurn({ tools: [{ label: 'rg missing', status: 'failed', failure: 'exit 1: nope' }] });
-    if (!shown.includes('✗') || !shown.includes('exit 1: nope')) {
-      fail('a failed command should show its reason in the message');
+    if (failureNote({ status: 'failed', rawOutput: { text: 'boom' } }) !== 'failed') {
+      fail('a failure with no exit code should still be marked as one');
+      failed = true;
+    }
+    const shown = renderTurn({ tools: [{ label: 'rg missing', status: 'failed', failure: 'exit 1' }] });
+    if (!shown.includes('✗') || !shown.includes('exit 1') || shown.includes('<code>')) {
+      fail('a failed command should show how it ended, on its own line and nothing more');
+      failed = true;
+    }
+    if (renderTurn({ tools: [{ label: 'npm test', status: 'in_progress' }] }).includes('exit')) {
+      fail('a running command should show only what is running');
       failed = true;
     }
 

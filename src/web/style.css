@@ -817,6 +817,15 @@ details.think .body {
   cursor: default;
 }
 
+/* Sending onto a running turn adds to a queue; it should not look like sending. */
+.in-box.send.queueing {
+  background: var(--bg-3);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.in-box.send.queueing:hover { background: var(--primary); color: var(--primary-fg); }
+
 .in-box.stop { color: var(--red); border-color: var(--danger-border); font-size: 12px; }
 .in-box.stop:hover { background: var(--danger-bg); color: var(--red); }
 

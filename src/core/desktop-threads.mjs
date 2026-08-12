@@ -241,6 +241,53 @@ export function readThread(threadId, { seen, tail } = {}) {
   });
 }
 
+/**
+ * What a chat is set to: which mode, which model, and how hard it is thinking.
+ *
+ * The desktop writes all of this beside the thread itself, so what a chat will
+ * do next can be answered without touching the window at all. Changing it is
+ * another matter entirely — that is a menu, and menus are `cursor-cdp.mjs`.
+ *
+ * The knobs under a model are Cursor's own names for them: `effort` and
+ * `thinking` on the models that have them, `context` for the window size, and
+ * `maxMode` beside the model rather than under it.
+ *
+ * @param {string} threadId
+ * @returns {{ mode: string|null, customMode: string|null, model: string|null,
+ *   maxMode: boolean, effort: string|null, thinking: boolean|null,
+ *   context: string|null } | null}
+ */
+export function readSettings(threadId) {
+  return withDb((db) => {
+    const row = db
+      .prepare('SELECT value, typeof(value) value_t FROM cursorDiskKV WHERE key = ?')
+      .get(`composerData:${threadId}`);
+    if (!row) return null;
+
+    let data;
+    try {
+      data = JSON.parse(textOf(row));
+    } catch {
+      return null;
+    }
+
+    const config = data.modelConfig || {};
+    const chosen = config.selectedModels?.[0] || {};
+    const knobs = new Map((chosen.parameters || []).map((p) => [p.id, p.value]));
+    const said = (key) => (knobs.has(key) ? String(knobs.get(key)) : null);
+
+    return {
+      mode: data.unifiedMode || null,
+      customMode: data.activeCustomMode || null,
+      model: config.modelName || chosen.modelId || null,
+      maxMode: Boolean(config.maxMode),
+      effort: said('effort'),
+      thinking: knobs.has('thinking') ? said('thinking') === 'true' : null,
+      context: said('context'),
+    };
+  });
+}
+
 /** Is this thread still in the desktop's database? */
 export function threadExists(threadId) {
   return Boolean(

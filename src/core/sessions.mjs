@@ -405,16 +405,18 @@ export class SessionManager extends EventEmitter {
    * @param {object} p
    * @param {string} p.text
    * @param {Array<{mimeType:string,data:string}>} [p.images] base64 image blocks
+   * @param {boolean} [p.shown]  the message is already in the transcript, as a
+   *   prompt that waited for its turn is
    */
-  async prompt(id, { text, images = [] } = {}) {
+  async prompt(id, { text, images = [], shown = false } = {}) {
     const meta = this.meta.get(id);
     if (!meta) throw new Error(`Unknown session ${id}`);
     // A desktop chat mid-turn is not a reason to refuse: Cursor queues a
     // message typed while it works, exactly as it does for the chat box, and
-    // if it will not, the outbox holds it. Only our own agent, which has no
-    // such queue, has to be told to wait.
+    // if it will not, the outbox holds it. Our own agent has no such queue, so
+    // Auto keeps one for it rather than turning the message away.
     if (meta.status === STATUS.busy && meta.kind !== 'desktop') {
-      throw new Error('Session is already working');
+      return this.#addToTurn(id, { text, images });
     }
 
     if (meta.kind === 'desktop') {
@@ -435,7 +437,7 @@ export class SessionManager extends EventEmitter {
     }
     if (content.length === 0) return null;
 
-    this.#record(id, KIND.userMessage, { text, images: images.length });
+    if (!shown) this.#record(id, KIND.userMessage, { text, images: images.length });
     this.#record(id, KIND.turnStart, {});
     this.#update(id, { status: STATUS.busy });
     runtime.streamBuffer = '';
@@ -451,23 +453,89 @@ export class SessionManager extends EventEmitter {
         upstreamError: Boolean(runtime.upstreamErrorFlagged),
       });
       this.#update(id, { status: STATUS.idle });
+      this.#nextInTurn(id);
       return res;
     } catch (err) {
       this.#record(id, KIND.error, { text: err?.message || String(err) });
       this.#update(id, { status: STATUS.idle });
+      this.#nextInTurn(id);
       throw err;
     }
+  }
+
+  /**
+   * Add to a session that is already working.
+   *
+   * A second prompt used to be refused outright with "Session is already
+   * working", which on a phone means keeping the thought in your head and
+   * retyping it when the turn ends. A Cursor chat has never behaved that way —
+   * type into it mid-turn and Cursor queues it — so our own agent now does the
+   * same: the message goes into the transcript straight away, where it is
+   * visible and recorded, and is sent as soon as the agent is free.
+   *
+   * The waiting list itself is held in memory only. A queued prompt is worth a
+   * minute of patience, not surviving a restart, and the transcript says plainly
+   * that it was added, so nothing goes missing without a trace.
+   */
+  #addToTurn(id, { text, images = [] }) {
+    if (!text?.trim() && !images.length) return null;
+    const runtime = this.live.get(id) || {};
+    runtime.waiting = runtime.waiting || [];
+    runtime.waiting.push({ text, images });
+    this.live.set(id, runtime);
+
+    this.#record(id, KIND.userMessage, { text, images: images.length, waiting: true });
+    this.#record(id, KIND.notice, {
+      text:
+        runtime.waiting.length === 1
+          ? 'Added to the queue — it goes in as soon as this turn finishes.'
+          : `Added to the queue — ${runtime.waiting.length} messages are waiting for this turn to finish.`,
+    });
+    this.#update(id, { waiting: runtime.waiting.length });
+    return { status: 'queued', waiting: runtime.waiting.length };
+  }
+
+  /** Send the next thing added while the agent was busy, if there is one. */
+  #nextInTurn(id) {
+    const runtime = this.live.get(id);
+    const next = runtime?.waiting?.shift();
+    this.#update(id, { waiting: runtime?.waiting?.length || 0 });
+    if (!next) return;
+    // Deliberately not awaited: the turn that has just ended is not answerable
+    // for the one that follows it, and its caller is owed its own result.
+    this.prompt(id, { ...next, shown: true }).catch((err) => {
+      this.#record(id, KIND.notice, {
+        text: `The message that was waiting could not be sent: ${err.message}`,
+      });
+    });
   }
 
   async cancel(id) {
     const meta = this.meta.get(id);
     if (meta?.kind === 'desktop') return this.#stopDesktop(id, meta);
 
+    // Stopping means stopping. Anything queued behind this turn was meant to
+    // follow it, not to survive it being called off.
+    const dropped = this.#dropWaiting(id);
+
     const runtime = this.live.get(id);
-    if (!runtime?.client?.running) return false;
+    if (!runtime?.client?.running) return Boolean(dropped);
     runtime.client.cancel(runtime.acpSessionId);
     this.#record(id, KIND.error, { text: 'Interrupted by user.', interrupted: true });
     return true;
+  }
+
+  /** Forget what was queued, and say how much. */
+  #dropWaiting(id) {
+    const runtime = this.live.get(id);
+    const dropped = runtime?.waiting?.length || 0;
+    if (!dropped) return 0;
+    runtime.waiting = [];
+    this.#record(id, KIND.notice, {
+      text: `Dropped ${dropped} queued message${dropped === 1 ? '' : 's'} along with the turn.`,
+    });
+    this.#update(id, { waiting: 0 });
+    return dropped;
   }
 
   /**
@@ -518,21 +586,103 @@ export class SessionManager extends EventEmitter {
     return `Cursor would not stop that turn${result.reason ? `: ${result.reason}` : ''}.`;
   }
 
-  /** What the desktop owns, we cannot change from here. */
-  #refuseForDesktop(id, what) {
-    if (this.meta.get(id)?.kind !== 'desktop') return false;
-    this.#record(id, KIND.notice, {
-      text: `This chat runs in Cursor, so its ${what} is set there.`,
-    });
-    return true;
-  }
-
   async setMode(id, modeId) {
-    if (this.#refuseForDesktop(id, 'mode')) return false;
+    if (this.meta.get(id)?.kind === 'desktop') return this.#chooseInCursor(id, 'mode', modeId);
     const runtime = await this.ensureLive(id);
     await runtime.client.setMode({ sessionId: runtime.acpSessionId, modeId });
     this.#update(id, { mode: modeId });
     return true;
+  }
+
+  /**
+   * Set a desktop chat's model or mode the way a person would: in the window.
+   *
+   * These used to be refused outright — the chat runs in Cursor, so Cursor was
+   * where you had to go and change them. Now the picker beside the chat box is
+   * pressed for you, which means the one thing most worth reaching for from a
+   * phone no longer needs a keyboard.
+   *
+   * The desktop's stored record is no use as proof here: it keeps the model a
+   * chat was last *sent* with and only catches up on the next message, so the
+   * word on the picker is what is trusted, and the outcome is written into the
+   * transcript either way.
+   */
+  async #chooseInCursor(id, picker, wanted) {
+    const meta = this.meta.get(id);
+    const asked = picker === 'model' ? this.#cursorsNameFor(wanted) : String(wanted || '');
+    const result = await this.cursor.choose({
+      threadId: meta.desktopThreadId,
+      picker,
+      wanted: asked,
+    });
+
+    if (result.status === 'set' || result.status === 'already') {
+      const now = result.now || result.was;
+      this.#update(id, picker === 'mode' ? { mode: now } : { model: now, modelName: now });
+      this.#record(id, KIND.notice, {
+        text:
+          result.status === 'already'
+            ? `This chat was already on ${now}.`
+            : `Cursor's ${picker} for this chat is now ${now} (was ${result.was}).`,
+      });
+      return true;
+    }
+
+    this.#record(id, KIND.notice, { text: this.#whyNotChosen(picker, asked, result) });
+    return false;
+  }
+
+  /**
+   * The name Cursor's own menu would use for a model.
+   *
+   * The web and Telegram pickers carry the agent's model ids, which are not what
+   * a menu says: `claude-opus-5[thinking=true]` is offered as "Opus 5", and
+   * `default[]` as "Auto". A plain name is passed through untouched, so typing
+   * "Opus 5" works as well as tapping it.
+   */
+  #cursorsNameFor(wanted) {
+    const asked = String(wanted || '');
+    if (!asked.includes('[')) return asked;
+    if (asked === 'default[]') return 'Auto';
+    return this.catalog?.models?.find((m) => m.modelId === asked)?.name || asked.replace(/\[.*$/, '');
+  }
+
+  /** Say why a picker would not take a choice, in words worth reading. */
+  #whyNotChosen(picker, wanted, result) {
+    const offered = result.options?.length ? ` On offer: ${result.options.join(', ')}.` : '';
+    if (result.status === 'no-such-option') {
+      return `Cursor has no ${picker} matching "${wanted}".${offered}`;
+    }
+    if (result.status === 'unknown-thread') {
+      return `No Cursor window has this chat open, so its ${picker} cannot be reached. Open it in Cursor and try again.`;
+    }
+    if (result.status === 'no-cdp') {
+      return `Cursor is not listening on its debugging port, so its ${picker} cannot be reached. ${result.reason || ''}`.trim();
+    }
+    if (result.status === 'unchanged') {
+      return `Pressed the ${picker} menu but Cursor did not change it — ${result.reason || 'it stayed as it was'}.`;
+    }
+    return `Could not set the ${picker}: ${result.reason || result.status}.`;
+  }
+
+  /**
+   * What a desktop chat's pickers are offering.
+   *
+   * Only the window knows: the list depends on the account and Cursor keeps it
+   * nowhere on disk. Reading it opens a menu and closes it again, so it is asked
+   * for when somebody wants to choose, not on a timer.
+   */
+  async desktopChoices(id, picker) {
+    const meta = this.meta.get(id);
+    if (meta?.kind !== 'desktop') return { status: 'error', reason: 'that is not a Cursor chat' };
+    return this.cursor.choices({ threadId: meta.desktopThreadId, picker });
+  }
+
+  /** What a desktop chat is set to, from the desktop's own records. */
+  desktopSettings(id) {
+    const meta = this.meta.get(id);
+    if (meta?.kind !== 'desktop') return null;
+    return this.cursor.settings({ threadId: meta.desktopThreadId });
   }
 
   /**
@@ -998,7 +1148,7 @@ export class SessionManager extends EventEmitter {
   }
 
   async setModel(id, modelId) {
-    if (this.#refuseForDesktop(id, 'model')) return false;
+    if (this.meta.get(id)?.kind === 'desktop') return this.#chooseInCursor(id, 'model', modelId);
     const runtime = await this.ensureLive(id);
     await runtime.client.setModel({ sessionId: runtime.acpSessionId, modelId });
     this.#update(id, { model: modelId, modelName: this.modelName(modelId) });
