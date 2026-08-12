@@ -513,9 +513,11 @@ function sessionRow(item) {
   name.textContent = item.title || 'session';
   meta.append(name);
 
+  // Anything with a thread id is the IDE's conversation, whether or not Auto
+  // has opened it yet.
   const sub = document.createElement('span');
   sub.className = 'sub';
-  sub.textContent = [item.project, item.session ? '' : 'in Cursor'].filter(Boolean).join(' · ');
+  sub.textContent = [item.project, item.chatId ? 'in Cursor' : ''].filter(Boolean).join(' · ');
   if (sub.textContent) meta.append(sub);
 
   row.append(dot, meta);

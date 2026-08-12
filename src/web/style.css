@@ -226,17 +226,6 @@ button, select, textarea { font: inherit; color: inherit; }
   text-overflow: ellipsis;
 }
 
-/* Marks a session that is really a thread in the desktop app. */
-.session .tag {
-  display: inline-block;
-  margin-top: 2px;
-  padding: 0 5px;
-  border: 1px solid var(--line-2);
-  border-radius: 999px;
-  font-size: 10px;
-  line-height: 15px;
-  color: var(--faint);
-}
 
 .session .close {
   opacity: 0;
@@ -912,7 +901,13 @@ details.think .body {
   #rail-toggle { display: block; }
   /* The rail covers the topbar's toggle when open, so it carries its own way
      out: this button, the scrim beside it, or Escape. */
-  #rail-close { display: block; }
+  /* The way out of a rail covering the whole screen should be obvious, so
+     this one is brighter than the icon buttons it sits beside. */
+  #rail-close {
+    display: block;
+    color: var(--text);
+    font-size: 20px;
+  }
   #rail-scrim {
     position: fixed;
     inset: 0;
