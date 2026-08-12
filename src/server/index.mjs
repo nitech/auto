@@ -145,6 +145,11 @@ sessions.on('record', ({ sessionId, record }) =>
   broadcast({ type: 'record', sessionId, record }, sessionId),
 );
 sessions.on('sessions', (list) => broadcast({ type: 'sessions', sessions: list }));
+// A queue can change without anyone asking: a turn ends and takes the first
+// message with it, or somebody queues one in the IDE itself.
+sessions.on('queue', ({ sessionId, ...queue }) =>
+  broadcast({ type: 'queue', sessionId, ...queue }, sessionId),
+);
 sessions.on('catalog', (catalog) => broadcast({ type: 'catalog', catalog }));
 
 // Terminal output reaches clients as transcript records; these only announce
@@ -214,6 +219,35 @@ const OPS = {
 
   cancel(_ws, state, msg) {
     sessions.cancel(msg.sessionId || state.sessionId);
+  },
+
+  /**
+   * What is waiting behind the turn, and the three things that can be done to it.
+   *
+   * Each answer carries the queue as it is afterwards, since these come from a
+   * phone: the list on screen has to be right without waiting for a poll.
+   */
+  async 'queue.list'(ws, state, msg) {
+    const id = msg.sessionId || state.sessionId;
+    send(ws, { type: 'queue', sessionId: id, ...(await sessions.queued(id)) });
+  },
+
+  async 'queue.drop'(ws, state, msg) {
+    const id = msg.sessionId || state.sessionId;
+    const result = await sessions.dropQueued(id, msg.itemId);
+    send(ws, { type: 'queue', sessionId: id, acted: result, ...(await sessions.queued(id)) });
+  },
+
+  async 'queue.now'(ws, state, msg) {
+    const id = msg.sessionId || state.sessionId;
+    const result = await sessions.sendQueuedNow(id, msg.itemId);
+    send(ws, { type: 'queue', sessionId: id, acted: result, ...(await sessions.queued(id)) });
+  },
+
+  async 'queue.edit'(ws, state, msg) {
+    const id = msg.sessionId || state.sessionId;
+    const result = await sessions.editQueued(id, msg.itemId, msg.text);
+    send(ws, { type: 'queue', sessionId: id, acted: result, ...(await sessions.queued(id)) });
   },
 
   permission(_ws, _state, msg) {

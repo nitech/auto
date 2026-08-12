@@ -476,7 +476,9 @@ export class SessionManager extends EventEmitter {
     if (!text?.trim() && !images.length) return null;
     const runtime = this.live.get(id) || {};
     runtime.waiting = runtime.waiting || [];
-    runtime.waiting.push({ text, images });
+    // Each one gets a name of its own so a phone can point at it later without
+    // counting positions in a list that moves.
+    runtime.waiting.push({ id: randomUUID(), text, images });
     this.live.set(id, runtime);
 
     this.#record(id, KIND.userMessage, { text, images: images.length, waiting: true });
@@ -487,7 +489,161 @@ export class SessionManager extends EventEmitter {
           : `Added to the queue — ${runtime.waiting.length} messages are waiting for this turn to finish.`,
     });
     this.#update(id, { waiting: runtime.waiting.length });
+    this.#sayAutoQueue(id);
     return { status: 'queued', waiting: runtime.waiting.length };
+  }
+
+  /** What Auto itself is holding for this session, for anyone watching. */
+  #sayAutoQueue(id) {
+    const waiting = this.live.get(id)?.waiting || [];
+    this.emit('queue', {
+      sessionId: id,
+      owner: 'auto',
+      waiting: waiting.length,
+      items: waiting.map((item) => ({
+        id: item.id,
+        text: item.text,
+        images: item.images?.length || 0,
+      })),
+    });
+  }
+
+  /**
+   * What is waiting for this turn to end, whoever is holding it.
+   *
+   * Two different queues wear the same face here. A chat in the Cursor window is
+   * queued by Cursor itself — Auto types the message in and the IDE holds it — so
+   * that list is read from the window, and the items are named by their own words
+   * because that is the only handle Cursor offers. Auto's own sessions keep their
+   * queue in memory, where each message has a name of its own.
+   *
+   * @returns {Promise<{ waiting: number, items: Array<{id: string, text: string}>,
+   *   owner: 'cursor'|'auto', hidden?: number, reason?: string }>}
+   */
+  async queued(id) {
+    const meta = this.meta.get(id);
+    if (!meta) return { waiting: 0, items: [], owner: 'auto' };
+
+    if (meta.kind === 'desktop') {
+      const seen = await this.cursor
+        .queue({ threadId: meta.desktopThreadId })
+        .catch((err) => ({ status: 'error', reason: err.message }));
+      if (seen.status !== 'ok') {
+        return { waiting: 0, items: [], owner: 'cursor', reason: seen.reason || seen.status };
+      }
+      return {
+        owner: 'cursor',
+        waiting: seen.waiting,
+        hidden: seen.hidden || 0,
+        items: (seen.items || []).map((item) => ({ id: item.text, text: item.text })),
+      };
+    }
+
+    const waiting = this.live.get(id)?.waiting || [];
+    return {
+      owner: 'auto',
+      waiting: waiting.length,
+      items: waiting.map((item) => ({
+        id: item.id,
+        text: item.text,
+        images: item.images?.length || 0,
+      })),
+    };
+  }
+
+  /**
+   * Take a queued message out again.
+   *
+   * Deleting is the one action here that destroys something, so it acts on the
+   * message that was chosen or on nothing at all: the queue moves by itself as
+   * turns end, and "the second one" a moment ago may be someone else's words now.
+   */
+  async dropQueued(id, itemId) {
+    const meta = this.meta.get(id);
+    if (meta?.kind === 'desktop') return this.#queueActInCursor(id, meta, itemId, 'drop');
+
+    const runtime = this.live.get(id);
+    const waiting = runtime?.waiting || [];
+    const at = waiting.findIndex((item) => item.id === itemId);
+    if (at < 0) return { status: 'gone', reason: 'that message is no longer queued' };
+    const [dropped] = waiting.splice(at, 1);
+    this.#update(id, { waiting: waiting.length });
+    this.#sayAutoQueue(id);
+    this.#record(id, KIND.notice, {
+      text: `Took a queued message back out: "${short(dropped.text)}"`,
+    });
+    return { status: 'done', waiting: waiting.length };
+  }
+
+  /**
+   * Put a queued message at the front of the queue, or into Cursor now.
+   *
+   * Cursor's own button sends it immediately, mid-turn, and pressing it is what a
+   * desktop chat gets. Auto's own agents take one turn at a time, so the honest
+   * equivalent is to make it the next one in rather than to interrupt work that
+   * is already running.
+   */
+  async sendQueuedNow(id, itemId) {
+    const meta = this.meta.get(id);
+    if (meta?.kind === 'desktop') return this.#queueActInCursor(id, meta, itemId, 'now');
+
+    const runtime = this.live.get(id);
+    const waiting = runtime?.waiting || [];
+    const at = waiting.findIndex((item) => item.id === itemId);
+    if (at < 0) return { status: 'gone', reason: 'that message is no longer queued' };
+    if (at > 0) waiting.unshift(...waiting.splice(at, 1));
+    this.#sayAutoQueue(id);
+    this.#record(id, KIND.notice, {
+      text: `"${short(waiting[0].text)}" goes in first when this turn ends.`,
+    });
+    return { status: 'done', waiting: waiting.length, next: true };
+  }
+
+  /**
+   * Change what a queued message says.
+   *
+   * Auto's own queue is edited where it sits. Cursor's cannot be: its edit button
+   * opens an editor inside the IDE, which is no use to a thumb, so the message is
+   * taken out and the new wording sent in its place — which Cursor queues at the
+   * end. With one message waiting that is the same thing; with several it moves
+   * to the back, and saying so is better than pretending otherwise.
+   */
+  async editQueued(id, itemId, text) {
+    const wanted = String(text || '').trim();
+    if (!wanted) return { status: 'error', reason: 'an empty message is not an edit' };
+
+    const meta = this.meta.get(id);
+    if (meta?.kind === 'desktop') {
+      const dropped = await this.#queueActInCursor(id, meta, itemId, 'drop');
+      if (dropped.status !== 'done') return dropped;
+      const sent = await this.prompt(id, { text: wanted });
+      return { status: sent?.status === 'error' ? 'error' : 'done', moved: true, ...sent };
+    }
+
+    const waiting = this.live.get(id)?.waiting || [];
+    const item = waiting.find((entry) => entry.id === itemId);
+    if (!item) return { status: 'gone', reason: 'that message is no longer queued' };
+    item.text = wanted;
+    this.#sayAutoQueue(id);
+    this.#record(id, KIND.notice, { text: `Changed a queued message to: "${short(wanted)}"` });
+    return { status: 'done', waiting: waiting.length };
+  }
+
+  /** Press one of Cursor's own queue buttons, and say what became of it. */
+  async #queueActInCursor(id, meta, text, which) {
+    const result = await this.cursor
+      .queueAct({ threadId: meta.desktopThreadId, text, which })
+      .catch((err) => ({ status: 'error', reason: err.message }));
+    if (result.status === 'done') {
+      this.emit('queue', { sessionId: id, ...(await this.queued(id)) });
+      this.#record(id, KIND.notice, {
+        text:
+          which === 'drop'
+            ? `Took a queued message back out of Cursor: "${short(text)}"`
+            : `Sent a queued message into Cursor now: "${short(text)}"`,
+      });
+    }
+    return result;
   }
 
   /** Send the next thing added while the agent was busy, if there is one. */
@@ -495,6 +651,7 @@ export class SessionManager extends EventEmitter {
     const runtime = this.live.get(id);
     const next = runtime?.waiting?.shift();
     this.#update(id, { waiting: runtime?.waiting?.length || 0 });
+    this.#sayAutoQueue(id);
     if (!next) return;
     // Deliberately not awaited: the turn that has just ended is not answerable
     // for the one that follows it, and its caller is owed its own result.
@@ -530,6 +687,7 @@ export class SessionManager extends EventEmitter {
       text: `Dropped ${dropped} queued message${dropped === 1 ? '' : 's'} along with the turn.`,
     });
     this.#update(id, { waiting: 0 });
+    this.#sayAutoQueue(id);
     return dropped;
   }
 
@@ -954,6 +1112,8 @@ export class SessionManager extends EventEmitter {
       if (names.length) this.#askOnBehalfOfCursor(id, meta, names);
       else this.#withdrawAsk(id, 'answered in Cursor');
 
+      this.#queueChanged(id, state.queue);
+
       const running = state.generating || this.meta.get(id)?.status === STATUS.busy;
       quiet = running ? 0 : quiet + 1;
       if (quiet >= 2) stop();
@@ -964,6 +1124,9 @@ export class SessionManager extends EventEmitter {
       if (live?.askTimer) clearInterval(live.askTimer);
       if (live) live.askTimer = null;
       this.#withdrawAsk(id, 'the turn ended');
+      // A turn ending empties the queue into the agent, so say so once more
+      // rather than leaving a phone showing messages that already went in.
+      this.#queueChanged(id, { waiting: 0, items: [], hidden: 0 });
     };
 
     const timer = setInterval(() => {
@@ -973,6 +1136,30 @@ export class SessionManager extends EventEmitter {
     this.live.set(id, { ...runtime, askTimer: timer });
     look().catch(() => {});
     return timer;
+  }
+
+  /**
+   * Tell clients what Cursor is holding, when it changes.
+   *
+   * Sent on change rather than on every look: this runs every two seconds for as
+   * long as a turn lasts, and a phone does not need to be told twice a second
+   * that nothing has happened.
+   */
+  #queueChanged(id, queue) {
+    if (!queue) return;
+    const runtime = this.live.get(id) || {};
+    const items = (queue.items || []).map((item) => ({ id: item.text, text: item.text }));
+    const print = `${queue.waiting}:${items.map((i) => i.text).join('|')}`;
+    if (runtime.queuePrint === print) return;
+    runtime.queuePrint = print;
+    this.live.set(id, runtime);
+    this.emit('queue', {
+      sessionId: id,
+      owner: 'cursor',
+      waiting: queue.waiting || 0,
+      hidden: queue.hidden || 0,
+      items,
+    });
   }
 
   /** Put Cursor's question to the user, once, and press their answer. */
@@ -1262,6 +1449,14 @@ export class SessionManager extends EventEmitter {
     await Promise.all([...this.live.keys()].map((id) => this.stop(id)));
     this.terminals.releaseAll();
   }
+}
+
+/** Enough of a message to recognise it in a one-line notice. */
+function short(text, most = 60) {
+  const said = String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return said.length > most ? `${said.slice(0, most - 1)}…` : said;
 }
 
 /**

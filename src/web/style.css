@@ -1285,6 +1285,90 @@ pre:hover .copy,
 
 /* ----------------------------------------------------- composer extras */
 
+/* ------------------------------------------------- the queue, above the box */
+
+#queue {
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-2);
+  font-size: 13px;
+}
+
+#queue[hidden] { display: none; }
+
+#queue > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 7px 11px;
+  color: var(--muted);
+  font-size: 12px;
+  user-select: none;
+}
+
+#queue > summary::-webkit-details-marker { display: none; }
+#queue > summary::before { content: '▸ '; }
+#queue[open] > summary::before { content: '▾ '; }
+
+#queue-list {
+  /* A long queue scrolls rather than pushing the chat box off a phone. */
+  max-height: 34vh;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+}
+
+.queued {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.queued + .queued { border-top: 1px solid var(--line); }
+
+.queued-text {
+  flex: 1;
+  min-width: 0;
+  /* Two lines of it is enough to know which message this is. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.queued textarea {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--focus);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font: inherit;
+  resize: vertical;
+}
+
+.queued-acts { display: flex; gap: 4px; flex: none; }
+
+.queued-act {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--bg-3);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.queued-act:hover { color: var(--text); border-color: var(--focus); }
+.queued-act:last-child:hover { color: var(--red); border-color: var(--danger-border); }
+.queue-note { padding: 8px 10px; color: var(--faint); font-size: 12px; }
+
 #attachments {
   display: flex;
   gap: 8px;

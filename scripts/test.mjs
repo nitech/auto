@@ -58,7 +58,9 @@ if (existsSync(SRC)) {
     readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
       const p = join(dir, e.name);
       if (e.isDirectory()) return walk(p);
-      return e.name.endsWith('.mjs') ? [p] : [];
+      // The browser's own script counts: a typo in it breaks the whole web app,
+      // and nothing else here would have caught one.
+      return e.name.endsWith('.mjs') || e.name.endsWith('.js') ? [p] : [];
     });
   for (const p of walk(SRC)) {
     const res = spawnSync(process.execPath, ['--check', p], { encoding: 'utf8' });
@@ -182,10 +184,17 @@ if (existsSync(SRC)) {
           pickers = null,
           menus = null,
           takesPaste = true,
+          queued = [],
+          queuedHidden = 0,
+          deafToClicks = false,
         } = {},
       ) {
         this.takesPaste = takesPaste;
         this.pills = 0;
+        /** messages Cursor is holding for this chat, newest last */
+        this.queued = [...queued];
+        this.queuedHidden = queuedHidden;
+        this.deafToClicks = deafToClicks;
         this.given = facts;
         this.box = facts.composerText || '';
         this.submits = submits;
@@ -302,6 +311,28 @@ if (existsSync(SRC)) {
       }
       async clearComposer() {
         this.box = '';
+      }
+      /**
+       * Cursor's own queue: messages it is holding until the turn ends, each with
+       * its three buttons. `deafToClicks` is the window that ignores a dispatched
+       * click, as the pickers do, and only gives in to a real mouse.
+       */
+      async queue() {
+        return {
+          waiting: this.queued.length + (this.queuedHidden || 0),
+          hidden: this.queuedHidden || 0,
+          items: this.queued.map((text, i) => ({
+            text,
+            at: { drop: { x: 10, y: 100 + i * 20 }, now: { x: 30, y: 100 + i * 20 }, edit: { x: 50, y: 100 + i * 20 } },
+          })),
+        };
+      }
+      async queueAct(text, which) {
+        const at = this.queued.indexOf(text);
+        if (at < 0) return { pressed: false, reason: 'that message is no longer queued' };
+        this.pressed.push(`«queue ${which}: ${text}»`);
+        if (!this.deafToClicks) this.queued.splice(at, 1);
+        return { pressed: true, at: { x: 10, y: 100 + at * 20 } };
       }
       close() {
         this.closed = true;
@@ -623,6 +654,63 @@ if (existsSync(SRC)) {
     if (isApproval('Run exactly this command and wait for it: powershell -NoProfile')) {
       fail('a sentence starting with Run is not a button');
     }
+
+    // Cursor's own queue: a message sent into a busy chat is held by the IDE,
+    // and a phone gets the same three things the IDE offers.
+    const holding = new FakeWindow(
+      { threadId: THREAD, hasComposer: true },
+      { queued: ['say pineapple', 'say wheelbarrow', 'say trombone'], queuedHidden: 1 },
+    );
+    let seen = await machine({ holding }).queue({ threadId: THREAD });
+    if (seen.status !== 'ok' || seen.items.length !== 3 || seen.waiting !== 4) {
+      fail(`the queue should read back with what is in it: ${JSON.stringify(seen)}`);
+    }
+    if (seen.hidden !== 1) fail('a row out of view should be counted, not silently dropped');
+
+    // Deleting acts on the message that was chosen, and leaves the rest alone.
+    let acted = await machine({ holding }).queueAct({
+      threadId: THREAD,
+      text: 'say wheelbarrow',
+      which: 'drop',
+    });
+    if (acted.status !== 'done') fail(`deleting a queued message should work: ${JSON.stringify(acted)}`);
+    if (holding.queued.join('|') !== 'say pineapple|say trombone') {
+      fail(`deleting took the wrong message: ${holding.queued.join('|')}`);
+    }
+    if (holding.pressed.at(-1) !== '«queue drop: say wheelbarrow»') {
+      fail(`the row's own delete button should be pressed: ${JSON.stringify(holding.pressed)}`);
+    }
+
+    // A message that has already gone in is refused rather than acted on: the
+    // turn may have ended between the phone drawing the list and the tap.
+    acted = await machine({ holding }).queueAct({
+      threadId: THREAD,
+      text: 'say wheelbarrow',
+      which: 'drop',
+    });
+    if (acted.status !== 'gone') fail(`acting on a message that left the queue: ${JSON.stringify(acted)}`);
+
+    // Send-now is Cursor's own button, and it must actually leave the queue.
+    acted = await machine({ holding }).queueAct({ threadId: THREAD, text: 'say trombone', which: 'now' });
+    if (acted.status !== 'done' || holding.queued.join('|') !== 'say pineapple') {
+      fail(`sending a queued message now should take it out: ${JSON.stringify(acted)}`);
+    }
+
+    // A window that ignores a dispatched click gets a real mouse, as the model
+    // pickers taught us — and if it still will not, that is reported.
+    const stubborn = new FakeWindow(
+      { threadId: THREAD, hasComposer: true },
+      { queued: ['say pineapple'], deafToClicks: true },
+    );
+    acted = await machine({ stubborn }).queueAct({
+      threadId: THREAD,
+      text: 'say pineapple',
+      which: 'drop',
+    });
+    if (acted.status !== 'error' || !/kept the message/.test(acted.reason)) {
+      fail(`a queue that will not budge should be reported: ${JSON.stringify(acted)}`);
+    }
+    if (!stubborn.clicks.length) fail('a click that did nothing should be followed by a real mouse');
 
     if (!failed) ok('v2 core: Auto can stop a Cursor turn and press what Cursor asks');
 
@@ -1095,6 +1183,51 @@ if (existsSync(SRC)) {
     const again = (await sessions.history(id, 0)).filter((r) => r.kind === 'user_message');
     if (again.length !== 3) {
       fail(`a queued message must not be written to the transcript twice: ${again.length}`);
+      failed = true;
+    }
+
+    // What is waiting can be looked at, reworded, moved to the front and thrown
+    // away — the same things the IDE offers for its own queue.
+    const nowQueued = async () => (await sessions.queued(id)).items.map((i) => i.text);
+    let listed = await sessions.queued(id);
+    if (listed.owner !== 'auto' || listed.items.length !== 1) {
+      fail(`a session should report what it is holding: ${JSON.stringify(listed)}`);
+    }
+    if (!listed.items[0].id) fail('a queued message needs a name of its own to be acted on');
+
+    await sessions.prompt(id, { text: 'four' });
+    listed = await sessions.queued(id);
+    const [waitingFirst, waitingLast] = listed.items;
+    if ((await sessions.editQueued(id, waitingFirst.id, 'two, reworded')).status !== 'done') {
+      fail('a queued message should be editable while it waits');
+      failed = true;
+    }
+    if ((await nowQueued()).join('|') !== 'two, reworded|four') {
+      fail(`editing should change only that message: ${(await nowQueued()).join('|')}`);
+      failed = true;
+    }
+    if ((await sessions.sendQueuedNow(id, waitingLast.id)).status !== 'done') {
+      fail('a queued message should be promotable to the front');
+      failed = true;
+    }
+    if ((await nowQueued()).join('|') !== 'four|two, reworded') {
+      fail(`send-now should put it first: ${(await nowQueued()).join('|')}`);
+      failed = true;
+    }
+    if ((await sessions.dropQueued(id, waitingLast.id)).status !== 'done') {
+      fail('a queued message should be removable');
+      failed = true;
+    }
+    if ((await nowQueued()).join('|') !== 'two, reworded') {
+      fail(`dropping should take out only that message: ${(await nowQueued()).join('|')}`);
+      failed = true;
+    }
+    if ((await sessions.dropQueued(id, waitingLast.id)).status !== 'gone') {
+      fail('a message already gone from the queue should be refused, not repeated');
+      failed = true;
+    }
+    if ((await sessions.editQueued(id, waitingFirst.id, '   ')).status !== 'error') {
+      fail('an empty edit is not an edit');
       failed = true;
     }
 

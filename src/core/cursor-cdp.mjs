@@ -38,11 +38,13 @@ import {
   FACTS,
   FOCUS_COMPOSER,
   MENU_ITEMS,
+  QUEUE,
   SELECTORS,
   STOP_TURN_KEY,
   clickAction,
   isApproval,
   pickerAt,
+  queueAct,
   samePath,
   showThread,
 } from './cursor-dom.mjs';
@@ -279,6 +281,16 @@ export class CursorWindow {
     return this.evaluate(ACTIONS);
   }
 
+  /** The messages Cursor is holding until this turn ends. */
+  queue() {
+    return this.evaluate(QUEUE);
+  }
+
+  /** Press a queued message's own edit, send-now or delete button. */
+  queueAct(text, which) {
+    return this.evaluate(queueAct(text, which));
+  }
+
   /** Press the control with this name. */
   click(name) {
     return this.evaluate(clickAction(name));
@@ -391,6 +403,8 @@ function isWindow(target) {
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const flatten = (text) => String(text).replace(/\s+/g, ' ').trim();
+/** The same message, allowing for how the window lays its text out. */
+const same = (a, b) => flatten(a) === flatten(b);
 
 /**
  * The Cursor windows on this machine, and what can be done with them.
@@ -583,6 +597,9 @@ export class CursorCdp {
     return this.#withThread(threadId, async (window) => {
       const { generating, controls } = await window.actions();
       const named = (c) => c.label || c.text;
+      // The queue comes back in the same look: it is the same window, and this
+      // runs every couple of seconds for as long as a turn lasts.
+      const queue = await window.queue().catch(() => null);
       return {
         status: 'ok',
         generating: generating || this.#running(threadId),
@@ -590,7 +607,69 @@ export class CursorCdp {
           (c) => !c.disabled && isApproval(named(c)) && !/^stop\b/i.test(named(c)),
         ),
         controls,
+        queue,
       };
+    });
+  }
+
+  /**
+   * The messages Cursor is holding for this chat until the turn ends.
+   *
+   * Cursor owns this queue, not Auto: a message typed into a busy chat is queued
+   * by the IDE itself. Reading it is how a phone can show the same list the IDE
+   * shows, and it comes from whichever window has the chat, so it is that chat's
+   * queue and no other's.
+   */
+  async queue({ threadId }) {
+    return this.#withThread(threadId, async (window) => {
+      const seen = await window.queue();
+      return { status: 'ok', ...seen };
+    });
+  }
+
+  /**
+   * Press a queued message's edit, send-now or delete button.
+   *
+   * The row is named by its words, so what gets acted on is the message someone
+   * chose and not whatever has since moved into its place. Cursor is then given a
+   * moment to agree: for a delete or a send the message must actually leave the
+   * queue, and if the dispatched click did nothing the button is pressed again
+   * where it sits — the pickers taught us that some of Cursor's controls only
+   * believe a real mouse.
+   *
+   * @param {object} opts
+   * @param {string} opts.threadId
+   * @param {string} opts.text  the queued message to act on
+   * @param {'drop'|'now'} opts.which
+   */
+  async queueAct({ threadId, text, which }) {
+    return this.#withThread(threadId, async (window) => {
+      const before = await window.queue();
+      if (!before.items.some((item) => same(item.text, text))) {
+        return { status: 'gone', reason: 'that message is no longer queued' };
+      }
+
+      const pressed = await window.queueAct(text, which);
+      if (!pressed.pressed) return { status: 'error', reason: pressed.reason };
+
+      const left = async () => {
+        for (let look = 0; look < MENU_LOOKS; look += 1) {
+          await wait(this.settleMs);
+          const now = await window.queue();
+          if (!now.items.some((item) => same(item.text, text))) return now;
+        }
+        return null;
+      };
+
+      let after = await left();
+      if (!after && pressed.at) {
+        await window.mouseAt(pressed.at);
+        after = await left();
+      }
+      if (!after) {
+        return { status: 'error', reason: 'Cursor kept the message in the queue' };
+      }
+      return { status: 'done', waiting: after.waiting, items: after.items };
     });
   }
 

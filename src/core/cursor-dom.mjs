@@ -54,6 +54,20 @@ export const SELECTORS = {
    * it, and a message that quietly loses its photo is worse than a refusal.
    */
   attached: ['.context-pill-image', '.image-pill-container'],
+  /**
+   * Cursor's own queue of messages waiting for the turn to end.
+   *
+   * A message sent into a busy chat is queued by Cursor, and the IDE lists it
+   * above the chat box with three icon buttons: edit, send now, delete. Those
+   * buttons carry no words and no labels at all, so for once they are found by
+   * what they are — `codicon` names are VS Code's own icon vocabulary, not
+   * Cursor's generated classes, and `trashcan` is not going to start meaning
+   * something else. The rows themselves are still identified by their text.
+   */
+  queueCount: ['.composer-toolbar-section-header'],
+  queueEdit: ['[class*="codicon-edit"]'],
+  queueNow: ['[class*="codicon-arrow-up-two"]'],
+  queueDrop: ['[class*="codicon-trashcan"]'],
   /** The model button, and the text inside it naming the current model. */
   modelName: ['.ui-model-picker__trigger-text'],
   modelButton: ['button[aria-haspopup="menu"]'],
@@ -507,6 +521,111 @@ export const MENU_ITEMS = `(() => {
     }
   }
   return { open: menus.length, items };
+})()`;
+
+/**
+ * The messages Cursor is holding until the turn ends.
+ *
+ * The count and the rows live in separate blocks under one parent, so the header
+ * is found by its words — "3 Queued" — and the rows by having a delete button of
+ * their own. Walking out from that button to the first ancestor with words gives
+ * the row, which is the message and its three buttons and nothing else.
+ *
+ * A row scrolled out of its little list has no place on screen and cannot be
+ * pressed, so it is reported as hidden rather than as a row with nowhere to
+ * press: the count says how many are really waiting.
+ */
+export const QUEUE = `(() => {
+${HELPERS}
+  const pane = __pane();
+  const clean = (s) => String(s ?? '').replace(/\\s+/g, ' ').trim();
+
+  let head = null;
+  for (const selector of ${list(SELECTORS.queueCount)}) {
+    head = [...pane.querySelectorAll(selector)].find((el) => /^\\d+\\s+queued$/i.test(clean(el.textContent)));
+    if (head) break;
+  }
+  if (!head) return { waiting: 0, items: [], hidden: 0 };
+
+  const waiting = Number(clean(head.textContent).match(/^(\\d+)/)?.[1] || 0);
+  // The count and the rows are cousins, not siblings: how deeply Cursor nests
+  // either is its own business, so climb until one ancestor holds both.
+  const rowsIn = (el) => el.querySelector(${list(SELECTORS.queueDrop)}.join(','));
+  let block = head;
+  for (let up = 0; up < 6 && block.parentElement && !rowsIn(block); up += 1) {
+    block = block.parentElement;
+  }
+  const spot = (el) => {
+    const { x, y, width, height } = el.getBoundingClientRect();
+    if (!width || !height) return null;
+    return { x: Math.round(x + width / 2), y: Math.round(y + height / 2) };
+  };
+
+  const items = [];
+  let hidden = 0;
+  for (const drop of block.querySelectorAll(${list(SELECTORS.queueDrop)}.join(','))) {
+    let row = drop;
+    for (let up = 0; up < 6 && row.parentElement; up += 1) {
+      row = row.parentElement;
+      if (clean(row.textContent)) break;
+    }
+    const text = clean(row.textContent);
+    const at = {
+      drop: spot(drop),
+      now: spot(row.querySelector(${list(SELECTORS.queueNow)}.join(','))),
+      edit: spot(row.querySelector(${list(SELECTORS.queueEdit)}.join(','))),
+    };
+    if (!text || !at.drop) {
+      hidden += 1;
+      continue;
+    }
+    items.push({ text, at, y: at.drop.y });
+  }
+
+  items.sort((a, b) => a.y - b.y);
+  return { waiting, items: items.map(({ text, at }) => ({ text, at })), hidden };
+})()`;
+
+/**
+ * Press one of a queued message's own buttons.
+ *
+ * The row is found by the words in it rather than by its position in the list,
+ * because between reading the queue on a phone and pressing anything the turn
+ * may have ended and taken the first message with it — and pressing the delete
+ * button of whatever moved into that position would throw away the wrong
+ * message. If those words are no longer queued, nothing is pressed.
+ *
+ * @param {string} text  the queued message to act on
+ * @param {'drop'|'now'|'edit'} which
+ */
+export const queueAct = (text, which) => `(() => {
+${HELPERS}
+  const pane = __pane();
+  const clean = (s) => String(s ?? '').replace(/\\s+/g, ' ').trim();
+  const wanted = clean(${JSON.stringify(String(text))});
+  const icons = {
+    drop: ${list(SELECTORS.queueDrop)},
+    now: ${list(SELECTORS.queueNow)},
+    edit: ${list(SELECTORS.queueEdit)},
+  }[${JSON.stringify(String(which))}];
+  if (!icons) return { pressed: false, reason: 'no such button' };
+
+  for (const drop of pane.querySelectorAll(${list(SELECTORS.queueDrop)}.join(','))) {
+    let row = drop;
+    for (let up = 0; up < 6 && row.parentElement; up += 1) {
+      row = row.parentElement;
+      if (clean(row.textContent)) break;
+    }
+    if (clean(row.textContent) !== wanted) continue;
+    const icon = row.querySelector(icons.join(','));
+    if (!icon) return { pressed: false, reason: 'that row has no such button' };
+    // The button is the thing around the icon; the icon itself is decoration.
+    const button = icon.closest('button, [role="button"], [class*="icon-button"]') || icon;
+    button.click();
+    const { x, y, width, height } = icon.getBoundingClientRect();
+    return { pressed: true, at: { x: Math.round(x + width / 2), y: Math.round(y + height / 2) } };
+  }
+  return { pressed: false, reason: 'that message is no longer queued' };
 })()`;
 
 /**

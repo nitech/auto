@@ -38,6 +38,9 @@ const els = {
   toBottom: $('to-bottom'),
   attachments: $('attachments'),
   file: $('file'),
+  queue: $('queue'),
+  queueCount: $('queue-count'),
+  queueList: $('queue-list'),
 };
 
 const state = {
@@ -60,6 +63,10 @@ const state = {
   lastPrompt: '',
   /** images waiting to go with the next prompt: {mimeType, data, url} */
   attachments: [],
+  /** what is waiting for the turn to end: {owner, waiting, items, hidden} */
+  queue: { owner: 'auto', waiting: 0, items: [] },
+  /** the queued message being reworded, so the row stays an editor while typing */
+  editing: null,
 };
 
 // ------------------------------------------------------------------ helpers
@@ -1057,6 +1064,8 @@ function connect() {
       }
       decorate(els.transcript);
       scrollDown(true);
+      // Whatever was queued before you looked is still queued.
+      sendOp({ op: 'queue.list', sessionId: msg.sessionId });
       return;
     }
 
@@ -1115,6 +1124,24 @@ function connect() {
       return;
     }
 
+    if (msg.type === 'queue') {
+      if (msg.sessionId && msg.sessionId !== state.sessionId) return;
+      state.queue = {
+        owner: msg.owner || 'auto',
+        waiting: msg.waiting || 0,
+        items: msg.items || [],
+        hidden: msg.hidden || 0,
+        reason: msg.reason || null,
+      };
+      // An action that failed is worth a word: the message may have gone into
+      // the agent between the list being drawn and the button being pressed.
+      if (msg.acted && msg.acted.status !== 'done') {
+        render({ kind: 'notice', text: msg.acted.reason || `That queued message is ${msg.acted.status}.` });
+      }
+      renderQueue();
+      return;
+    }
+
     if (msg.type === 'error') {
       render({ kind: 'error', text: msg.message });
     }
@@ -1144,6 +1171,101 @@ function renderAttachments() {
     box.append(img, drop);
     els.attachments.append(box);
   });
+}
+
+/**
+ * The messages waiting for the turn to end, above the box you typed them in.
+ *
+ * The same three things the IDE offers, because a message queued from a phone is
+ * the one most likely to need taking back: reword it, push it to the front, or
+ * throw it away. Rewording happens in the row itself rather than in the message
+ * box, so a half-typed follow-up is never overwritten by an edit.
+ */
+function renderQueue() {
+  const { items, waiting, hidden, owner, reason } = state.queue;
+  const none = !waiting && !items.length;
+  els.queue.hidden = none;
+  if (none) {
+    state.editing = null;
+    return;
+  }
+
+  // Open on the first sight of a queue, then leave it however it was left.
+  if (!els.queue.dataset.touched) els.queue.open = true;
+  const extra = hidden ? ` (${hidden} out of view)` : '';
+  els.queueCount.textContent = `${waiting} queued${extra}`;
+  els.queue.title = owner === 'cursor' ? 'Held by Cursor until this turn ends' : '';
+
+  els.queueList.innerHTML = '';
+  if (reason) els.queueList.append(said('queue-note', `Cursor's queue is out of reach: ${reason}`));
+
+  for (const item of items) {
+    const row = div('queued');
+    if (state.editing === item.id) {
+      const editor = document.createElement('textarea');
+      editor.value = item.text;
+      editor.rows = Math.min(6, item.text.split('\n').length + 1);
+      const save = button('✓', 'Save', () => {
+        const text = editor.value.trim();
+        state.editing = null;
+        if (text && text !== item.text) {
+          sendOp({ op: 'queue.edit', sessionId: state.sessionId, itemId: item.id, text });
+        } else {
+          renderQueue();
+        }
+      });
+      const cancel = button('×', 'Cancel', () => {
+        state.editing = null;
+        renderQueue();
+      });
+      const acts = div('queued-acts');
+      acts.append(save, cancel);
+      row.append(editor, acts);
+      els.queueList.append(row);
+      editor.focus();
+      continue;
+    }
+
+    const text = said('queued-text', item.text);
+    if (item.images) {
+      text.append(said('cap', `+${item.images} image${item.images === 1 ? '' : 's'}`));
+    }
+    const acts = div('queued-acts');
+    acts.append(
+      button('✎', 'Edit this message', () => {
+        state.editing = item.id;
+        renderQueue();
+      }),
+      button('↑', owner === 'cursor' ? 'Send it now' : 'Send it next', () =>
+        sendOp({ op: 'queue.now', sessionId: state.sessionId, itemId: item.id }),
+      ),
+      button('🗑', 'Delete this message', () =>
+        sendOp({ op: 'queue.drop', sessionId: state.sessionId, itemId: item.id }),
+      ),
+    );
+    row.append(text, acts);
+    els.queueList.append(row);
+  }
+}
+
+/** A div holding words, never markup: a queued message is somebody's typing. */
+function said(cls, words) {
+  const d = document.createElement('div');
+  d.className = cls;
+  d.textContent = words;
+  return d;
+}
+
+/** A small square button, the only kind the queue rows need. */
+function button(face, title, onclick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'queued-act';
+  b.textContent = face;
+  b.title = title;
+  b.setAttribute('aria-label', title);
+  b.onclick = onclick;
+  return b;
 }
 
 /** Screenshots are half of what you want to say from a phone. */
@@ -1184,6 +1306,11 @@ function autosize() {
   els.box.style.height = `${Math.min(els.box.scrollHeight, window.innerHeight * 0.4)}px`;
   syncSend();
 }
+
+// Folding the queue away is a choice worth keeping; the count stays visible.
+els.queue.addEventListener('toggle', () => {
+  els.queue.dataset.touched = '1';
+});
 
 els.send.onclick = () => submit();
 els.stop.onclick = () => sendOp({ op: 'cancel', sessionId: state.sessionId });
