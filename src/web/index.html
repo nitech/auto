@@ -15,12 +15,16 @@
     <div class="rail-head">
       <span class="brand">Auto</span>
       <button id="new-session" class="icon" title="New session">+</button>
+      <button id="rail-close" class="icon" title="Close sessions" aria-label="Close sessions">×</button>
     </div>
     <div id="session-list"></div>
     <div class="rail-foot">
       <span id="conn" class="dot"></span><span id="conn-label">connecting</span>
     </div>
   </aside>
+
+  <!-- Tapping beside the rail closes it; only in the way when it is open. -->
+  <div id="rail-scrim" hidden></div>
 
   <main id="main">
     <header id="topbar">

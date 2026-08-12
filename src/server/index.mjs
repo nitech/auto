@@ -10,14 +10,14 @@
  */
 import { createServer } from 'node:http';
 import { readFileSync, existsSync, writeFileSync, rmSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { SessionManager, POLICY } from '../core/sessions.mjs';
 import { BrowserHost } from '../core/browser.mjs';
 import { TelegramBridge } from '../core/telegram.mjs';
-import { listProjects, workspaceIdFor } from '../core/projects.mjs';
-import { desktopChats } from '../core/desktop-chats.mjs';
+import { listProjects, workspaceIdFor, foldersByWorkspaceId } from '../core/projects.mjs';
+import { desktopChats, recentDesktopChats } from '../core/desktop-chats.mjs';
 import {
   assertSwitches,
   gateState,
@@ -106,6 +106,33 @@ function desktopChatsFor(folder) {
   return desktopChats(workspaceIdFor(folder)).map((c) => ({ ...c, attached: open.has(c.id) }));
 }
 
+/**
+ * Cursor's own recent chats, whichever project they belong to — the list the
+ * IDE shows, so Auto's rail can be the same one. Cached briefly because the
+ * folder lookup reads a directory per workspace and the rail asks often.
+ */
+let recentCache = { at: 0, chats: [] };
+function recentChats() {
+  if (Date.now() - recentCache.at < 5_000) return recentCache.chats;
+  const folders = foldersByWorkspaceId();
+  const open = new Set(sessions.list().map((s) => s.desktopThreadId).filter(Boolean));
+  const chats = recentDesktopChats({ limit: 60 })
+    .map((c) => {
+      const folder = folders.get(c.workspaceId) || '';
+      return {
+        ...c,
+        folder,
+        project: folder ? basename(folder) : '',
+        attached: open.has(c.id),
+      };
+    })
+    // A chat whose folder the IDE has forgotten cannot be sent to, since the
+    // bridge needs a window with that workspace open.
+    .filter((c) => c.folder);
+  recentCache = { at: Date.now(), chats };
+  return chats;
+}
+
 /** Broadcast to every socket, or only those watching one session. */
 function broadcast(msg, sessionId = null) {
   for (const [ws, state] of clients) {
@@ -162,6 +189,7 @@ const OPS = {
       terminalsAvailable: sessions.terminals.available,
       catalog: sessions.catalog,
       projects: projectList(),
+      chats: recentChats(),
     });
 
     // The model list only exists once an agent has started. Warm it in the
@@ -201,6 +229,11 @@ const OPS = {
 
   'projects.list'(ws) {
     send(ws, { type: 'projects', projects: projectList() });
+  },
+
+  /** Cursor's recent chats, for the rail. */
+  'desktop.recent'(ws) {
+    send(ws, { type: 'desktopRecent', chats: recentChats() });
   },
 
   'desktop.chats'(ws, state, msg) {
@@ -482,6 +515,7 @@ wss.on('connection', async (ws) => {
     sessions: sessions.list(),
     activeId: sessions.activeId,
     policies: Object.values(POLICY),
+    chats: recentChats(),
   });
   try {
     await OPS.attach(ws, state, { sessionId: sessions.activeId, fromSeq: 0 });

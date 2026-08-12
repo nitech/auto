@@ -57,6 +57,45 @@ export function chatCountsByWorkspace() {
   );
 }
 
+/** One `composerHeaders` row as a chat. */
+function chatOf(row) {
+  let head = {};
+  try {
+    head = JSON.parse(textOf(row));
+  } catch {
+    /* a header we cannot read is still a chat */
+  }
+  return {
+    id: row.composerId,
+    title: head.name || 'Untitled chat',
+    subtitle: head.subtitle || '',
+    updatedAt: row.lastUpdatedAt || head.lastUpdatedAt || 0,
+    createdAt: row.createdAt || head.createdAt || 0,
+    linesAdded: head.totalLinesAdded || 0,
+    linesRemoved: head.totalLinesRemoved || 0,
+    workspaceId: row.workspaceId,
+  };
+}
+
+/**
+ * The desktop's most recent chats across every workspace, newest first.
+ *
+ * This is the list the IDE itself shows, which is what Auto's rail should be:
+ * the same conversations under the same names, rather than a separate world.
+ */
+export function recentDesktopChats({ limit = 60 } = {}) {
+  return (
+    withDb((db) =>
+      db
+        .prepare(
+          'SELECT composerId, workspaceId, createdAt, lastUpdatedAt, value FROM composerHeaders WHERE isArchived = 0 AND isSubagent = 0 ORDER BY lastUpdatedAt DESC LIMIT ?',
+        )
+        .all(limit)
+        .map(chatOf),
+    ) || []
+  );
+}
+
 /**
  * The desktop's chats for one workspace, newest first.
  *
@@ -66,27 +105,10 @@ export function desktopChats(workspaceId, { limit = 40 } = {}) {
   if (!workspaceId) return [];
   return (
     withDb((db) => {
-      const rows = db
-        .prepare('SELECT composerId, createdAt, lastUpdatedAt, value FROM composerHeaders WHERE workspaceId = ? AND isArchived = 0 AND isSubagent = 0 ORDER BY lastUpdatedAt DESC LIMIT ?')
-        .all(workspaceId, limit);
-
-      return rows.map((r) => {
-        let head = {};
-        try {
-          head = JSON.parse(textOf(r));
-        } catch {
-          /* a header we cannot read is still a chat */
-        }
-        return {
-          id: r.composerId,
-          title: head.name || 'Untitled chat',
-          subtitle: head.subtitle || '',
-          updatedAt: r.lastUpdatedAt || head.lastUpdatedAt || 0,
-          createdAt: r.createdAt || head.createdAt || 0,
-          linesAdded: head.totalLinesAdded || 0,
-          linesRemoved: head.totalLinesRemoved || 0,
-        };
-      });
+      return db
+        .prepare('SELECT composerId, workspaceId, createdAt, lastUpdatedAt, value FROM composerHeaders WHERE workspaceId = ? AND isArchived = 0 AND isSubagent = 0 ORDER BY lastUpdatedAt DESC LIMIT ?')
+        .all(workspaceId, limit)
+        .map(chatOf);
     }) || []
   );
 }

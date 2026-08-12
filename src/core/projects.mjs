@@ -100,6 +100,20 @@ export function workspaceIdFor(path) {
   return recentFolders().find((w) => key(w.path) === k)?.workspaceId || null;
 }
 
+/**
+ * Which folder each workspace id belongs to — the other direction, for
+ * turning the desktop's chats back into projects you recognise.
+ *
+ * @returns {Map<string, string>} workspace id → folder path
+ */
+export function foldersByWorkspaceId() {
+  const out = new Map();
+  for (const { path, workspaceId } of recentFolders()) {
+    if (workspaceId && !out.has(workspaceId)) out.set(workspaceId, path);
+  }
+  return out;
+}
+
 const isTemp = (p) => /[\\/]AppData[\\/]Local[\\/]Temp[\\/]/i.test(p);
 const key = (p) => p.toLowerCase().replace(/[\\/]+$/, '');
 

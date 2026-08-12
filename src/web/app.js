@@ -40,6 +40,8 @@ const state = {
   sessionId: null,
   sessions: [],
   projects: [],
+  /** Cursor's own recent chats, whichever project they belong to */
+  chats: [],
   lastSeq: 0,
   busy: false,
   /** toolCallId -> element, so tool_update mutates the card it belongs to */
@@ -496,46 +498,125 @@ const sameFolder = (a, b) =>
   String(a || '').replace(/[\\/]+$/, '').toLowerCase() ===
   String(b || '').replace(/[\\/]+$/, '').toLowerCase();
 
-function sessionRow(s) {
-  const row = div('session' + (s.id === state.sessionId ? ' active' : ''));
-  const dot = div(`dot ${s.status || 'idle'}`);
+/**
+ * One row in the rail — either a session Auto is running, or a chat sitting
+ * in Cursor that you have not opened here yet. They look alike on purpose:
+ * tapping either one puts you in that conversation.
+ */
+function sessionRow(item) {
+  const row = div('session' + (item.id && item.id === state.sessionId ? ' active' : ''));
+  const dot = div(`dot ${item.session ? item.status || 'idle' : 'resting'}`);
   const meta = div('meta');
+
   const name = document.createElement('span');
   name.className = 'name';
-  name.textContent = s.title || 'session';
+  name.textContent = item.title || 'session';
   meta.append(name);
 
-  // A thread that lives in the IDE is the same conversation shown there, so
-  // say which ones those are.
-  if (s.kind === 'desktop') {
-    const tag = document.createElement('span');
-    tag.className = 'tag';
-    tag.textContent = 'in Cursor';
-    tag.title = 'This chat runs in the Cursor desktop app — both ends share it';
-    meta.append(tag);
+  const sub = document.createElement('span');
+  sub.className = 'sub';
+  sub.textContent = [item.project, item.session ? '' : 'in Cursor'].filter(Boolean).join(' · ');
+  if (sub.textContent) meta.append(sub);
+
+  row.append(dot, meta);
+
+  // Only Auto's own list can be tidied; a chat belongs to the IDE.
+  if (item.session) {
+    const close = document.createElement('button');
+    close.className = 'close';
+    close.textContent = '×';
+    close.title = 'Archive session';
+    close.onclick = (e) => {
+      e.stopPropagation();
+      sendOp({ op: 'session.archive', sessionId: item.id });
+    };
+    row.append(close);
   }
 
-  const close = document.createElement('button');
-  close.className = 'close';
-  close.textContent = '×';
-  close.title = 'Archive session';
-  close.onclick = (e) => {
-    e.stopPropagation();
-    sendOp({ op: 'session.archive', sessionId: s.id });
+  row.title = item.session
+    ? item.title
+    : `${item.title} — open it here; the same chat as in Cursor`;
+  row.onclick = () => {
+    if (item.session) return attach(item.id);
+    row.classList.add('busy');
+    sendOp({ op: 'desktop.continue', chatId: item.chatId, folder: item.folder });
+    return undefined;
   };
-
-  row.append(dot, meta, close);
-  row.onclick = () => attach(s.id);
   return row;
 }
 
+/** The headings Cursor's own history uses. */
+function dateBucket(ms) {
+  const now = new Date();
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const day = 86_400_000;
+  if (!ms) return 'Older';
+  if (ms >= midnight) return 'Today';
+  if (ms >= midnight - day) return 'Yesterday';
+  if (ms >= midnight - 7 * day) return 'Previous 7 days';
+  if (ms >= midnight - 30 * day) return 'Previous 30 days';
+  return new Date(ms).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
 /**
- * Sessions live under their project, the way the desktop groups them. Projects
- * with no sessions are still listed — that is how you start work somewhere new
- * from the phone — but they collapse to a single line until they have any.
+ * Everything you might want to carry on with, newest first: Auto's sessions
+ * and Cursor's chats in one list, since from here they are the same kind of
+ * thing. A chat already open in Auto appears once, as the session.
+ */
+function conversations() {
+  const rows = state.sessions.map((s) => ({
+    session: true,
+    id: s.id,
+    chatId: s.desktopThreadId || null,
+    title: s.title || 'session',
+    status: s.status,
+    folder: s.folder,
+    project: (s.folder || '').split(/[\\/]/).filter(Boolean).pop() || '',
+    at: Date.parse(s.updatedAt || s.createdAt || '') || 0,
+  }));
+
+  const open = new Set(rows.map((r) => r.chatId).filter(Boolean));
+  for (const c of state.chats) {
+    if (open.has(c.id)) continue;
+    rows.push({
+      session: false,
+      id: null,
+      chatId: c.id,
+      title: c.title,
+      folder: c.folder,
+      project: c.project,
+      at: c.updatedAt || c.createdAt || 0,
+    });
+  }
+
+  return rows.sort((a, b) => b.at - a.at);
+}
+
+/**
+ * The rail reads like Cursor's own history: one list of conversations, newest
+ * first, under date headings. Projects follow at the bottom — you need them to
+ * start work somewhere new, and to reach chats older than this list goes.
  */
 function renderRail() {
   els.rail.innerHTML = '';
+
+  let heading = null;
+  for (const item of conversations()) {
+    const bucket = dateBucket(item.at);
+    if (bucket !== heading) {
+      heading = bucket;
+      const head = div('rail-group');
+      head.textContent = bucket;
+      els.rail.appendChild(head);
+    }
+    els.rail.appendChild(sessionRow(item));
+  }
+
+  if (!els.rail.childElementCount) {
+    const empty = div('rail-empty');
+    empty.textContent = 'No conversations yet.';
+    els.rail.appendChild(empty);
+  }
 
   const projects = state.projects.length
     ? state.projects
@@ -544,43 +625,19 @@ function renderRail() {
         name: (path || '').split(/[\\/]/).pop(),
         open: false,
       }));
+  if (!projects.length) return;
 
-  const used = new Set();
-  const withSessions = [];
-  const empty = [];
-
-  for (const p of projects) {
-    const mine = state.sessions.filter((s) => sameFolder(s.folder, p.path));
-    mine.forEach((s) => used.add(s.id));
-    (mine.length ? withSessions : empty).push({ project: p, sessions: mine });
-  }
-
-  // A session in a folder Cursor has never heard of still deserves a home.
-  const orphans = state.sessions.filter((s) => !used.has(s.id));
-  if (orphans.length) {
-    withSessions.push({ project: { path: '', name: 'Other' }, sessions: orphans });
-  }
-
-  for (const { project, sessions } of withSessions) {
-    els.rail.appendChild(projectHeader(project, sessions.length));
-    for (const s of sessions) els.rail.appendChild(sessionRow(s));
+  const more = document.createElement('details');
+  more.className = 'more-projects';
+  const summary = document.createElement('summary');
+  summary.textContent = `Projects (${projects.length})`;
+  more.append(summary);
+  for (const project of projects) {
+    more.append(projectHeader(project, 0));
     const chats = desktopChatsBlock(project);
-    if (chats) els.rail.appendChild(chats);
+    if (chats) more.append(chats);
   }
-
-  if (empty.length) {
-    const more = document.createElement('details');
-    more.className = 'more-projects';
-    const summary = document.createElement('summary');
-    summary.textContent = `${empty.length} more projects`;
-    more.append(summary);
-    for (const { project } of empty) {
-      more.append(projectHeader(project, 0));
-      const chats = desktopChatsBlock(project);
-      if (chats) more.append(chats);
-    }
-    els.rail.appendChild(more);
-  }
+  els.rail.appendChild(more);
 }
 
 /**
@@ -658,7 +715,8 @@ function projectHeader(project, count) {
   note.className = 'project-note';
   const bits = [];
   if (project.open) bits.push('open in Cursor');
-  if (!count && project.desktopChats) bits.push(`${project.desktopChats} desktop chats`);
+  if (count) bits.push(`${count} here`);
+  else if (project.desktopChats) bits.push(`${project.desktopChats} chats`);
   note.textContent = bits.join(' · ');
 
   const add = document.createElement('button');
@@ -727,7 +785,7 @@ function sendOp(msg) {
 
 function attach(sessionId) {
   if (sessionId === state.sessionId) {
-    els.app.classList.remove('rail-open');
+    setRail(false);
     return;
   }
   state.sessionId = sessionId;
@@ -737,7 +795,7 @@ function attach(sessionId) {
   state.permCards.clear();
   state.stream = null;
   resetTerminals();
-  els.app.classList.remove('rail-open');
+  setRail(false);
   sendOp({ op: 'attach', sessionId, fromSeq: 0 });
 }
 
@@ -762,6 +820,13 @@ function connect() {
 
     if (msg.type === 'hello') {
       state.sessions = msg.sessions;
+      if (msg.chats) state.chats = msg.chats;
+      renderRail();
+      return;
+    }
+
+    if (msg.type === 'desktopRecent') {
+      state.chats = msg.chats || [];
       renderRail();
       return;
     }
@@ -786,6 +851,7 @@ function connect() {
       }
       renderModels(msg.catalog?.models);
       if (msg.projects) state.projects = msg.projects;
+      if (msg.chats) state.chats = msg.chats;
       applyMeta(msg.meta);
       renderRail();
       // Panes first, so replayed terminal chunks have somewhere to land.
@@ -890,7 +956,24 @@ $('restart').onclick = () => {
   if (!confirm('Restart Auto? It waits for the current turn, then reconnects.')) return;
   sendOp({ op: 'host.restart', reason: 'web' });
 };
-$('rail-toggle').onclick = () => els.app.classList.toggle('rail-open');
+/**
+ * Open or close the session rail. On a narrow screen it slides over the page,
+ * covering the button that opened it — so closing has to be possible from the
+ * rail itself, from the page beside it, and from the keyboard.
+ */
+function setRail(open) {
+  els.app.classList.toggle('rail-open', open);
+  $('rail-scrim').hidden = !open;
+  // Cursor may have moved on since you last looked.
+  if (open) sendOp({ op: 'desktop.recent' });
+}
+
+$('rail-toggle').onclick = () => setRail(!els.app.classList.contains('rail-open'));
+$('rail-close').onclick = () => setRail(false);
+$('rail-scrim').onclick = () => setRail(false);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && els.app.classList.contains('rail-open')) setRail(false);
+});
 els.mode.onchange = () =>
   sendOp({ op: 'session.mode', sessionId: state.sessionId, modeId: els.mode.value });
 els.model.onchange = () =>

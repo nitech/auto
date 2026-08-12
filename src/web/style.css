@@ -168,6 +168,24 @@ button, select, textarea { font: inherit; color: inherit; }
 
 .more-projects > summary:hover { background: var(--bg-3); }
 
+/* Date headings, the way Cursor's own history is grouped. */
+.rail-group {
+  padding: 14px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.rail-group:first-child { padding-top: 4px; }
+
+.rail-empty {
+  padding: 12px 10px;
+  font-size: 12.5px;
+  color: var(--faint);
+}
+
 .session {
   display: flex;
   align-items: center;
@@ -179,6 +197,8 @@ button, select, textarea { font: inherit; color: inherit; }
   min-width: 0;
   margin-left: 8px;
 }
+
+.session.busy { opacity: 0.55; }
 
 .session:hover { background: var(--bg-3); }
 
@@ -240,6 +260,8 @@ button, select, textarea { font: inherit; color: inherit; }
 }
 
 .dot.idle { background: var(--faint); }
+/* A chat sitting in Cursor that Auto has not opened: present, but not ours. */
+.dot.resting { background: transparent; border: 1px solid var(--line-2); }
 .dot.busy { background: var(--amber); animation: pulse 1.2s ease-in-out infinite; }
 .dot.error { background: var(--red); }
 .dot.starting { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
@@ -326,7 +348,9 @@ button.icon {
 
 button.icon:hover { background: var(--bg-3); color: var(--text); }
 
-#rail-toggle { display: none; }
+/* Both only exist on a narrow screen, where the rail slides over everything. */
+#rail-toggle,
+#rail-close { display: none; }
 
 /* ------------------------------------------------------------ transcript */
 
@@ -886,6 +910,15 @@ details.think .body {
   }
   #app.rail-open #rail { transform: none; }
   #rail-toggle { display: block; }
+  /* The rail covers the topbar's toggle when open, so it carries its own way
+     out: this button, the scrim beside it, or Escape. */
+  #rail-close { display: block; }
+  #rail-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 19;
+    background: rgba(0, 0, 0, 0.45);
+  }
   #transcript { padding: 14px 12px 4px; }
   .msg.user { max-width: 88%; }
   #composer { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
