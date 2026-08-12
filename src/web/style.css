@@ -1,20 +1,139 @@
+/**
+ * Two themes, one set of names.
+ *
+ * Every colour in this file comes from a token below, so a theme is a list of
+ * values rather than a second stylesheet. Anything with meaning — a diff, an
+ * approval, an error — gets its own token pair rather than reusing a surface,
+ * because those need different treatment on a light background: the same tint
+ * that reads as "added" on near-black turns invisible on white.
+ *
+ * `data-theme` on <html> chooses. It is set before first paint by app.js, from
+ * a stored preference or the system's.
+ */
 :root {
   color-scheme: dark;
+
+  /* surfaces, from the page up to the most raised control */
   --bg: #0b0d12;
   --bg-2: #11141b;
   --bg-3: #171b24;
+  --sunken: #0c0e14;      /* wells: diffs, screenshots */
+  --deep: #05070b;        /* letterbox behind the browser view */
   --line: #232936;
   --line-2: #2e3646;
+
+  /* type */
   --text: #dfe3ea;
   --muted: #8b93a4;
   --faint: #626b7d;
+  --fg: var(--text);
+  --fg-dim: var(--faint);
+
+  /* meaning */
   --accent: #6ea8ff;
   --green: #4ad07f;
   --amber: #e5a95a;
   --red: #ff6b6b;
   --violet: #a78bfa;
+
+  /* the one saturated action */
+  --primary: #2b5bd7;
+  --primary-hover: #3768e8;
+  --primary-fg: #fff;
+  --focus: #6ea8ff;
+
+  /* your own words */
+  --user-bg: #1b2740;
+  --user-border: #27395c;
+
+  /* tinted states */
+  --ok-bg: #13291d;
+  --ok-border: #2c5c3f;
+  --danger-bg: #2a1416;
+  --danger-border: #5c2c30;
+  --warn-border: #4a3c22;
+  --error-bg: #1e1113;
+  --error-border: #4a2528;
+
+  /* approval card */
+  --perm-from: #1d1526;
+  --perm-to: #171320;
+  --perm-border: #4a3550;
+
+  /* diffs */
+  --add-bg: rgba(86, 190, 110, 0.12);
+  --add-fg: #a6e3b4;
+  --del-bg: rgba(224, 92, 100, 0.12);
+  --del-fg: #f1a8ad;
+  --tag-bg: rgba(86, 190, 110, 0.16);
+  --tag-fg: #a6e3b4;
+
+  /* depth */
+  --scrim: rgba(0, 0, 0, 0.45);
+  --shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.35);
+
   --radius: 10px;
   --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+}
+
+/**
+ * Light is not the dark palette inverted. Borders carry more of the structure
+ * because shadows and raised surfaces do less work on white, the greys are
+ * warmer so a page of text is not glaring, and the semantic hues are darkened
+ * until they hold their own against a bright background.
+ */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #ffffff;
+  --bg-2: #f7f8fa;
+  --bg-3: #edeff3;
+  --sunken: #f5f6f9;
+  --deep: #e7e9ee;
+  --line: #e3e6ec;
+  --line-2: #ccd2dd;
+
+  --text: #131720;
+  --muted: #59616f;
+  --faint: #78808f;
+
+  --accent: #1a56db;
+  --green: #10763f;
+  --amber: #8a5a00;
+  --red: #c62b2b;
+  --violet: #6d3fd1;
+
+  --primary: #2b5bd7;
+  --primary-hover: #1f49b8;
+  --primary-fg: #fff;
+  --focus: #2b5bd7;
+
+  --user-bg: #e8effd;
+  --user-border: #c4d6f8;
+
+  --ok-bg: #e9f6ee;
+  --ok-border: #b3d9c3;
+  --danger-bg: #fdeded;
+  --danger-border: #efc0c0;
+  --warn-border: #e3cfa4;
+  --error-bg: #fdeded;
+  --error-border: #efc0c0;
+
+  --perm-from: #f8f4ff;
+  --perm-to: #f2ecfd;
+  --perm-border: #dcd0f3;
+
+  --add-bg: rgba(16, 118, 63, 0.10);
+  --add-fg: #0d5d33;
+  --del-bg: rgba(198, 43, 43, 0.09);
+  --del-fg: #9d2626;
+  --tag-bg: rgba(16, 118, 63, 0.12);
+  --tag-fg: #0d5d33;
+
+  --scrim: rgba(17, 23, 33, 0.34);
+  --shadow: 0 10px 44px rgba(20, 27, 42, 0.20);
+  --shadow-sm: 0 2px 10px rgba(20, 27, 42, 0.10);
 }
 
 * { box-sizing: border-box; }
@@ -286,7 +405,12 @@ button, select, textarea { font: inherit; color: inherit; }
   background: var(--bg);
 }
 
-.titles { flex: 1; min-width: 0; }
+/* The title outranks the pickers: it keeps a floor of its own so a long model
+   name cannot squeeze it to nothing, which is what used to happen. */
+.titles { flex: 1 1 auto; min-width: 96px; overflow: hidden; }
+
+#topbar-controls { display: flex; gap: 8px; min-width: 0; }
+#topbar-controls select { flex: 0 1 auto; min-width: 0; max-width: 148px; }
 
 #session-title {
   margin: 0;
@@ -298,9 +422,15 @@ button, select, textarea { font: inherit; color: inherit; }
 }
 
 #session-folder {
+  display: block;
   font-size: 11.5px;
   color: var(--faint);
   font-family: var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;   /* a path matters most at its end */
+  text-align: left;
 }
 
 select {
@@ -321,8 +451,8 @@ select {
   white-space: nowrap;
 }
 
-.chip.busy { color: var(--amber); border-color: #4a3c22; }
-.chip.error { color: var(--red); border-color: #4a2528; }
+.chip.busy { color: var(--amber); border-color: var(--warn-border); }
+.chip.error { color: var(--red); border-color: var(--error-border); }
 
 button.icon {
   background: none;
@@ -387,12 +517,19 @@ details.think,
   width: fit-content;
   max-width: min(620px, 85%);
   margin-left: auto;
-  background: #1b2740;
-  border: 1px solid #27395c;
+  background: var(--user-bg);
+  border: 1px solid var(--user-border);
   border-radius: 14px 14px 4px 14px;
   padding: 10px 14px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.msg.user .cap {
+  display: block;
+  margin-top: 5px;
+  font-size: 11px;
+  opacity: 0.7;
 }
 
 .msg.agent { white-space: normal; overflow-wrap: anywhere; }
@@ -418,6 +555,7 @@ code {
 }
 
 pre {
+  position: relative;   /* anchors the copy button */
   margin: 8px 0;
   background: var(--bg-2);
   border: 1px solid var(--line);
@@ -505,7 +643,7 @@ details.think .body {
 .tool .state { font-size: 11px; color: var(--faint); flex: none; }
 .tool.done .state { color: var(--green); }
 .tool.failed .state { color: var(--red); }
-.tool.failed { border-color: #4a2528; }
+.tool.failed { border-color: var(--error-border); }
 .tool .body { border-top: 1px solid var(--line); padding: 10px 12px; }
 .tool .body pre { margin: 6px 0 0; background: var(--bg); max-height: 420px; }
 .tool .body .cap { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
@@ -513,14 +651,12 @@ details.think .body {
 /* diffs */
 
 .diff { font-family: var(--mono); font-size: 12.5px; }
-.diff .add { background: #10301d; color: #79dfa2; display: block; }
-.diff .del { background: #331417; color: #ff9ea0; display: block; }
 
 /* permission */
 
 .perm {
-  border: 1px solid #4a3550;
-  background: linear-gradient(180deg, #1d1526, #171320);
+  border: 1px solid var(--perm-border);
+  background: linear-gradient(180deg, var(--perm-from), var(--perm-to));
   border-radius: var(--radius);
   padding: 13px 14px;
 }
@@ -551,10 +687,10 @@ details.think .body {
   border: 1px solid var(--line-2);
 }
 
-.perm button.allow { border-color: #2c5c3f; color: var(--green); }
-.perm button.allow:hover { background: #13291d; }
-.perm button.deny { border-color: #5c2c30; color: var(--red); }
-.perm button.deny:hover { background: #2a1416; }
+.perm button.allow { border-color: var(--ok-border); color: var(--green); }
+.perm button.allow:hover { background: var(--ok-bg); }
+.perm button.deny { border-color: var(--danger-border); color: var(--red); }
+.perm button.deny:hover { background: var(--danger-bg); }
 .perm.resolved { opacity: 0.55; }
 .perm .outcome { font-size: 12.5px; color: var(--muted); }
 
@@ -578,8 +714,8 @@ details.think .body {
 
 .notice.error {
   color: var(--red);
-  background: #1e1113;
-  border: 1px solid #4a2528;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
   border-radius: 8px;
   padding: 9px 12px;
   text-align: left;
@@ -590,7 +726,7 @@ details.think .body {
 .notice.error .retry {
   margin-left: 8px;
   background: none;
-  border: 1px solid #5c2c30;
+  border: 1px solid var(--danger-border);
   color: var(--red);
   border-radius: 6px;
   padding: 2px 9px;
@@ -620,7 +756,7 @@ details.think .body {
   outline: none;
 }
 
-#box:focus { border-color: #3d4a63; }
+#box:focus { border-color: var(--focus); }
 
 .actions { display: flex; gap: 8px; }
 
@@ -633,16 +769,16 @@ details.think .body {
 }
 
 #composer button.primary {
-  background: #2b5bd7;
-  border-color: #3768e8;
-  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary-hover);
+  color: var(--primary-fg);
   font-weight: 550;
 }
 
-#composer button.primary:hover { background: #3768e8; }
+#composer button.primary:hover { background: var(--primary-hover); }
 #composer button.primary:disabled { opacity: 0.45; cursor: default; }
-#composer button.danger { color: var(--red); border-color: #5c2c30; }
-#composer button.danger:hover { background: #2a1416; }
+#composer button.danger { color: var(--red); border-color: var(--danger-border); }
+#composer button.danger:hover { background: var(--danger-bg); }
 
 /* ---------------------------------------------------- diffs and images */
 
@@ -651,7 +787,7 @@ details.think .body {
   border: 1px solid var(--line-2);
   border-radius: 8px;
   overflow: hidden;
-  background: #0c0e14;
+  background: var(--sunken);
 }
 
 .diff > summary {
@@ -676,12 +812,12 @@ details.think .body {
 .diff .tag {
   padding: 1px 6px;
   border-radius: 5px;
-  background: rgba(86, 190, 110, 0.16);
-  color: #a6e3b4;
+  background: var(--tag-bg);
+  color: var(--tag-fg);
   font-size: 11px;
 }
 
-.diff .plus { color: var(--green, #6cc07a); }
+.diff .plus { color: var(--green); }
 .diff .minus { color: var(--red); }
 
 .diff-body {
@@ -700,8 +836,8 @@ details.think .body {
   font-family: ui-monospace, Consolas, monospace;
 }
 
-.dl.add { background: rgba(86, 190, 110, 0.12); color: #a6e3b4; }
-.dl.del { background: rgba(224, 92, 100, 0.12); color: #f1a8ad; }
+.dl.add { background: var(--add-bg); color: var(--add-fg); }
+.dl.del { background: var(--del-bg); color: var(--del-fg); }
 .dl.ctx { color: var(--fg-dim); }
 .dl.gap {
   color: var(--fg-dim);
@@ -715,7 +851,7 @@ details.think .body {
   border: 1px solid var(--line-2);
   border-radius: 8px;
   overflow: hidden;
-  background: #0c0e14;
+  background: var(--sunken);
 }
 
 .shot img {
@@ -738,7 +874,7 @@ details.think .body {
   flex-direction: column;
   height: min(52vh, 560px);
   border-top: 1px solid var(--line);
-  background: #0b0d12;
+  background: var(--bg);
 }
 
 .browser-bar {
@@ -763,7 +899,7 @@ details.think .body {
 
 #browser-url:focus {
   outline: none;
-  border-color: #3768e8;
+  border-color: var(--focus);
 }
 
 .spinner {
@@ -771,7 +907,7 @@ details.think .body {
   height: 12px;
   border-radius: 50%;
   border: 2px solid var(--line-2);
-  border-top-color: #3768e8;
+  border-top-color: var(--primary);
   animation: spin 0.8s linear infinite;
 }
 
@@ -782,7 +918,7 @@ details.think .body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: #05070b;
+  background: var(--deep);
 }
 
 #browser-frame {
@@ -824,7 +960,7 @@ details.think .body {
   flex-direction: column;
   height: min(42vh, 380px);
   border-top: 1px solid var(--line);
-  background: #0b0d12;
+  background: var(--bg);
 }
 
 .term-bar {
@@ -883,7 +1019,262 @@ details.think .body {
 .term-pane.active { display: block; }
 .term-pane .xterm { height: 100%; }
 
+/* xterm's own stylesheet paints the viewport black, which shows through around
+   the canvas and behind the scrollbar. The theme decides this, not the vendor. */
+.term-pane .xterm .xterm-viewport { background-color: var(--bg); }
+
+/* --------------------------------------------------------------- sheet */
+
+/**
+ * One panel for everything that is not the conversation: session controls,
+ * theme, panels, host. It is the only home for the mode/model/policy pickers
+ * on a narrow screen — app.js moves those very elements in and out rather
+ * than duplicating them, so there is never a second copy to keep in step.
+ */
+#sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: var(--scrim);
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 56px 16px 16px;
+}
+
+#sheet[hidden] { display: none; }
+
+.sheet-panel {
+  width: min(380px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  animation: sheet-in 0.16s ease;
+}
+
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateY(-6px); }
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 10px 12px 16px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.sheet-head span { flex: 1; }
+
+.sheet-block {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sheet-block:last-child { border-bottom: 0; }
+
+.sheet-block h2 {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.sheet-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.sheet-row:last-child { margin-bottom: 0; }
+.sheet-row[hidden] { display: none; }
+.sheet-row select { flex: 1 1 130px; min-width: 0; }
+.sheet-note { font-size: 12px; color: var(--faint); overflow-wrap: anywhere; }
+.sheet-note .mono { font-family: var(--mono); }
+
+.sheet-panel button:not(.icon) {
+  background: var(--bg-3);
+  border: 1px solid var(--line-2);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sheet-panel button:not(.icon):hover { border-color: var(--focus); }
+.sheet-panel button.danger { color: var(--red); border-color: var(--danger-border); }
+.sheet-panel button.danger:hover { background: var(--danger-bg); }
+
+.sheet-panel input[type='text'] {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  outline: none;
+}
+
+.sheet-panel input[type='text']:focus { border-color: var(--focus); }
+
+/* Segmented control: system / light / dark. */
+.seg {
+  display: flex;
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.seg button {
+  flex: 1;
+  background: none !important;
+  border: 0 !important;
+  border-radius: 7px;
+  padding: 7px 4px !important;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.seg button[aria-pressed='true'] {
+  background: var(--bg-3) !important;
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+/* --------------------------------------------------- transcript extras */
+
+/* Only worth offering once you have scrolled away from the live edge. */
+#to-bottom {
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  z-index: 5;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  background: var(--bg-3);
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  font-size: 15px;
+  line-height: 1;
+}
+
+#to-bottom[hidden] { display: none; }
+#to-bottom:hover { border-color: var(--focus); }
+
+.scroller {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Copy sits on the block it copies, quiet until you go looking for it. */
+.copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--bg-3);
+  border: 1px solid var(--line-2);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+pre:hover .copy,
+.copy:focus-visible { opacity: 1; }
+.copy:hover { color: var(--text); border-color: var(--focus); }
+.copy.done { color: var(--green); border-color: var(--ok-border); opacity: 1; }
+
+/* ----------------------------------------------------- composer extras */
+
+#composer { flex-direction: column; align-items: stretch; }
+
+.composer-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+#attachments {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+}
+
+#attachments[hidden] { display: none; }
+
+.att {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  background: var(--sunken);
+}
+
+.att img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.att button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-bottom-left-radius: 8px;
+  background: var(--scrim);
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+}
+
+/* --------------------------------------------------------- focus rings */
+
+/* Keyboard users get a ring everywhere; pointer users never see it. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.session:focus-visible,
+.desktop-chat:focus-visible,
+.project:focus-visible {
+  outline-offset: -2px;
+}
+
 /* -------------------------------------------------------------- mobile */
+
+@media (max-width: 900px) {
+  /* The pickers move into the sheet at this width; the empty holder in the
+     topbar would otherwise keep its gap. */
+  #topbar-controls { display: none; }
+}
 
 @media (max-width: 760px) {
   #app { grid-template-columns: 1fr; }
@@ -895,7 +1286,7 @@ details.think .body {
     z-index: 20;
     transform: translateX(-100%);
     transition: transform 0.18s ease;
-    box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow);
   }
   #app.rail-open #rail { transform: none; }
   #rail-toggle { display: block; }
@@ -912,10 +1303,43 @@ details.think .body {
     position: fixed;
     inset: 0;
     z-index: 19;
-    background: rgba(0, 0, 0, 0.45);
+    background: var(--scrim);
   }
   #transcript { padding: 14px 12px 4px; }
   .msg.user { max-width: 88%; }
   #composer { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
-  #policy { display: none; }
+
+  /* Panel toggles live in the sheet on a phone, where the bar has no room. */
+  .desk-only { display: none; }
+
+  #topbar { padding: 8px 10px; gap: 6px; }
+  #sheet { padding: 0; align-items: flex-end; justify-content: center; }
+  .sheet-panel {
+    width: 100%;
+    max-height: 88vh;
+    border-radius: 16px 16px 0 0;
+    border-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    animation: sheet-up 0.18s ease;
+  }
+  @keyframes sheet-up {
+    from { transform: translateY(14px); opacity: 0; }
+  }
+
+  /* Fingers, not cursors: everything tappable gets a 40px box. */
+  button.icon {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 4px 8px;
+  }
+  .session .close,
+  .project .close {
+    opacity: 0.55;
+    min-width: 40px;
+    min-height: 40px;
+    font-size: 17px;
+  }
+  .sheet-panel button:not(.icon) { min-height: 40px; }
+  /* No hover on a phone, so copy is always showing — and worth hitting. */
+  .copy { opacity: 1; padding: 7px 10px; }
 }

@@ -20,6 +20,28 @@ const early = new Map();
 let activeId = null;
 let sendOp = () => {};
 
+/**
+ * The terminal is a canvas, so it cannot inherit the page's colours — it has
+ * to be told them. Reading the same tokens the stylesheet uses keeps it in
+ * step with the theme instead of pinning it to one palette.
+ */
+function xtermTheme() {
+  const css = getComputedStyle(document.documentElement);
+  const pick = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+  return {
+    background: pick('--bg', '#0b0d12'),
+    foreground: pick('--text', '#d7dce5'),
+    cursor: pick('--accent', '#7aa2f7'),
+    selectionBackground: pick('--bg-3', '#171b24'),
+  };
+}
+
+/** Repaint every open pane after a theme change. */
+export function retheme() {
+  const theme = xtermTheme();
+  for (const p of panes.values()) p.term.options.theme = theme;
+}
+
 export function initTerminals(send) {
   sendOp = send;
 
@@ -74,7 +96,7 @@ export function openPane(desc) {
     fontSize: 13,
     cursorBlink: true,
     scrollback: 5000,
-    theme: { background: '#0b0d12', foreground: '#d7dce5', cursor: '#7aa2f7' },
+    theme: xtermTheme(),
   });
   const fitAddon = new window.FitAddon.FitAddon();
   term.loadAddon(fitAddon);

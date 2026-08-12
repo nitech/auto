@@ -11,6 +11,7 @@ import {
   openPane,
   closePane,
   resetTerminals,
+  retheme,
   writeChunk,
 } from './terminals.js';
 import { lineDiff, collapseContext, diffStats } from './diff.js';
@@ -33,6 +34,10 @@ const els = {
   policy: $('policy'),
   conn: $('conn'),
   connLabel: $('conn-label'),
+  sheet: $('sheet'),
+  toBottom: $('to-bottom'),
+  attachments: $('attachments'),
+  file: $('file'),
 };
 
 const state = {
@@ -51,6 +56,8 @@ const state = {
   stream: null,
   streamKind: null,
   lastPrompt: '',
+  /** images waiting to go with the next prompt: {mimeType, data, url} */
+  attachments: [],
 };
 
 // ------------------------------------------------------------------ helpers
@@ -135,6 +142,47 @@ function scrollDown(force = false) {
   }
 }
 
+/**
+ * Code is worth taking away, so every block carries a copy button. It lives
+ * inside the <pre> and is skipped when reading the text back, which keeps the
+ * markup free of a wrapper element that streaming would keep destroying.
+ */
+function decorate(root) {
+  for (const pre of root.querySelectorAll?.('pre:not([data-copy])') ?? []) {
+    pre.dataset.copy = '1';
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'copy';
+    b.textContent = 'Copy';
+    b.setAttribute('aria-label', 'Copy code');
+    b.onclick = async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const text = [...pre.childNodes]
+        .filter((n) => n !== b)
+        .map((n) => n.textContent)
+        .join('');
+      try {
+        await navigator.clipboard.writeText(text);
+        b.textContent = 'Copied';
+        b.classList.add('done');
+        setTimeout(() => {
+          b.textContent = 'Copy';
+          b.classList.remove('done');
+        }, 1200);
+      } catch {
+        b.textContent = 'Blocked';
+      }
+    };
+    pre.prepend(b);
+  }
+}
+
+/** The jump button only earns its place once you have scrolled away. */
+function syncToBottom() {
+  els.toBottom.hidden = nearBottom();
+}
+
 function add(node, { keepStream = false } = {}) {
   if (!keepStream) {
     state.stream = null;
@@ -142,7 +190,9 @@ function add(node, { keepStream = false } = {}) {
   }
   const stick = nearBottom();
   els.transcript.appendChild(node);
+  decorate(node);
   scrollDown(stick);
+  syncToBottom();
   return node;
 }
 
@@ -156,7 +206,13 @@ function div(cls, html) {
 // ----------------------------------------------------------------- renderers
 
 function renderUser(rec) {
-  add(div('msg user', esc(rec.text)));
+  const node = div('msg user', esc(rec.text));
+  if (rec.images) {
+    const cap = div('cap');
+    cap.textContent = `${rec.images} image${rec.images === 1 ? '' : 's'} attached`;
+    node.append(cap);
+  }
+  add(node);
 }
 
 function renderStreaming(rec) {
@@ -475,6 +531,9 @@ function render(rec) {
       break;
     case 'turn_end':
       add(div('turn-divider'));
+      // Streamed replies rewrite their own markup as they arrive, so their
+      // code blocks only get a copy button once the turn stops moving.
+      decorate(els.transcript);
       break;
     case 'notice': {
       const el = div('notice');
@@ -493,6 +552,21 @@ function render(rec) {
 }
 
 // -------------------------------------------------------------------- rail
+
+/**
+ * A div that acts like a button should answer to a keyboard like one. Rows are
+ * divs because they hold their own controls, so they borrow the semantics.
+ */
+function actsAsButton(node, run) {
+  node.setAttribute('role', 'button');
+  node.tabIndex = 0;
+  node.onclick = run;
+  node.onkeydown = (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    run();
+  };
+}
 
 const sameFolder = (a, b) =>
   String(a || '').replace(/[\\/]+$/, '').toLowerCase() ===
@@ -538,12 +612,12 @@ function sessionRow(item) {
   row.title = item.session
     ? item.title
     : `${item.title} — open it here; the same chat as in Cursor`;
-  row.onclick = () => {
+  actsAsButton(row, () => {
     if (item.session) return attach(item.id);
     row.classList.add('busy');
     sendOp({ op: 'desktop.continue', chatId: item.chatId, folder: item.folder });
     return undefined;
-  };
+  });
   return row;
 }
 
@@ -696,11 +770,11 @@ function renderDesktopChats(folder, chats) {
           .join(' · ');
     row.append(name, sub);
     row.title = 'Open this chat — the same conversation as in Cursor';
-    row.onclick = () => {
+    actsAsButton(row, () => {
       row.classList.add('busy');
       sub.textContent = 'Opening…';
       sendOp({ op: 'desktop.continue', chatId: c.id, folder });
-    };
+    });
     body.append(row);
   }
 }
@@ -732,12 +806,12 @@ function projectHeader(project, count) {
 
   // Tapping the project is the phone-sized target: go to its newest session,
   // or start one if it has none.
-  head.onclick = () => {
+  actsAsButton(head, () => {
     if (!project.path) return;
     const mine = state.sessions.filter((s) => sameFolder(s.folder, project.path));
     if (mine.length) attach(mine[0].id);
     else sendOp({ op: 'session.create', folder: project.path });
-  };
+  });
 
   head.append(name, note, add);
   return head;
@@ -859,6 +933,19 @@ function connect() {
       // Panes first, so replayed terminal chunks have somewhere to land.
       for (const t of msg.terminals || []) openPane(t);
       for (const rec of msg.records) render(rec);
+      // An approval the agent is still waiting on outlives the replay window,
+      // and a turn stuck behind an unanswered question is the worst thing to
+      // come back to. Anything the records already drew is skipped.
+      for (const p of msg.pending || []) {
+        if (!state.permCards.has(p.requestId)) renderPermission(p);
+      }
+      if (msg.terminalsAvailable === false) {
+        for (const t of [$('term-toggle'), $('sheet-terminals')]) {
+          t.disabled = true;
+          t.title = 'Terminals are unavailable on this host';
+        }
+      }
+      decorate(els.transcript);
       scrollDown(true);
       return;
     }
@@ -926,11 +1013,53 @@ function connect() {
 
 // ---------------------------------------------------------------- composer
 
+function renderAttachments() {
+  els.attachments.innerHTML = '';
+  els.attachments.hidden = state.attachments.length === 0;
+  state.attachments.forEach((att, i) => {
+    const box = div('att');
+    const img = document.createElement('img');
+    img.src = att.url;
+    img.alt = att.name || 'attached image';
+    const drop = document.createElement('button');
+    drop.type = 'button';
+    drop.textContent = '×';
+    drop.title = 'Remove';
+    drop.setAttribute('aria-label', 'Remove image');
+    drop.onclick = () => {
+      state.attachments.splice(i, 1);
+      renderAttachments();
+    };
+    box.append(img, drop);
+    els.attachments.append(box);
+  });
+}
+
+/** Screenshots are half of what you want to say from a phone. */
+function addImage(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const url = String(reader.result);
+    state.attachments.push({
+      mimeType: file.type,
+      data: url.slice(url.indexOf(',') + 1),
+      url,
+      name: file.name,
+    });
+    renderAttachments();
+  };
+  reader.readAsDataURL(file);
+}
+
 function submit(text) {
   const body = (text ?? els.box.value).trim();
-  if (!body || state.busy) return;
+  const images = state.attachments.map(({ mimeType, data }) => ({ mimeType, data }));
+  if ((!body && !images.length) || state.busy) return;
   state.lastPrompt = body;
-  sendOp({ op: 'prompt', sessionId: state.sessionId, text: body });
+  sendOp({ op: 'prompt', sessionId: state.sessionId, text: body, images });
+  state.attachments = [];
+  renderAttachments();
   if (text === undefined) {
     els.box.value = '';
     autosize();
@@ -952,6 +1081,23 @@ els.box.addEventListener('keydown', (e) => {
     submit();
   }
 });
+els.box.addEventListener('paste', (e) => {
+  const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith('image/'));
+  if (!files.length) return;
+  e.preventDefault();
+  files.forEach(addImage);
+});
+$('attach').onclick = () => els.file.click();
+els.file.onchange = () => {
+  [...els.file.files].forEach(addImage);
+  els.file.value = '';
+};
+
+els.transcript.addEventListener('scroll', syncToBottom);
+els.toBottom.onclick = () => {
+  scrollDown(true);
+  syncToBottom();
+};
 
 $('new-session').onclick = () => sendOp({ op: 'session.create' });
 $('restart').onclick = () => {
@@ -973,9 +1119,116 @@ function setRail(open) {
 $('rail-toggle').onclick = () => setRail(!els.app.classList.contains('rail-open'));
 $('rail-close').onclick = () => setRail(false);
 $('rail-scrim').onclick = () => setRail(false);
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && els.app.classList.contains('rail-open')) setRail(false);
+
+// --------------------------------------------------------------- appearance
+
+/**
+ * Three choices, not two: a phone that turns light at sunrise should take the
+ * app with it unless you have said otherwise. The stored preference is the
+ * choice ("system"), never the outcome ("light").
+ */
+const THEME_KEY = 'auto.theme';
+const prefersLight = window.matchMedia('(prefers-color-scheme: light)');
+
+function themeChoice() {
+  try {
+    return localStorage.getItem(THEME_KEY) || 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+function applyTheme(choice = themeChoice()) {
+  const light = choice === 'light' || (choice === 'system' && prefersLight.matches);
+  document.documentElement.dataset.theme = light ? 'light' : 'dark';
+
+  // The browser's own chrome should not be the one thing left behind.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  if (meta && bg) meta.setAttribute('content', bg);
+
+  for (const b of document.querySelectorAll('#theme-seg button')) {
+    b.setAttribute('aria-pressed', String(b.dataset.themeChoice === choice));
+  }
+  retheme();
+}
+
+for (const b of document.querySelectorAll('#theme-seg button')) {
+  b.onclick = () => {
+    try {
+      localStorage.setItem(THEME_KEY, b.dataset.themeChoice);
+    } catch {
+      /* private mode: the choice lasts as long as the page does */
+    }
+    applyTheme(b.dataset.themeChoice);
+  };
+}
+
+prefersLight.addEventListener('change', () => {
+  if (themeChoice() === 'system') applyTheme();
 });
+
+// -------------------------------------------------------------------- sheet
+
+/**
+ * Everything that is not the conversation. The mode, model and policy pickers
+ * are moved in and out of it rather than duplicated, so a narrow screen loses
+ * no control the wide one has — which is how the approval policy used to go
+ * missing on a phone, the one place it matters most.
+ */
+const compact = window.matchMedia('(max-width: 900px)');
+
+function placeControls() {
+  const inSheet = compact.matches;
+  const host = inSheet ? $('sheet-controls') : $('topbar-controls');
+  host.append(els.mode, els.model, els.policy);
+  // Whichever holder is left empty should not keep its gap.
+  $('sheet-controls').hidden = !inSheet;
+}
+
+function setSheet(open) {
+  els.sheet.hidden = !open;
+  if (!open) return;
+  $('rename').value = state.sessionId ? els.title.textContent : '';
+  $('sheet-folder').textContent = els.folder.textContent;
+  $('sheet-conn').textContent = `${els.connLabel.textContent} · ${location.host}`;
+}
+
+compact.addEventListener('change', placeControls);
+placeControls();
+applyTheme();
+
+$('sheet-open').onclick = () => setSheet(true);
+$('sheet-close').onclick = () => setSheet(false);
+els.sheet.onclick = (e) => {
+  if (e.target === els.sheet) setSheet(false);
+};
+
+$('rename-save').onclick = () => {
+  const title = $('rename').value.trim();
+  if (!title || !state.sessionId) return;
+  sendOp({ op: 'session.rename', sessionId: state.sessionId, title });
+  els.title.textContent = title;
+  setSheet(false);
+};
+
+$('sheet-sync').onclick = () => sendOp({ op: 'sessions.sync' });
+$('sheet-browser').onclick = () => {
+  setSheet(false);
+  $('browser-toggle').click();
+};
+$('sheet-terminals').onclick = () => {
+  setSheet(false);
+  $('term-toggle').click();
+};
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  // Innermost first: the sheet sits over the rail.
+  if (!els.sheet.hidden) setSheet(false);
+  else if (els.app.classList.contains('rail-open')) setRail(false);
+});
+
 els.mode.onchange = () =>
   sendOp({ op: 'session.mode', sessionId: state.sessionId, modeId: els.mode.value });
 els.model.onchange = () =>
