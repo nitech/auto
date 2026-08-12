@@ -386,9 +386,12 @@ function renderToolCall(rec) {
   card.className = 'tool';
   card.innerHTML = `
     <summary>
-      <span class="kind">${esc(rec.toolKind || 'tool')}</span>
-      <span class="label"></span>
-      <span class="state">running…</span>
+      <span class="row">
+        <span class="kind">${esc(rec.toolKind || 'tool')}</span>
+        <span class="label"></span>
+        <span class="state">running…</span>
+      </span>
+      <pre class="peek" hidden></pre>
     </summary>
     <div class="body"></div>`;
   card.querySelector('.label').textContent = toolLabel(rec);
@@ -480,17 +483,33 @@ function outputText(out) {
   return notes.length ? `${text}\n[${notes.join(', ')}]` : text;
 }
 
+/** How many lines of a command's output a folded card shows. */
+const PEEK_LINES = 6;
+
 /**
  * Put what a tool printed under its card.
  *
  * Replaced rather than added to: a command reports as it goes, each time with
  * everything it has printed so far, so appending gave the same output three and
  * four times over on a phone.
+ *
+ * The end of it also stays on the folded card. A card that shuts itself when the
+ * command finishes reads as a chat where nothing printed anything — you have to
+ * know to tap each one — and the last few lines are the ones that say whether it
+ * worked. The whole log is still a tap away.
  */
 function showOutput(card, out, failed) {
   const text = outputText(out);
   if (!text) return;
   const body = card.querySelector('.body');
+
+  const peek = card.querySelector('summary > .peek');
+  if (peek) {
+    const lines = text.replace(/\s+$/, '').split('\n');
+    peek.textContent = lines.slice(-PEEK_LINES).join('\n');
+    peek.hidden = false;
+    peek.classList.toggle('more', lines.length > PEEK_LINES);
+  }
 
   const stick = nearBottom();
   let pre = card.querySelector('.body > pre.out');

@@ -484,6 +484,12 @@ button.icon:hover { background: var(--bg-3); color: var(--text); }
   scroll-behavior: smooth;
 }
 
+/* A column of flex items that scrolls will shrink them to fit the space it has
+   instead of overflowing, and a folded card has no text of its own to stop it:
+   every command in a long chat was squashed to a one-pixel line, output and all.
+   Nothing in the transcript may shrink. */
+#transcript > * { flex: 0 0 auto; }
+
 /* Everything shares one centred column so cards and prose line up. */
 .msg,
 .tool,
@@ -608,7 +614,9 @@ details.think .body {
   overflow: hidden;
 }
 
-.tool > summary {
+.tool > summary { display: block; list-style: none; }
+
+.tool > summary > .row {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -653,6 +661,25 @@ details.think .body {
 /* What a command printed, in a size a phone can actually read. */
 .tool .body pre.out { max-height: 300px; font-size: 12px; line-height: 1.45; }
 .tool .body .cap { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+
+/* The last lines of what a command printed, kept on the folded card so a chat
+   full of commands does not read as a chat where nothing printed anything. */
+.tool > summary > .peek {
+  margin: 0;
+  padding: 0 12px 9px;
+  border: 0;
+  background: none;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted);
+  white-space: pre;
+  overflow-x: auto;
+  cursor: pointer;
+}
+
+.tool > summary > .peek.more { border-top: 1px dashed var(--line); padding-top: 7px; }
+.tool[open] > summary > .peek { display: none; }
+.tool.failed > summary > .peek { color: var(--red); }
 
 /* diffs */
 
