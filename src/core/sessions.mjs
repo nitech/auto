@@ -421,12 +421,7 @@ export class SessionManager extends EventEmitter {
 
     if (meta.kind === 'desktop') {
       if (!text?.trim()) return null;
-      if (images.length) {
-        this.#record(id, KIND.notice, {
-          text: 'The desktop bridge carries text only, so the image was left out.',
-        });
-      }
-      return this.#promptDesktop(id, meta, text);
+      return this.#promptDesktop(id, meta, text, images);
     }
 
     const runtime = await this.ensureLive(id);
@@ -1049,7 +1044,7 @@ export class SessionManager extends EventEmitter {
    * goes first; the bridge, which a window can refuse for as long as it lives,
    * catches the case where Cursor was started without the port.
    */
-  async #deliverDesktop(id, text) {
+  async #deliverDesktop(id, text, images = []) {
     const meta = this.meta.get(id);
     if (!meta?.desktopThreadId) return { status: 'error', message: 'Not a desktop chat' };
     // Claim the echo before sending: the watcher may see the bubble the
@@ -1059,11 +1054,17 @@ export class SessionManager extends EventEmitter {
     const typed = await this.cursor
       // A chat in a background tab is still this chat: bring it forward rather
       // than making someone open it in Cursor before their message will go.
-      .sendText({ threadId: meta.desktopThreadId, text, bringForward: true })
+      .sendText({ threadId: meta.desktopThreadId, text, images, bringForward: true })
       .catch((err) => ({ status: 'error', reason: err.message }));
     if (typed.status === 'submitted') {
       this.emit('log', `typed a message into Cursor's window for "${meta.title}"`);
-      return { status: 'submitted', via: 'cdp' };
+      return {
+        status: 'submitted',
+        via: 'cdp',
+        attached: typed.attached || 0,
+        ofImages: images.length,
+        attachFailed: typed.attachFailed || null,
+      };
     }
     // Say why the better way in was not taken. A silent fallback cost an
     // afternoon of guessing at which of the two transports had refused.
@@ -1090,15 +1091,26 @@ export class SessionManager extends EventEmitter {
    * next starts, and windows open and close all day. So the text waits in the
    * outbox and goes in the moment the desktop will take it.
    */
-  async #promptDesktop(id, meta, text) {
-    this.#record(id, KIND.userMessage, { text });
+  async #promptDesktop(id, meta, text, images = []) {
+    this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
 
-    const result = await this.#deliverDesktop(id, text);
+    const result = await this.#deliverDesktop(id, text, images);
 
     if (result.status === 'submitted' || result.status === 'queued') {
       if (result.status === 'queued') {
         this.#record(id, KIND.notice, {
           text: 'The desktop agent is mid-turn; this will go in when it finishes.',
+        });
+      }
+      // An image that did not make it has to be said out loud: a message asking
+      // "what do you think of this?" with nothing attached reads as an agent
+      // ignoring the question.
+      if (images.length && result.attached !== images.length) {
+        const missing = images.length - (result.attached || 0);
+        this.#record(id, KIND.notice, {
+          text:
+            `${missing} of ${images.length} image${images.length === 1 ? '' : 's'} did not reach ` +
+            `Cursor's chat box${result.attachFailed ? ` — ${result.attachFailed}` : ''}. The message went without ${missing === 1 ? 'it' : 'them'}.`,
         });
       }
       this.#update(id, { status: STATUS.busy });
@@ -1108,6 +1120,13 @@ export class SessionManager extends EventEmitter {
 
     const place = this.outbox.hold(id, text);
     this.#record(id, KIND.notice, { text: this.#whyHeld(meta, result, place) });
+    if (images.length) {
+      // The outbox keeps words, not pictures: an image has to be pasted into a
+      // window that exists, and there is no window to paste into.
+      this.#record(id, KIND.notice, {
+        text: `The ${images.length === 1 ? 'image' : `${images.length} images`} could not wait with it — send ${images.length === 1 ? 'it' : 'them'} again once Cursor is taking messages.`,
+      });
+    }
     // Held messages go in the registry, so a host restart does not lose them.
     this.#update(id, { status: STATUS.idle, outbox: this.outbox.list(id) });
     return result;

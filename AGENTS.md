@@ -60,6 +60,15 @@ value as setup documentation is fine.
   Nothing is believed from the click: Cursor's stored record keeps the model a
   chat was last *sent* with, so the word on the picker is the proof, and asking
   for what it is already on presses nothing.
+- **A picture gets in by being pasted.** There is no protocol command for
+  attaching a file, so an image from a phone goes onto the Windows clipboard and
+  the window is told to run its own `paste` editing command — a real Ctrl+V,
+  spelled out. Each image is confirmed by a pill appearing beside the chat box
+  before the next one goes, whatever text was on the clipboard is put back, and
+  the words are sent even if the picture would not attach — with a note saying
+  what was left behind, because "what do you make of this?" arriving empty reads
+  as an agent ignoring the question. The outbox holds words only: a held message
+  says its images have to be sent again.
 - **A busy session takes another task.** Prompts sent mid-turn used to be
   refused with "Session is already working" — fine at a keyboard, useless from a
   phone. They now queue: the message goes into the transcript when it is added

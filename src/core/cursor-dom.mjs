@@ -46,6 +46,14 @@ export const SELECTORS = {
     { selector: '.composer-unified-dropdown[data-mode]', attribute: 'data-mode' },
     { selector: '[data-mode]', attribute: 'data-mode' },
   ],
+  /**
+   * An image sitting in the chat box, waiting to go with the message.
+   *
+   * Cursor calls it a context pill. Counting them is how Auto knows a paste
+   * landed: the clipboard can hold the right picture and the window still ignore
+   * it, and a message that quietly loses its photo is worse than a refusal.
+   */
+  attached: ['.context-pill-image', '.image-pill-container'],
   /** The model button, and the text inside it naming the current model. */
   modelName: ['.ui-model-picker__trigger-text'],
   modelButton: ['button[aria-haspopup="menu"]'],
@@ -231,6 +239,22 @@ ${HELPERS}
 export const COMPOSER_TEXT = `(() => {
 ${HELPERS}
   return __text(__box());
+})()`;
+
+/** How many images are waiting in the chat box to be sent. */
+export const ATTACHED = `(() => {
+${HELPERS}
+  const box = __box();
+  // The pills sit beside the box, not in it, so look at what holds both.
+  const around = box?.closest('div[class*="composer"], form, section') || __pane();
+  const found = new Set();
+  for (const selector of ${list(SELECTORS.attached)}) {
+    for (const el of around.querySelectorAll(selector)) {
+      // One pill is built from several elements; count the outermost.
+      if (![...found].some((kept) => kept.contains(el))) found.add(el);
+    }
+  }
+  return found.size;
 })()`;
 
 /**

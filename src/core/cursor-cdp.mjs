@@ -30,8 +30,10 @@
  * be a source of history.
  */
 import { WebSocket } from 'ws';
+import * as clipboard from './clipboard.mjs';
 import {
   ACTIONS,
+  ATTACHED,
   COMPOSER_TEXT,
   FACTS,
   FOCUS_COMPOSER,
@@ -59,6 +61,8 @@ const STOP_LOOKS = 6;
 const SHOW_LOOKS = 8;
 /** How long a menu gets to open, and a picker to admit it changed. */
 const MENU_LOOKS = 10;
+/** How long a pasted image gets to appear beside the chat box. */
+const PASTE_LOOKS = 12;
 
 /** JSON-RPC over one page's debugger socket. */
 class CdpSocket {
@@ -175,6 +179,39 @@ export class CursorWindow {
 
   composerText() {
     return this.evaluate(COMPOSER_TEXT);
+  }
+
+  /** How many images are already waiting in the chat box. */
+  attached() {
+    return this.evaluate(ATTACHED);
+  }
+
+  /**
+   * Paste whatever the machine is holding into the chat box.
+   *
+   * There is no protocol command for attaching a file, but Blink will run a named
+   * editing command on a key event — so this is Ctrl+V with the paste spelled
+   * out, rather than a keystroke and a hope. What arrives is the clipboard's
+   * business; see `clipboard.mjs`.
+   */
+  async paste() {
+    await this.socket.send('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'v',
+      code: 'KeyV',
+      windowsVirtualKeyCode: 86,
+      nativeVirtualKeyCode: 86,
+      modifiers: 2,
+      commands: ['paste'],
+    });
+    await this.socket.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'v',
+      code: 'KeyV',
+      windowsVirtualKeyCode: 86,
+      nativeVirtualKeyCode: 86,
+      modifiers: 2,
+    });
   }
 
   /**
@@ -383,6 +420,7 @@ export class CursorCdp {
     owner,
     isGenerating,
     readSettings: settingsOf,
+    clipboard: board,
     settleMs,
   } = {}) {
     this.port = port;
@@ -394,6 +432,9 @@ export class CursorCdp {
     this.isGenerating =
       isGenerating || ((threadId) => Boolean(readThread(threadId, { tail: 0 })?.generating));
     this.readSettings = settingsOf || ((threadId) => readSettings(threadId));
+    // The machine's clipboard, borrowed to get a picture into the chat box.
+    // Injectable so tests never touch the real one.
+    this.clipboard = board || clipboard;
     this.settleMs = settleMs ?? SUBMIT_SETTLE_MS;
   }
 
@@ -501,19 +542,23 @@ export class CursorCdp {
    * Someone part-way through typing in the window keeps it either way: their
    * unsent words are reason enough to leave the window alone.
    *
+   * Images go in ahead of the words, pasted through the clipboard — the only way
+   * a picture gets into that box. See `#attach`.
+   *
    * @param {object} opts
    * @param {string} opts.threadId  the desktop chat this must land in
    * @param {string} opts.text
+   * @param {Array<{mimeType?: string, data: string|Buffer}>} [opts.images]
    * @param {boolean} [opts.bringForward]
    * @returns {Promise<{ status: 'submitted'|'unknown-thread'|'not-sendable'|'no-cdp'|'error',
-   *   reason?: string, title?: string }>} `submitted` and only `submitted`
-   *   means Cursor has it
+   *   reason?: string, title?: string, attached?: number, attachFailed?: string }>}
+   *   `submitted` and only `submitted` means Cursor has it
    */
-  async sendText({ threadId, text, bringForward = false }) {
+  async sendText({ threadId, text, images = [], bringForward = false }) {
     if (!String(text || '').trim()) return { status: 'error', reason: 'nothing to send' };
 
     const typed = await this.#withThread(threadId, (window, facts) =>
-      this.#typeInto(window, facts, text),
+      this.#typeInto(window, facts, text, images),
     );
     if (!bringForward || typed.status !== 'unknown-thread') return typed;
 
@@ -521,7 +566,9 @@ export class CursorCdp {
     if (shown.status !== 'shown') {
       return shown.status === 'no-tab' ? typed : { status: 'not-sendable', reason: shown.reason };
     }
-    return this.#withThread(threadId, (window, facts) => this.#typeInto(window, facts, text));
+    return this.#withThread(threadId, (window, facts) =>
+      this.#typeInto(window, facts, text, images),
+    );
   }
 
   /**
@@ -840,7 +887,7 @@ export class CursorCdp {
   }
 
   /** The typing itself, once the window has proved which chat it is showing. */
-  async #typeInto(window, facts, text) {
+  async #typeInto(window, facts, text, images = []) {
     const title = facts?.title;
     if (!facts?.hasComposer) {
       return { status: 'not-sendable', reason: 'that chat has no box to type in', title };
@@ -852,6 +899,8 @@ export class CursorCdp {
     if (!(await window.focusComposer())) {
       return { status: 'not-sendable', reason: 'the chat box would not take the caret', title };
     }
+
+    const attached = images.length ? await this.#attach(window, images) : { count: 0 };
 
     await window.insertText(text);
     const typed = await window.composerText();
@@ -866,11 +915,74 @@ export class CursorCdp {
     await window.pressEnter();
     for (let look = 0; look < SUBMIT_LOOKS; look += 1) {
       await wait(this.settleMs);
-      if (!(await window.composerText())) return { status: 'submitted', title };
+      if (!(await window.composerText())) {
+        return {
+          status: 'submitted',
+          title,
+          ...(images.length ? { attached: attached.count, ofImages: images.length } : {}),
+          ...(attached.reason ? { attachFailed: attached.reason } : {}),
+        };
+      }
     }
 
     await window.clearComposer();
     return { status: 'not-sendable', reason: 'the chat box would not send', title };
+  }
+
+  /**
+   * Put images into the chat box before the message goes in.
+   *
+   * One at a time, each confirmed by a pill appearing beside the box, because a
+   * clipboard that holds the right picture is no guarantee the window took it.
+   * Whatever text was on the clipboard is put back afterwards.
+   *
+   * A photo that will not attach does not stop the message: the words are worth
+   * more than the picture, and the caller is told what was left behind so it can
+   * say so. Silently sending "what do you make of this?" with no image attached
+   * is the one outcome to avoid.
+   */
+  async #attach(window, images) {
+    const held = await this.clipboard.takeText();
+    let count = await window.attached();
+    const started = count;
+    let reason = null;
+
+    try {
+      for (const image of images) {
+        const bytes = Buffer.isBuffer(image?.data)
+          ? image.data
+          : Buffer.from(String(image?.data || ''), 'base64');
+        if (!bytes.length) {
+          reason = 'an image arrived empty';
+          continue;
+        }
+
+        try {
+          await this.clipboard.putImage(bytes);
+        } catch (err) {
+          reason = err.message;
+          continue;
+        }
+
+        await window.focusComposer();
+        await window.paste();
+
+        let landed = false;
+        for (let look = 0; look < PASTE_LOOKS && !landed; look += 1) {
+          await wait(this.settleMs);
+          const now = await window.attached();
+          if (now > count) {
+            count = now;
+            landed = true;
+          }
+        }
+        if (!landed) reason = 'Cursor did not take the pasted image';
+      }
+    } finally {
+      await this.clipboard.putText(held);
+    }
+
+    return { count: count - started, reason };
   }
 }
 

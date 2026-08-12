@@ -181,8 +181,11 @@ if (existsSync(SRC)) {
           generating = false,
           pickers = null,
           menus = null,
+          takesPaste = true,
         } = {},
       ) {
+        this.takesPaste = takesPaste;
+        this.pills = 0;
         this.given = facts;
         this.box = facts.composerText || '';
         this.submits = submits;
@@ -285,7 +288,17 @@ if (existsSync(SRC)) {
       async pressEnter() {
         if (!this.submits) return;
         this.sent = this.box;
+        this.sentWith = this.pills;
         this.box = '';
+      }
+      /** Images sitting beside the box, as Cursor's context pills do. */
+      async attached() {
+        return this.pills || 0;
+      }
+      async paste() {
+        this.pasted = (this.pasted || 0) + 1;
+        if (this.takesPaste === false) return;
+        this.pills = (this.pills || 0) + 1;
       }
       async clearComposer() {
         this.box = '';
@@ -303,14 +316,35 @@ if (existsSync(SRC)) {
      * A machine with these windows open, and nothing else. The desktop's
      * database is not consulted unless a test says what it would answer.
      */
-    const machine = (windows, { owner, isGenerating } = {}) =>
+    const machine = (windows, { owner, isGenerating, clipboard } = {}) =>
       new CursorCdp({
         settleMs: 1,
         listTargets: async () => Object.keys(windows).map(target),
         openWindow: async (t) => windows[t.id],
         owner: owner || (() => null),
         isGenerating: isGenerating || (() => false),
+        // Nothing in a test may touch the machine's real clipboard.
+        clipboard: clipboard || fakeClipboard(),
       });
+
+    /** A clipboard that remembers what it was asked to hold. */
+    const fakeClipboard = (fail = false) => {
+      const board = {
+        held: 'what the user had copied',
+        images: [],
+        restored: [],
+        takeText: async () => board.held,
+        putText: async (text) => {
+          board.restored.push(text);
+        },
+        putImage: async (bytes) => {
+          if (fail) throw new Error('the clipboard would not take the image');
+          board.images.push(bytes.length);
+          return true;
+        },
+      };
+      return board;
+    };
 
     // The message goes into the window showing that chat, and no other.
     const mine = new FakeWindow({ threadId: THREAD, hasComposer: true });
@@ -408,6 +442,54 @@ if (existsSync(SRC)) {
     if ((await broken.sendText({ threadId: THREAD, text: 'x' })).status !== 'no-cdp') {
       fail('a refused debug port should be no-cdp, not an exception');
     }
+
+    // Sending a picture: it is pasted in before the words, each paste confirmed
+    // by a pill appearing, and the clipboard is put back as it was found.
+    const photo = { mimeType: 'image/png', data: Buffer.from('not really a png').toString('base64') };
+    const withPhoto = new FakeWindow({ threadId: THREAD, hasComposer: true });
+    const board = fakeClipboard();
+    result = await machine({ withPhoto }, { clipboard: board }).sendText({
+      threadId: THREAD,
+      text: 'what do you make of this?',
+      images: [photo, photo],
+    });
+    if (result.status !== 'submitted' || result.attached !== 2) {
+      fail(`two images should reach the chat box: ${JSON.stringify(result)}`);
+    }
+    if (withPhoto.sentWith !== 2) fail('the images must be in the box before the message goes');
+    if (board.images.length !== 2) fail('each image should go through the clipboard');
+    if (board.restored.at(-1) !== 'what the user had copied') {
+      fail(`the clipboard should be put back as it was: ${JSON.stringify(board.restored)}`);
+    }
+
+    // A window that ignores the paste still sends the words, and says so.
+    const deafToPaste = new FakeWindow(
+      { threadId: THREAD, hasComposer: true },
+      { takesPaste: false },
+    );
+    result = await machine({ deafToPaste }).sendText({
+      threadId: THREAD,
+      text: 'look at this',
+      images: [photo],
+    });
+    if (result.status !== 'submitted' || result.attached !== 0 || !result.attachFailed) {
+      fail(`an image that will not attach must be reported, not hidden: ${JSON.stringify(result)}`);
+    }
+    if (deafToPaste.sent !== 'look at this') fail('the words should go even when the picture cannot');
+
+    // A clipboard that refuses is the same story, and must still be put back.
+    const clipboardBroken = fakeClipboard(true);
+    const noBoard = new FakeWindow({ threadId: THREAD, hasComposer: true });
+    result = await machine({ noBoard }, { clipboard: clipboardBroken }).sendText({
+      threadId: THREAD,
+      text: 'and this',
+      images: [photo],
+    });
+    if (result.status !== 'submitted' || !result.attachFailed) {
+      fail(`a clipboard that refuses should be reported: ${JSON.stringify(result)}`);
+    }
+    if (noBoard.pasted) fail('nothing should be pasted when the clipboard would not take it');
+    if (!clipboardBroken.restored.length) fail('the clipboard must be put back even after a failure');
 
     // Cursor says /d:/Sevenfold/auto where Auto says D:\Sevenfold\auto.
     if (!samePath('/d:/Sevenfold/auto', 'D:\\Sevenfold\\auto')) fail('samePath should see one folder');
