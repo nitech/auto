@@ -37,13 +37,13 @@ value as setup documentation is fine.
   hold no authoritative state. If you add a new kind of event, record it —
   a record we cannot render yet beats one we threw away.
 - **Two ways into the IDE.** A desktop chat is driven by typing into Cursor's
- own window over its debugging port, and only failing that through the desktop
- bridge, then a persistent outbox. Typing answers to no feature switch; the
- bridge can shut itself mid-session. So Cursor wants starting with
- `--remote-debugging-port=9222` — `node scripts/desktop-bridge.mjs status`
- says whether it was.
+  own window over its debugging port, and only failing that through the desktop
+  bridge, then a persistent outbox. Typing answers to no feature switch; the
+  bridge can shut itself mid-session. So Cursor wants starting with
+  `--remote-debugging-port=9222` — `node scripts/desktop-bridge.mjs status`
+  says whether it was.
 - **Live-only by exception.** Browser frames are the sole thing deliberately
- never recorded; a video stream is not worth replaying.
+  never recorded; a video stream is not worth replaying.
 - **The web and Telegram are projections.** Neither owns state. Anything one
   can do, the other should be able to do.
 
