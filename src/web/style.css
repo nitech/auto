@@ -738,47 +738,81 @@ details.think .body {
 
 #composer {
   display: flex;
-  gap: 10px;
-  align-items: flex-end;
+  flex-direction: column;
   padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--line);
   background: var(--bg);
 }
 
-#box {
-  flex: 1;
+/**
+ * One field that happens to contain its own buttons, rather than a box with
+ * controls parked beside it. The border and the focus ring belong to the
+ * whole thing, so it reads as a single place to type.
+ */
+.composer-box {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
   background: var(--bg-2);
   border: 1px solid var(--line-2);
-  border-radius: 12px;
-  padding: 11px 14px;
+  border-radius: 24px;
+  padding: 5px 5px 5px 6px;
+  transition: border-color 0.12s ease;
+}
+
+.composer-box:focus-within { border-color: var(--focus); }
+
+#box {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: none;
   resize: none;
   max-height: 40vh;
-  outline: none;
+  padding: 8px 6px;
+  line-height: 1.45;
+  /* iOS zooms the page into any field under 16px, and never zooms back out. */
+  font-size: 16px;
 }
 
-#box:focus { border-color: var(--focus); }
-
-.actions { display: flex; gap: 8px; }
-
-#composer button {
-  border-radius: 10px;
-  padding: 10px 18px;
+.in-box {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
   cursor: pointer;
-  border: 1px solid var(--line-2);
-  background: var(--bg-3);
 }
 
-#composer button.primary {
+.in-box[hidden] { display: none; }
+.in-box:hover { background: var(--bg-3); color: var(--text); }
+
+.in-box.send {
   background: var(--primary);
   border-color: var(--primary-hover);
   color: var(--primary-fg);
-  font-weight: 550;
 }
 
-#composer button.primary:hover { background: var(--primary-hover); }
-#composer button.primary:disabled { opacity: 0.45; cursor: default; }
-#composer button.danger { color: var(--red); border-color: var(--danger-border); }
-#composer button.danger:hover { background: var(--danger-bg); }
+.in-box.send:hover { background: var(--primary-hover); color: var(--primary-fg); }
+
+/* Nothing to send is a state worth showing, not a click worth taking. */
+.in-box.send:disabled {
+  background: var(--bg-3);
+  border-color: var(--line-2);
+  color: var(--faint);
+  cursor: default;
+}
+
+.in-box.stop { color: var(--red); border-color: var(--danger-border); font-size: 12px; }
+.in-box.stop:hover { background: var(--danger-bg); color: var(--red); }
 
 /* ---------------------------------------------------- diffs and images */
 
@@ -1209,14 +1243,6 @@ pre:hover .copy,
 
 /* ----------------------------------------------------- composer extras */
 
-#composer { flex-direction: column; align-items: stretch; }
-
-.composer-row {
-  display: flex;
-  gap: 10px;
-  align-items: flex-end;
-}
-
 #attachments {
   display: flex;
   gap: 8px;
@@ -1340,6 +1366,15 @@ pre:hover .copy,
     font-size: 17px;
   }
   .sheet-panel button:not(.icon) { min-height: 40px; }
+  .in-box { width: 40px; height: 40px; }
+
+  /* Same rule as the composer: iOS zooms into anything smaller than 16px and
+     leaves the page there, so every field a finger can reach is 16px. */
+  #browser-url,
+  .sheet-panel input[type='text'],
+  select {
+    font-size: 16px;
+  }
   /* No hover on a phone, so copy is always showing — and worth hitting. */
   .copy { opacity: 1; padding: 7px 10px; }
 }

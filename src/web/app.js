@@ -850,7 +850,13 @@ function applyMeta(meta) {
 function setBusy(busy) {
   state.busy = busy;
   els.stop.hidden = !busy;
-  els.send.disabled = busy;
+  els.send.hidden = busy;
+  syncSend();
+}
+
+/** Send is only live when there is something to send. */
+function syncSend() {
+  els.send.disabled = state.busy || !(els.box.value.trim() || state.attachments.length);
 }
 
 // ------------------------------------------------------------------ socket
@@ -1016,6 +1022,7 @@ function connect() {
 function renderAttachments() {
   els.attachments.innerHTML = '';
   els.attachments.hidden = state.attachments.length === 0;
+  syncSend();
   state.attachments.forEach((att, i) => {
     const box = div('att');
     const img = document.createElement('img');
@@ -1070,6 +1077,7 @@ function submit(text) {
 function autosize() {
   els.box.style.height = 'auto';
   els.box.style.height = `${Math.min(els.box.scrollHeight, window.innerHeight * 0.4)}px`;
+  syncSend();
 }
 
 els.send.onclick = () => submit();
@@ -1241,6 +1249,7 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden && state.ws?.readyState !== 1) connect();
 });
 
+syncSend();
 initTerminals(sendOp);
 initBrowser(sendOp);
 connect();

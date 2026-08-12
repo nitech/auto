@@ -682,17 +682,30 @@ export class SessionManager extends EventEmitter {
         this.#update(id, { status: STATUS.busy });
         this.#watchDesktop(id);
         return result;
+      // Every refusal below is worth trying again: the desktop's answer says
+      // what to put right, and the words were typed once already. Marking them
+      // retryable is what puts a Retry button on the message instead of
+      // leaving the text on the floor.
       case 'unknown-thread':
         this.#record(id, KIND.error, {
           text: `No Cursor window has this chat open. Open ${meta.folder} in Cursor and try again.`,
+          retryable: true,
         });
         break;
       case 'not-sendable':
-        this.#record(id, KIND.error, { text: result.reason || 'That chat cannot take messages.' });
+        this.#record(id, KIND.error, {
+          // The reason is Cursor's own wording, so say whose it is. "Desktop
+          // bridge is disabled" means Cursor has the switch off in memory —
+          // Auto re-asserts it on disk within the minute, and a reloaded
+          // Cursor window picks it up.
+          text: `Cursor would not take the message: ${result.reason || 'that chat cannot take messages.'}`,
+          retryable: true,
+        });
         break;
       default:
         this.#record(id, KIND.error, {
           text: result.message || 'The Cursor desktop app did not accept the message.',
+          retryable: true,
         });
     }
     this.#update(id, { status: STATUS.idle });
