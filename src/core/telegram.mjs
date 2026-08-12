@@ -369,10 +369,13 @@ export class TelegramBridge extends EventEmitter {
         return this.send(`Started <b>${esc(meta.title)}</b>\n<code>${esc(meta.folder)}</code>`);
       }
 
-      case '/stop':
+      case '/stop': {
         if (!active) return this.send('No active session.');
-        await this.sessions.cancel(active.id);
-        return this.send('Interrupted.');
+        // A desktop chat can refuse — no window open, no debugging port — and
+        // saying "Interrupted" when nothing was would be a lie.
+        const stopped = await this.sessions.cancel(active.id);
+        return this.send(stopped ? 'Interrupted.' : 'Nothing was interrupted — see the chat.');
+      }
 
       case '/mode':
         if (!active) return this.send('No active session.');

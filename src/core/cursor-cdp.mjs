@@ -30,7 +30,17 @@
  * be a source of history.
  */
 import { WebSocket } from 'ws';
-import { COMPOSER_TEXT, FACTS, FOCUS_COMPOSER, samePath } from './cursor-dom.mjs';
+import {
+  ACTIONS,
+  COMPOSER_TEXT,
+  FACTS,
+  FOCUS_COMPOSER,
+  SELECTORS,
+  STOP_TURN_KEY,
+  clickAction,
+  isApproval,
+  samePath,
+} from './cursor-dom.mjs';
 import { threadOwning } from './desktop-threads.mjs';
 
 export const DEFAULT_PORT = Number(process.env.CURSOR_CDP_PORT || 9222);
@@ -40,6 +50,8 @@ const DISCOVER_TIMEOUT_MS = 3000;
 /** Long enough for the editor to clear after Enter, short enough to feel live. */
 const SUBMIT_SETTLE_MS = 250;
 const SUBMIT_LOOKS = 8;
+/** How long to give a turn to actually stop before trying the other way. */
+const STOP_LOOKS = 6;
 
 /** JSON-RPC over one page's debugger socket. */
 class CdpSocket {
@@ -128,7 +140,8 @@ export class CursorWindow {
     });
   }
 
-  async #evaluate(expression) {
+  /** Run a script in the window and bring back what it returned. */
+  async evaluate(expression) {
     const res = await this.socket.send('Runtime.evaluate', {
       expression,
       returnByValue: true,
@@ -146,15 +159,15 @@ export class CursorWindow {
 
   /** Which repo, which chat, what is on screen, and is the box ready. */
   facts() {
-    return this.#evaluate(FACTS);
+    return this.evaluate(FACTS);
   }
 
   focusComposer() {
-    return this.#evaluate(FOCUS_COMPOSER);
+    return this.evaluate(FOCUS_COMPOSER);
   }
 
   composerText() {
-    return this.#evaluate(COMPOSER_TEXT);
+    return this.evaluate(COMPOSER_TEXT);
   }
 
   /**
@@ -181,6 +194,39 @@ export class CursorWindow {
 
   pressEnter() {
     return this.#key('Enter', 'Enter', 13);
+  }
+
+  /** What the chat is offering to be pressed, and whether a turn is running. */
+  actions() {
+    return this.evaluate(ACTIONS);
+  }
+
+  /** Press the control with this name. */
+  click(name) {
+    return this.evaluate(clickAction(name));
+  }
+
+  /** Ask for the turn to stop, the way the Stop button says to. */
+  stopTurn() {
+    const { key, code, keyCode, modifiers } = STOP_TURN_KEY;
+    return this.#key(key, code, keyCode, modifiers);
+  }
+
+  /** The same, by pressing the stop icon beside the chat box. */
+  clickStopIcon() {
+    return this.evaluate(`(() => {
+      const pane = document.querySelector(${JSON.stringify(SELECTORS.chatPane[0])}) || document;
+      for (const selector of ${JSON.stringify(SELECTORS.stopIcon)}) {
+        const found = [...pane.querySelectorAll(selector)];
+        const el = found[found.length - 1];
+        if (!el) continue;
+        // The icon is a glyph inside the button that carries the handler.
+        const target = el.closest("button, [role='button'], .anysphere-icon-button") || el;
+        target.click();
+        return true;
+      }
+      return false;
+    })()`);
   }
 
   /** Take back everything in the box: select all, delete. */
@@ -280,18 +326,15 @@ export class CursorCdp {
   }
 
   /**
-   * Put a message into a chat, as if it had been typed there.
+   * Do something to the window showing a given chat, and nothing otherwise.
    *
-   * @param {object} opts
-   * @param {string} opts.threadId  the desktop chat this must land in
-   * @param {string} opts.text
-   * @returns {Promise<{ status: 'submitted'|'unknown-thread'|'not-sendable'|'no-cdp'|'error',
-   *   reason?: string, title?: string }>} `submitted` and only `submitted`
-   *   means Cursor has it
+   * Every operation goes through here, because every operation has the same
+   * precondition: the window in front of us must have proved it is showing the
+   * chat we mean. Typing into a stranger's conversation and stopping a
+   * stranger's turn are the same mistake.
    */
-  async sendText({ threadId, text }) {
+  async #withThread(threadId, work) {
     if (!threadId) return { status: 'error', reason: 'no chat was named' };
-    if (!String(text || '').trim()) return { status: 'error', reason: 'nothing to send' };
 
     let targets;
     try {
@@ -313,7 +356,7 @@ export class CursorCdp {
         window = await this.openWindow(target);
         const facts = await window.facts();
         if (this.#threadOf(facts) !== threadId) continue;
-        return await this.#typeInto(window, facts, text);
+        return await work(window, facts);
       } catch (err) {
         lastReason = err.message;
       } finally {
@@ -322,8 +365,107 @@ export class CursorCdp {
     }
 
     return lastReason
-      ? { status: 'not-sendable', reason: lastReason }
+      ? { status: 'error', reason: lastReason }
       : { status: 'unknown-thread', reason: 'no window has this chat open' };
+  }
+
+  /**
+   * Put a message into a chat, as if it had been typed there.
+   *
+   * @param {object} opts
+   * @param {string} opts.threadId  the desktop chat this must land in
+   * @param {string} opts.text
+   * @returns {Promise<{ status: 'submitted'|'unknown-thread'|'not-sendable'|'no-cdp'|'error',
+   *   reason?: string, title?: string }>} `submitted` and only `submitted`
+   *   means Cursor has it
+   */
+  async sendText({ threadId, text }) {
+    if (!String(text || '').trim()) return { status: 'error', reason: 'nothing to send' };
+    return this.#withThread(threadId, (window, facts) => this.#typeInto(window, facts, text));
+  }
+
+  /**
+   * What a chat is doing, and what it is offering to be pressed.
+   *
+   * `asking` is the interesting part: controls whose words mean Cursor is
+   * waiting for a person — an approval to run something, a file edit to keep.
+   * They are reported with the wording the window used, because that wording is
+   * also how they are pressed.
+   */
+  async waitingOn({ threadId }) {
+    return this.#withThread(threadId, async (window) => {
+      const { generating, controls } = await window.actions();
+      const named = (c) => c.label || c.text;
+      return {
+        status: 'ok',
+        generating,
+        asking: controls.filter(
+          (c) => !c.disabled && isApproval(named(c)) && !/^stop\b/i.test(named(c)),
+        ),
+        controls,
+      };
+    });
+  }
+
+  /**
+   * Ask the window showing a chat a question of Auto's own.
+   *
+   * For diagnostics and for the parts of the interface Auto does not model yet.
+   * Anything it comes to rely on should be given a method and a place in
+   * `cursor-dom.mjs` instead of living in a caller's string.
+   */
+  async readWindow(threadId, expression) {
+    const result = await this.#withThread(threadId, async (window) => ({
+      status: 'ok',
+      value: await window.evaluate(expression),
+    }));
+    return result.status === 'ok' ? result.value : null;
+  }
+
+  /** Press the control a chat is offering, by the words on it. */
+  async press({ threadId, name }) {
+    return this.#withThread(threadId, async (window) => {
+      const done = await window.click(name);
+      return done?.clicked
+        ? { status: 'pressed', name: done.name, where: done.where, of: done.of }
+        : { status: 'not-pressed', reason: done?.reason || 'nothing was pressed' };
+    });
+  }
+
+  /**
+   * Stop the turn running in a chat.
+   *
+   * The keystroke Cursor prints on its own Stop button is tried first, and the
+   * button itself second. Either way the answer comes from watching the window:
+   * a turn is stopped when it stops offering to be stopped.
+   */
+  async stop({ threadId }) {
+    return this.#withThread(threadId, async (window, facts) => {
+      const before = await window.actions();
+      if (!before.generating) return { status: 'not-running', title: facts.title };
+
+      if (facts.hasComposer) await window.focusComposer();
+      await window.stopTurn();
+      if (await this.#stopped(window)) {
+        return { status: 'stopped', how: 'keyboard', title: facts.title };
+      }
+
+      await window.clickStopIcon();
+      if (await this.#stopped(window)) {
+        return { status: 'stopped', how: 'button', title: facts.title };
+      }
+
+      return { status: 'still-running', reason: 'the window would not stop', title: facts.title };
+    });
+  }
+
+  async #stopped(window) {
+    for (let look = 0; look < STOP_LOOKS; look += 1) {
+      await wait(this.settleMs);
+      const { generating } = await window.actions();
+      if (!generating) return true;
+    }
+    return false;
   }
 
   /** The typing itself, once the window has proved which chat it is showing. */

@@ -441,20 +441,54 @@ export class SessionManager extends EventEmitter {
     }
   }
 
-  cancel(id) {
-    // The bridge can send but not interrupt: stopping a desktop turn is the
-    // IDE's own button. Say so rather than failing silently.
-    if (this.meta.get(id)?.kind === 'desktop') {
-      this.#record(id, KIND.notice, {
-        text: 'Stopping a desktop turn has to be done in Cursor itself.',
-      });
-      return false;
-    }
+  async cancel(id) {
+    const meta = this.meta.get(id);
+    if (meta?.kind === 'desktop') return this.#stopDesktop(id, meta);
+
     const runtime = this.live.get(id);
     if (!runtime?.client?.running) return false;
     runtime.client.cancel(runtime.acpSessionId);
     this.#record(id, KIND.error, { text: 'Interrupted by user.', interrupted: true });
     return true;
+  }
+
+  /**
+   * Stop a turn that is running in the Cursor window.
+   *
+   * This used to be a refusal — the bridge can send but not interrupt, so the
+   * only answer was "go and press it yourself", which is no use to someone
+   * holding a phone. Pressing it is exactly what Auto does now, with Cursor's
+   * own keyboard shortcut.
+   */
+  async #stopDesktop(id, meta) {
+    const result = await this.cursor
+      .stop({ threadId: meta.desktopThreadId })
+      .catch((err) => ({ status: 'error', reason: err.message }));
+
+    if (result.status === 'stopped') {
+      this.#record(id, KIND.error, { text: 'Interrupted by user.', interrupted: true });
+      this.#update(id, { status: STATUS.idle });
+      this.emit('log', `stopped the turn in Cursor's window (${result.how})`);
+      return true;
+    }
+
+    this.#record(id, KIND.notice, { text: this.#whyNotStopped(result) });
+    return false;
+  }
+
+  /** Say what happened instead of stopping, in terms that suggest a fix. */
+  #whyNotStopped(result) {
+    if (result.status === 'not-running') return 'That chat is not running anything just now.';
+    if (result.status === 'unknown-thread') {
+      return 'No Cursor window has this chat open, so there is no turn here to stop.';
+    }
+    if (result.status === 'no-cdp') {
+      return (
+        'Cursor was started without its debugging port, so Auto cannot reach its buttons — ' +
+        'stopping has to be done in Cursor itself.'
+      );
+    }
+    return `Cursor would not stop that turn${result.reason ? `: ${result.reason}` : ''}.`;
   }
 
   /** What the desktop owns, we cannot change from here. */
@@ -658,6 +692,7 @@ export class SessionManager extends EventEmitter {
       if (running) this.#record(id, KIND.turnStart, {});
       else this.#record(id, KIND.turnEnd, { stopReason: 'end_turn' });
       this.#update(id, { status: running ? STATUS.busy : STATUS.idle });
+      if (running) this.#watchDesktopAsks(id);
     });
     watcher.on('title', (title) => {
       const current = this.meta.get(id);
@@ -669,6 +704,118 @@ export class SessionManager extends EventEmitter {
 
     watcher.start();
     return watcher;
+  }
+
+  /**
+   * While a desktop turn runs, watch its window for anything Cursor is asking
+   * a person to answer, and ask that person wherever they are.
+   *
+   * Cursor's approvals are buttons in a window, which is no use to someone on a
+   * bus. But an approval is an approval: parked in the same broker as an
+   * agent's own, it appears on the phone with the same buttons, and whichever
+   * option comes back is pressed in the window. If it gets answered in the IDE
+   * first, the request is withdrawn rather than left hanging.
+   *
+   * The window's own view of whether a turn is running is trusted over the
+   * database's, because an approval pauses a turn and might well clear the
+   * database's mark of one.
+   */
+  #watchDesktopAsks(id) {
+    const meta = this.meta.get(id);
+    if (!meta?.desktopThreadId) return null;
+    const runtime = this.live.get(id) || {};
+    if (runtime.askTimer) return runtime.askTimer;
+
+    let quiet = 0;
+    const look = async () => {
+      const state = await this.cursor
+        .waitingOn({ threadId: meta.desktopThreadId })
+        .catch((err) => ({ status: 'error', reason: err.message }));
+
+      // No window, no port, no watching. It costs nothing to start again when
+      // the next turn does.
+      if (state.status !== 'ok') return stop();
+
+      const names = (state.asking || []).map((c) => c.label || c.text).filter(Boolean);
+      if (names.length) this.#askOnBehalfOfCursor(id, meta, names);
+      else this.#withdrawAsk(id, 'answered in Cursor');
+
+      const running = state.generating || this.meta.get(id)?.status === STATUS.busy;
+      quiet = running ? 0 : quiet + 1;
+      if (quiet >= 2) stop();
+    };
+
+    const stop = () => {
+      const live = this.live.get(id);
+      if (live?.askTimer) clearInterval(live.askTimer);
+      if (live) live.askTimer = null;
+      this.#withdrawAsk(id, 'the turn ended');
+    };
+
+    const timer = setInterval(() => {
+      look().catch((err) => this.emit('log', `[${meta.title}] watching for asks: ${err.message}`));
+    }, 2000);
+    timer.unref?.();
+    this.live.set(id, { ...runtime, askTimer: timer });
+    look().catch(() => {});
+    return timer;
+  }
+
+  /** Put Cursor's question to the user, once, and press their answer. */
+  #askOnBehalfOfCursor(id, meta, names) {
+    const runtime = this.live.get(id) || {};
+    const signature = names.join('|');
+    if (runtime.ask?.signature === signature) return;
+    // A different question than the one outstanding: withdraw and ask again.
+    this.#withdrawAsk(id, 'Cursor changed what it is asking');
+
+    const options = names.map((name) => ({
+      optionId: name,
+      name,
+      kind: /^(reject|deny|skip|no|cancel|undo)\b/i.test(name) ? 'reject_once' : 'allow_once',
+    }));
+
+    // Never decide this one automatically. Cursor's own settings already had
+    // their say by asking at all, and Auto is not entitled to overrule them.
+    const answer = this.permissions.request({
+      sessionId: id,
+      params: {
+        toolCall: { title: `Cursor is asking in "${meta.title}"`, kind: 'other' },
+        options,
+      },
+      policy: POLICY.ask,
+    });
+
+    const requestId = this.permissions.list(id).at(-1)?.requestId || null;
+    this.live.set(id, { ...runtime, ask: { signature, requestId } });
+
+    answer
+      .then(async (res) => {
+        const chosen = res?.outcome?.optionId;
+        const current = this.live.get(id);
+        if (current?.ask?.requestId === requestId) current.ask = null;
+        if (!chosen) return;
+
+        const pressed = await this.cursor
+          .press({ threadId: meta.desktopThreadId, name: chosen })
+          .catch((err) => ({ status: 'error', reason: err.message }));
+        this.#record(id, KIND.notice, {
+          text:
+            pressed.status === 'pressed'
+              ? `Pressed "${chosen}" in Cursor.`
+              : `Could not press "${chosen}" in Cursor: ${pressed.reason || pressed.status}.`,
+        });
+      })
+      .catch(() => {});
+  }
+
+  /** Take back a question Cursor is no longer asking. */
+  #withdrawAsk(id, why) {
+    const runtime = this.live.get(id);
+    if (!runtime?.ask?.requestId) return;
+    const { requestId } = runtime.ask;
+    runtime.ask = null;
+    this.permissions.cancel(requestId, why);
   }
 
   /** Follow every desktop thread we hold, so the IDE's activity shows up. */

@@ -171,16 +171,42 @@ if (existsSync(SRC)) {
     const { samePath } = await import('../src/core/cursor-dom.mjs');
 
     class FakeWindow {
-      constructor(facts, { submits = true, focusable = true } = {}) {
+      constructor(facts, { submits = true, focusable = true, controls = [], stopsOn = 'keyboard', generating = false } = {}) {
         this.given = facts;
         this.box = facts.composerText || '';
         this.submits = submits;
         this.focusable = focusable;
+        this.controls = controls;
+        this.stopsOn = stopsOn;
+        this.generating = generating;
+        this.pressed = [];
         this.sent = null;
         this.closed = false;
       }
       async facts() {
         return { ...this.given, composerText: this.box };
+      }
+      async actions() {
+        return { generating: this.generating, controls: this.controls };
+      }
+      async click(name) {
+        const named = (c) => c.label || c.text;
+        const matches = this.controls.filter(
+          (c) => named(c).toLowerCase() === String(name).toLowerCase() && !c.disabled,
+        );
+        if (!matches.length) return { clicked: false, reason: 'no control says that' };
+        const target = matches[matches.length - 1];
+        this.pressed.push(named(target));
+        return { clicked: true, name: named(target), where: target.where, of: matches.length };
+      }
+      async stopTurn() {
+        this.pressed.push('«keyboard»');
+        if (this.stopsOn === 'keyboard') this.generating = false;
+      }
+      async clickStopIcon() {
+        this.pressed.push('«stop icon»');
+        if (this.stopsOn === 'button') this.generating = false;
+        return true;
       }
       async focusComposer() {
         return this.focusable;
@@ -292,8 +318,134 @@ if (existsSync(SRC)) {
     if (samePath(null, 'D:\\Sevenfold\\auto')) fail('samePath should not match nothing');
 
     if (!failed) ok('v2 core: typing into a Cursor window lands in the right chat, or not at all');
+
+    // Pressing Cursor's own buttons: stopping a turn, and answering what it asks.
+    const { isApproval } = await import('../src/core/cursor-dom.mjs');
+
+    // Stopping goes by keyboard first, because that is what Cursor's Stop
+    // button advertises, and by the button only if the keystroke was ignored.
+    const byKey = new FakeWindow({ threadId: THREAD, hasComposer: true }, { generating: true });
+    let stopped = await machine({ byKey }).stop({ threadId: THREAD });
+    if (stopped.status !== 'stopped' || stopped.how !== 'keyboard') {
+      fail(`stop should use the keyboard first: ${JSON.stringify(stopped)}`);
+    }
+
+    const byButton = new FakeWindow(
+      { threadId: THREAD, hasComposer: true },
+      { generating: true, stopsOn: 'button' },
+    );
+    stopped = await machine({ byButton }).stop({ threadId: THREAD });
+    if (stopped.status !== 'stopped' || stopped.how !== 'button') {
+      fail(`stop should fall back to the button: ${JSON.stringify(stopped)}`);
+    }
+    if (byButton.pressed[0] !== '«keyboard»') fail('stop should try the keystroke before the button');
+
+    const deaf = new FakeWindow(
+      { threadId: THREAD, hasComposer: true },
+      { generating: true, stopsOn: 'never' },
+    );
+    stopped = await machine({ deaf }).stop({ threadId: THREAD });
+    if (stopped.status !== 'still-running') fail(`a turn that will not stop must say so: ${stopped.status}`);
+
+    const idle = new FakeWindow({ threadId: THREAD, hasComposer: true }, { generating: false });
+    if ((await machine({ idle }).stop({ threadId: THREAD })).status !== 'not-running') {
+      fail('stopping an idle chat should say there is nothing to stop');
+    }
+    if (idle.pressed.length) fail('stopping an idle chat must press nothing');
+    if ((await machine({ theirs }).stop({ threadId: THREAD })).status !== 'unknown-thread') {
+      fail('stop must not reach into a chat it cannot see');
+    }
+
+    // What a chat is asking a person, told apart from what it merely offers.
+    const asking = new FakeWindow(
+      { threadId: THREAD, hasComposer: true },
+      {
+        generating: true,
+        controls: [
+          { label: 'Copy message', where: 'transcript' },
+          { label: 'Run', where: 'transcript' },
+          { label: 'Skip', where: 'transcript' },
+          { label: 'Stop', where: 'composer' },
+          { label: 'Accept', where: 'transcript', disabled: true },
+        ],
+      },
+    );
+    const state = await machine({ asking }).waitingOn({ threadId: THREAD });
+    if (!state.generating) fail('a running turn should be reported as running');
+    const wants = (state.asking || []).map((c) => c.label).join(',');
+    if (wants !== 'Run,Skip') fail(`asking should be Run,Skip — got ${wants}`);
+
+    // Pressing an answer, and refusing to press what is not there.
+    const answered = await machine({ asking }).press({ threadId: THREAD, name: 'Run' });
+    if (answered.status !== 'pressed' || asking.pressed.at(-1) !== 'Run') {
+      fail(`pressing Run should press Run: ${JSON.stringify(answered)}`);
+    }
+    if ((await machine({ asking }).press({ threadId: THREAD, name: 'Demolish' })).status !== 'not-pressed') {
+      fail('pressing a control that does not exist should be refused');
+    }
+
+    if (!isApproval('Run command') || !isApproval('Skip') || !isApproval('Accept all')) {
+      fail('approval vocabulary should recognise Cursor asking');
+    }
+    if (isApproval('Copy message') || isApproval('Ran command') || isApproval('Review')) {
+      fail('approval vocabulary should not catch ordinary controls');
+    }
+
+    if (!failed) ok('v2 core: Auto can stop a Cursor turn and press what Cursor asks');
   } catch (e) {
     fail(`v2 cursor-cdp: ${e.message}`);
+  }
+
+  // A desktop approval becomes a permission request, and the answer becomes a
+  // press. The seam worth testing is that the broker hands back an id we can
+  // withdraw by, and an option id that is the wording on the button.
+  try {
+    const { PermissionBroker, POLICY } = await import('../src/core/permissions.mjs');
+    const broker = new PermissionBroker();
+    const options = [
+      { optionId: 'Run', name: 'Run', kind: 'allow_once' },
+      { optionId: 'Skip', name: 'Skip', kind: 'reject_once' },
+    ];
+
+    const answer = broker.request({
+      sessionId: 's',
+      params: { toolCall: { title: 'Cursor is asking in "chat"' }, options },
+      policy: POLICY.ask,
+    });
+    // The request must be findable the instant it is made: the poller needs its
+    // id to withdraw it when the question is answered in the IDE instead.
+    const requestId = broker.list('s').at(-1)?.requestId;
+    if (!requestId) fail('a desktop ask should be parked and findable at once');
+
+    broker.resolve(requestId, 'Run', { by: 'phone' });
+    const outcome = await answer;
+    if (outcome?.outcome?.optionId !== 'Run') {
+      fail(`answering should come back as the button's wording: ${JSON.stringify(outcome)}`);
+    }
+
+    // Answered in the IDE first: the question is withdrawn, not left hanging.
+    const second = broker.request({
+      sessionId: 's',
+      params: { toolCall: { title: 'again' }, options },
+      policy: POLICY.ask,
+    });
+    const secondId = broker.list('s').at(-1)?.requestId;
+    broker.cancel(secondId, 'answered in Cursor');
+    if ((await second)?.outcome?.outcome !== 'cancelled') fail('a withdrawn ask should resolve as cancelled');
+    if (broker.list('s').length) fail('a withdrawn ask should leave nothing pending');
+
+    // Auto must never answer one of these on the user's behalf.
+    const autoBroker = new PermissionBroker();
+    let settled = false;
+    autoBroker
+      .request({ sessionId: 's', params: { toolCall: {}, options }, policy: POLICY.ask })
+      .then(() => (settled = true));
+    await new Promise((r) => setTimeout(r, 20));
+    if (settled) fail('a desktop ask must wait for a person, never resolve itself');
+
+    if (!failed) ok('v2 core: Cursor asking becomes a permission request, answerable from a phone');
+  } catch (e) {
+    fail(`v2 desktop approvals: ${e.message}`);
   }
 
   // Permission broker: parked requests, policy shortcuts, and racing clients.

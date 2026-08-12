@@ -29,7 +29,34 @@ export const SELECTORS = {
   thread: [{ selector: '[data-composer-id]', attribute: 'data-composer-id' }],
   /** One per message on screen, holding its bubble id, role and kind. */
   message: ['[data-message-id]'],
+  /** The stop button beside the chat box, as an icon rather than a word. */
+  stopIcon: ['span.codicon-debug-stop', '[aria-label="Stop"]'],
 };
+
+/**
+ * Stopping a turn, by the shortcut Cursor prints on its own Stop button.
+ *
+ * Discovered rather than assumed: the button reads "Stop Ctrl+Shift+⌫". A
+ * keystroke is a better way to ask than a click, because it goes through the
+ * same path as a person's keyboard and does not depend on finding a widget.
+ */
+export const STOP_TURN_KEY = { key: 'Backspace', code: 'Backspace', keyCode: 8, modifiers: 2 | 8 };
+
+/**
+ * Words on a control that mean Cursor is waiting for a person.
+ *
+ * Cursor's own settings decide whether it ever asks — with everything set to
+ * run automatically it never will. So this vocabulary is a net cast wide on
+ * purpose, and whatever it catches is reported with the exact wording seen, so
+ * the first real approval teaches us the words we actually needed.
+ */
+const APPROVAL_WORDS =
+  /^(run|run command|run anyway|accept|accept all|apply|allow|allow once|always allow|approve|reject|reject all|deny|skip|cancel|continue|resume|keep|undo|move on|yes|no)\b/i;
+
+/** Does this control look like an answer to a question Cursor is asking? */
+export function isApproval(label) {
+  return APPROVAL_WORDS.test(String(label || '').trim());
+}
 
 const list = (names) => JSON.stringify(names);
 
@@ -117,6 +144,110 @@ ${HELPERS}
 export const COMPOSER_TEXT = `(() => {
 ${HELPERS}
   return __text(__box());
+})()`;
+
+/**
+ * Finding the things a person could press.
+ *
+ * Cursor builds its chat from generated class names, so what a control *is*
+ * cannot be relied on — but what it *says* can, because that is what the user
+ * reads too. So controls are found by being pressable and named by their words.
+ *
+ * Deciding what counts as one control takes three rules, each learned from the
+ * real thing. A real button is a control; anything inside it is part of it, not
+ * a control of its own. An element merely styled as pressable counts only if it
+ * holds no button, so a toolbar does not swallow the buttons it contains. And
+ * where such elements nest and say the same words — as Cursor's Stop control
+ * does, three layers deep — the outermost is the one to press.
+ */
+const PRESSABLE = `
+  const __pressable = () => {
+    const pane = __pane();
+    const box = __box();
+    const boxTop = box ? box.getBoundingClientRect().top : Infinity;
+    const clean = (s) =>
+      String(s ?? '')
+        .replace(/\\s+/g, ' ')
+        .trim()
+        // Cursor renders some labels twice over for layout; say them once.
+        .replace(/(.{3,}?)\\1$/, '$1')
+        .slice(0, 80);
+    const isButton = (el) => el.tagName === 'BUTTON' || el.getAttribute('role') === 'button';
+
+    const candidates = [];
+    for (const el of pane.querySelectorAll('*')) {
+      const rect = el.getBoundingClientRect();
+      if (!rect.width || !rect.height) continue;
+      if (!isButton(el)) {
+        if (getComputedStyle(el).cursor !== 'pointer') continue;
+        if (el.querySelector("button, [role='button']")) continue;
+      }
+      candidates.push({ el, rect });
+    }
+
+    const found = [];
+    for (const { el, rect } of candidates) {
+      // Part of a button, rather than a control in its own right.
+      if (candidates.some(({ el: other }) => other !== el && isButton(other) && other.contains(el))) {
+        continue;
+      }
+      const label = clean(el.getAttribute('aria-label') || el.getAttribute('title'));
+      // The keybinding hint Cursor prints inside a button is not part of its name.
+      const text = clean(el.textContent).replace(/(Ctrl|Alt|Shift|⌘|⌥)[^\\s]*$/i, '').trim();
+      if (!label && !text) continue;
+      // One of several nested layers all saying the same thing: press the outer.
+      const name = label || text;
+      if (
+        found.some(
+          (kept) => (kept.label || kept.text) === name && kept.el.contains(el),
+        )
+      ) {
+        continue;
+      }
+      found.push({
+        el,
+        label,
+        text,
+        where: rect.top >= boxTop ? 'composer' : 'transcript',
+        disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
+      });
+    }
+    return found;
+  };
+  const __named = (c) => c.label || c.text;
+  const __matches = (c, want) => __named(c).toLowerCase() === String(want).toLowerCase();
+`;
+
+/** Every control on offer, and whether a turn is running. */
+export const ACTIONS = `(() => {
+${HELPERS}
+${PRESSABLE}
+  const found = __pressable();
+  return {
+    generating: found.some((c) => /^stop\\b/i.test(__named(c))),
+    controls: found.map(({ label, text, where, disabled }) => ({ label, text, where, disabled })),
+  };
+})()`;
+
+/**
+ * Press the control with this name.
+ *
+ * A native click is dispatched on the element itself rather than a mouse event
+ * at a position: Cursor's chat is React, which listens for clicks that bubble,
+ * and a click aimed at coordinates can miss or land on a tooltip that moved.
+ *
+ * The last match wins. Where a name repeats it is once per message, and the
+ * one being asked about is the newest — the one at the bottom of the chat.
+ */
+export const clickAction = (name) => `(() => {
+${HELPERS}
+${PRESSABLE}
+  const wanted = ${JSON.stringify(String(name))};
+  const matches = __pressable().filter((c) => __matches(c, wanted) && !c.disabled);
+  if (!matches.length) return { clicked: false, reason: 'no control says that' };
+  const target = matches[matches.length - 1];
+  target.el.click();
+  return { clicked: true, name: __named(target), where: target.where, of: matches.length };
 })()`;
 
 /**
