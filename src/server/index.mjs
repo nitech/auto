@@ -102,11 +102,8 @@ function projectList() {
 /** The desktop app's own chats for a folder, newest first. */
 function desktopChatsFor(folder) {
   if (!folder) return [];
-  const imported = new Set(sessions.list().map((s) => s.importedFrom).filter(Boolean));
-  return desktopChats(workspaceIdFor(folder)).map((c) => ({
-    ...c,
-    imported: imported.has(c.id),
-  }));
+  const open = new Set(sessions.list().map((s) => s.desktopThreadId).filter(Boolean));
+  return desktopChats(workspaceIdFor(folder)).map((c) => ({ ...c, attached: open.has(c.id) }));
 }
 
 /** Broadcast to every socket, or only those watching one session. */
@@ -215,7 +212,10 @@ const OPS = {
   },
 
   async 'desktop.continue'(ws, state, msg) {
-    const meta = await sessions.importDesktopChat({ chatId: msg.chatId, folder: msg.folder });
+    const meta = await sessions.attachDesktopThread({
+      threadId: msg.chatId,
+      folder: msg.folder,
+    });
     return OPS.attach(ws, state, { sessionId: meta.id });
   },
 
@@ -598,6 +598,10 @@ server.listen(PORT, HOST, () => {
   console.log(`[auto] http://127.0.0.1:${PORT}  (${sessions.list().length} sessions)`);
   announceRestart();
   keepBridgeEnabled();
+  // Threads in the IDE keep moving whether or not Auto is watching, so pick
+  // them back up: a reply typed into Cursor should still reach the phone.
+  const watching = sessions.watchDesktopThreads();
+  if (watching) console.log(`[auto] following ${watching} desktop thread(s)`);
   // Pick up sessions started outside Auto. Costs one short-lived agent
   // process, so do it once at boot rather than on every attach.
   sessions

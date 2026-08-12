@@ -9,6 +9,12 @@
  * Our session ids are ours, not the agent's: an ACP session can be rotated
  * underneath (after a crash, say) while the transcript and everything the user
  * sees carries on uninterrupted.
+ *
+ * A session can also be a thread living in the Cursor desktop app rather than
+ * an agent of ours. Those behave the same from the outside — you talk to them
+ * and they answer — but underneath there is no process to run: messages go to
+ * the IDE through its bridge and come back by watching its database. What the
+ * desktop owns, the desktop keeps: its model, its mode, its approvals.
  */
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
@@ -19,7 +25,8 @@ import { TranscriptStore, KIND } from './transcript.mjs';
 import { mapUpdate } from './map-updates.mjs';
 import { PermissionBroker, POLICY } from './permissions.mjs';
 import { TerminalRegistry } from './terminals.mjs';
-import { importDesktopChat } from './desktop-chats.mjs';
+import { sendMessage } from './desktop-bridge.mjs';
+import { ThreadWatcher, readThread } from './desktop-threads.mjs';
 
 export const STATUS = {
   idle: 'idle',
@@ -364,6 +371,16 @@ export class SessionManager extends EventEmitter {
     if (!meta) throw new Error(`Unknown session ${id}`);
     if (meta.status === STATUS.busy) throw new Error('Session is already working');
 
+    if (meta.kind === 'desktop') {
+      if (!text?.trim()) return null;
+      if (images.length) {
+        this.#record(id, KIND.notice, {
+          text: 'The desktop bridge carries text only, so the image was left out.',
+        });
+      }
+      return this.#promptDesktop(id, meta, text);
+    }
+
     const runtime = await this.ensureLive(id);
     const content = [];
     if (text?.trim()) content.push({ type: 'text', text });
@@ -397,6 +414,14 @@ export class SessionManager extends EventEmitter {
   }
 
   cancel(id) {
+    // The bridge can send but not interrupt: stopping a desktop turn is the
+    // IDE's own button. Say so rather than failing silently.
+    if (this.meta.get(id)?.kind === 'desktop') {
+      this.#record(id, KIND.notice, {
+        text: 'Stopping a desktop turn has to be done in Cursor itself.',
+      });
+      return false;
+    }
     const runtime = this.live.get(id);
     if (!runtime?.client?.running) return false;
     runtime.client.cancel(runtime.acpSessionId);
@@ -404,7 +429,17 @@ export class SessionManager extends EventEmitter {
     return true;
   }
 
+  /** What the desktop owns, we cannot change from here. */
+  #refuseForDesktop(id, what) {
+    if (this.meta.get(id)?.kind !== 'desktop') return false;
+    this.#record(id, KIND.notice, {
+      text: `This chat runs in Cursor, so its ${what} is set there.`,
+    });
+    return true;
+  }
+
   async setMode(id, modeId) {
+    if (this.#refuseForDesktop(id, 'mode')) return false;
     const runtime = await this.ensureLive(id);
     await runtime.client.setMode({ sessionId: runtime.acpSessionId, modeId });
     this.#update(id, { mode: modeId });
@@ -463,74 +498,178 @@ export class SessionManager extends EventEmitter {
     }
   }
 
+  // --------------------------------------------------------- desktop threads
+
   /**
-   * Continue a chat started in the Cursor desktop app. The chat is copied into
-   * a session of its own, so the two go their separate ways from here.
+   * Take up a chat that lives in the Cursor desktop app.
+   *
+   * Nothing is copied: the session points at the desktop's own thread, and
+   * from here both ends drive the same conversation. Its recent history is
+   * written into our transcript so the phone has something to show, and a
+   * watcher keeps it current — including messages typed in the IDE.
    *
    * @param {object} opts
-   * @param {string} opts.chatId  desktop chat id
-   * @param {string} opts.folder  folder to run in
+   * @param {string} opts.threadId  the desktop thread (composer) id
+   * @param {string} [opts.folder]  folder the thread belongs to
+   * @param {string} [opts.title]
    */
-  async importDesktopChat({ chatId, folder }) {
-    // Continuing the same chat twice should land you back in the session you
-    // already have, not make a second copy of it. One you archived is a
-    // different matter: you threw it away, so start again.
+  async attachDesktopThread({ threadId, folder, title }) {
+    // Opening the same thread twice should land you back where you were.
     const already = [...this.meta.values()].find(
-      (s) => s.importedFrom === chatId && s.status !== STATUS.archived,
+      (s) => s.desktopThreadId === threadId && s.status !== STATUS.archived,
     );
     if (already) {
       this.setActive(already.id);
+      this.#watchDesktop(already.id);
       return already;
     }
 
-    const dir = folder || this.defaultFolder;
-    const { sessionId, title, blobs, missing, messages } = importDesktopChat({
-      chatId,
-      cwd: dir,
-    });
+    const state = readThread(threadId, { tail: 40 });
+    if (!state) throw new Error('That chat is not in the Cursor desktop database');
 
     const id = randomUUID();
     const meta = {
       id,
-      title: title || 'Desktop chat',
-      titleLocked: true,
-      folder: dir,
+      kind: 'desktop',
+      desktopThreadId: threadId,
+      title: title || state.title || 'Desktop chat',
+      titleLocked: Boolean(title || state.title),
+      folder: folder || this.defaultFolder,
       mode: 'agent',
       policy: this.defaultPolicy,
       model: null,
       modelName: null,
-      acpSessionId: sessionId,
-      status: STATUS.idle,
-      importedFrom: chatId,
+      acpSessionId: null,
+      status: state.generating ? STATUS.busy : STATUS.idle,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     this.meta.set(id, meta);
+    this.activeId = id;
     this.#persist();
 
-    // The agent gets the conversation from the blobs, but our transcript
-    // starts empty — so write the readable part of it in, or continuing a
-    // chat on the phone would look like starting a blank one.
     await this.transcripts.get(id);
+    const hidden = Math.max(0, state.total - state.visited.length);
     this.#record(id, KIND.notice, {
-      text: `Continued from the Cursor desktop app — ${messages.length} earlier messages${
-        missing ? `, ${missing} parts no longer stored locally` : ''
-      }`,
+      text:
+        `This chat lives in the Cursor desktop app — you are both in the same conversation.` +
+        (hidden ? ` Showing the last ${state.messages.length} messages.` : ''),
     });
-    for (const m of messages) {
-      if (m.role === 'user') this.#record(id, KIND.userMessage, { text: m.text });
-      else {
-        this.#record(id, KIND.agentDelta, { text: m.text });
-        this.#record(id, KIND.turnEnd, { stopReason: 'imported' });
-      }
-    }
+    for (const message of state.messages) this.#recordDesktopMessage(id, message);
 
-    this.emit('log', `imported desktop chat "${meta.title}" (${blobs} blobs, ${missing} missing)`);
+    // Everything read above is history, not news.
+    this.#watchDesktop(id, state.visited);
+    this.emit('log', `attached desktop thread "${meta.title}"`);
     this.emit('sessions', this.list());
     return meta;
   }
 
+  /** Turn one desktop bubble into transcript records. */
+  #recordDesktopMessage(id, message) {
+    if (message.role === 'user') {
+      this.#record(id, KIND.userMessage, { text: message.text });
+      return;
+    }
+    if (message.kind === 'thinking') {
+      this.#record(id, KIND.agentThought, { text: message.text });
+      return;
+    }
+    if (message.kind === 'tool') {
+      this.#record(id, KIND.toolCall, {
+        toolCallId: message.id,
+        title: message.name,
+        status: message.status || 'completed',
+      });
+      return;
+    }
+    this.#record(id, KIND.agentDelta, { text: message.text });
+  }
+
+  /** Start following a desktop thread, if we are not already. */
+  #watchDesktop(id, alreadySeen = []) {
+    const meta = this.meta.get(id);
+    if (!meta?.desktopThreadId || meta.status === STATUS.archived) return null;
+
+    const existing = this.live.get(id);
+    if (existing?.watcher) return existing.watcher;
+
+    const watcher = new ThreadWatcher(meta.desktopThreadId).markSeen(alreadySeen);
+    this.live.set(id, { ...(existing || {}), watcher });
+
+    watcher.on('message', (message) => {
+      this.#recordDesktopMessage(id, message);
+    });
+    watcher.on('running', (running) => {
+      // A turn can start because someone typed in the IDE, so the transcript
+      // should show one either way.
+      if (running) this.#record(id, KIND.turnStart, {});
+      else this.#record(id, KIND.turnEnd, { stopReason: 'end_turn' });
+      this.#update(id, { status: running ? STATUS.busy : STATUS.idle });
+    });
+    watcher.on('title', (title) => {
+      const current = this.meta.get(id);
+      // The desktop names a thread after the first exchange; take that unless
+      // the name came from us.
+      if (current && !current.titleLocked) this.#update(id, { title, titleLocked: true });
+    });
+    watcher.on('error', (err) => this.emit('log', `[${meta.title}] watching: ${err.message}`));
+
+    watcher.start();
+    return watcher;
+  }
+
+  /** Follow every desktop thread we hold, so the IDE's activity shows up. */
+  watchDesktopThreads() {
+    let watched = 0;
+    for (const meta of this.meta.values()) {
+      if (meta.kind !== 'desktop' || meta.status === STATUS.archived) continue;
+      // Anything already in the transcript is history; only new bubbles from
+      // here on are news. The watcher learns what it has seen on its first
+      // pass, so seed it with everything currently in the thread.
+      const state = readThread(meta.desktopThreadId, { tail: 0 });
+      if (this.#watchDesktop(meta.id, state?.visited || [])) watched += 1;
+    }
+    return watched;
+  }
+
+  /** Send to a desktop thread and let the watcher report what comes back. */
+  async #promptDesktop(id, meta, text) {
+    this.#record(id, KIND.userMessage, { text });
+    const result = await sendMessage({ threadId: meta.desktopThreadId, text }).catch((err) => ({
+      status: 'error',
+      message: err.message,
+    }));
+
+    switch (result.status) {
+      case 'submitted':
+      case 'queued':
+        if (result.status === 'queued') {
+          this.#record(id, KIND.notice, {
+            text: 'The desktop agent is mid-turn; this will go in when it finishes.',
+          });
+        }
+        this.#update(id, { status: STATUS.busy });
+        this.#watchDesktop(id);
+        return result;
+      case 'unknown-thread':
+        this.#record(id, KIND.error, {
+          text: `No Cursor window has this chat open. Open ${meta.folder} in Cursor and try again.`,
+        });
+        break;
+      case 'not-sendable':
+        this.#record(id, KIND.error, { text: result.reason || 'That chat cannot take messages.' });
+        break;
+      default:
+        this.#record(id, KIND.error, {
+          text: result.message || 'The Cursor desktop app did not accept the message.',
+        });
+    }
+    this.#update(id, { status: STATUS.idle });
+    return result;
+  }
+
   async setModel(id, modelId) {
+    if (this.#refuseForDesktop(id, 'model')) return false;
     const runtime = await this.ensureLive(id);
     await runtime.client.setModel({ sessionId: runtime.acpSessionId, modelId });
     this.#update(id, { model: modelId, modelName: this.modelName(modelId) });
@@ -574,6 +713,7 @@ export class SessionManager extends EventEmitter {
     const runtime = this.live.get(id);
     this.permissions.cancelForSession(id, 'session stopped');
     this.terminals.releaseForSession(id);
+    runtime?.watcher?.stop();
     if (runtime?.client) await runtime.client.stop();
     this.live.delete(id);
   }

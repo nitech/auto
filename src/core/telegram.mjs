@@ -498,15 +498,15 @@ export class TelegramBridge extends EventEmitter {
 
     if (payload.kind === 'continue') {
       try {
-        const meta = await this.sessions.importDesktopChat({
-          chatId: payload.chatId,
+        const meta = await this.sessions.attachDesktopThread({
+          threadId: payload.chatId,
           folder: payload.folder,
         });
         this.sessions.setActive(meta.id);
         await answer(`Continuing ${meta.title}`);
         await this.send(
-          `Continuing <b>${esc(meta.title)}</b> from the desktop app.\n` +
-            'It is a copy — carrying on in Cursor will not affect this one.',
+          `Continuing <b>${esc(meta.title)}</b> in the Cursor desktop app.\n` +
+            'Same conversation on both ends — what you send here appears there.',
         );
       } catch (err) {
         await answer(err.message.slice(0, 190));

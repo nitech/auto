@@ -505,6 +505,16 @@ function sessionRow(s) {
   name.textContent = s.title || 'session';
   meta.append(name);
 
+  // A thread that lives in the IDE is the same conversation shown there, so
+  // say which ones those are.
+  if (s.kind === 'desktop') {
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = 'in Cursor';
+    tag.title = 'This chat runs in the Cursor desktop app — both ends share it';
+    meta.append(tag);
+  }
+
   const close = document.createElement('button');
   close.className = 'close';
   close.textContent = '×';
@@ -619,16 +629,16 @@ function renderDesktopChats(folder, chats) {
     name.textContent = c.title;
     const sub = document.createElement('span');
     sub.className = 'sub';
-    sub.textContent = c.imported
-      ? 'already continued here'
+    sub.textContent = c.attached
+      ? 'open here'
       : [c.subtitle, c.updatedAt ? new Date(c.updatedAt).toLocaleDateString() : '']
           .filter(Boolean)
           .join(' · ');
     row.append(name, sub);
-    row.title = 'Continue this chat here';
+    row.title = 'Open this chat — the same conversation as in Cursor';
     row.onclick = () => {
       row.classList.add('busy');
-      sub.textContent = 'Copying the conversation…';
+      sub.textContent = 'Opening…';
       sendOp({ op: 'desktop.continue', chatId: c.id, folder });
     };
     body.append(row);

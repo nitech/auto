@@ -567,6 +567,83 @@ if (existsSync(SRC)) {
       }
 
       if (!failed) ok('v2 core: desktop bridge switches set once, undo cleanly');
+
+      // Reading a desktop thread: roles and kinds must survive the trip, a
+      // bubble the IDE has created but not filled in must not be reported as
+      // an empty message, and a turn in flight must be visible.
+      const thread = '11111111-2222-4333-8444-555555555555';
+      const store = new DatabaseSync(join(storageDir, 'state.vscdb'));
+      store.exec('CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value BLOB)');
+      const put = store.prepare('INSERT OR REPLACE INTO cursorDiskKV (key, value) VALUES (?, ?)');
+      const bubbles = [
+        { bubbleId: 'b1', type: 1, text: 'hello from the IDE' },
+        { bubbleId: 'b2', type: 2, thinking: { text: 'considering' } },
+        { bubbleId: 'b3', type: 2, toolFormerData: { name: 'read_file', status: 'completed' } },
+        { bubbleId: 'b4', type: 2, text: 'answered' },
+        { bubbleId: 'b5', type: 2, text: '' },
+      ];
+      for (const b of bubbles) put.run(`bubbleId:${thread}:${b.bubbleId}`, JSON.stringify(b));
+      const composer = (extra = {}) =>
+        put.run(
+          `composerData:${thread}`,
+          JSON.stringify({
+            name: 'A desktop chat',
+            fullConversationHeadersOnly: bubbles.map((b) => ({ bubbleId: b.bubbleId })),
+            ...extra,
+          }),
+        );
+      composer();
+
+      const threads = await import(`../src/core/desktop-threads.mjs?t=${Date.now()}`);
+      const read = threads.readThread(thread);
+      const shape = read.messages.map((m) => `${m.role}:${m.kind}`).join(' ');
+      if (shape !== 'user:text assistant:thinking assistant:tool assistant:text') {
+        fail(`desktop thread read back as "${shape}"`);
+      }
+      if (read.visited.includes('b5')) fail('an unfilled bubble should not count as seen');
+      if (read.generating) fail('a thread with no generation id is not running');
+      if (!threads.threadExists(thread)) fail('threadExists should find a thread that is there');
+      if (threads.threadExists('nope')) fail('threadExists should not invent threads');
+
+      // Only what the caller has not seen comes back.
+      const rest = threads.readThread(thread, { seen: new Set(['b1', 'b2', 'b3']) });
+      if (rest.messages.length !== 1 || rest.messages[0].text !== 'answered') {
+        fail(`seen bubbles should be skipped, got ${JSON.stringify(rest.messages)}`);
+      }
+
+      composer({ chatGenerationUUID: 'abc' });
+      if (!threads.readThread(thread).generating) fail('a generation id means a turn is running');
+
+      // The watcher must report a new bubble and the end of the turn.
+      const watcher = new threads.ThreadWatcher(thread, { idleMs: 40, busyMs: 40 });
+      watcher.markSeen(read.visited);
+      const seenMessages = [];
+      const running = [];
+      watcher.on('message', (m) => seenMessages.push(m.text));
+      watcher.on('running', (r) => running.push(r));
+      watcher.start();
+
+      await new Promise((r) => setTimeout(r, 120));
+      bubbles.push({ bubbleId: 'b6', type: 2, text: 'a new reply' });
+      put.run(`bubbleId:${thread}:b6`, JSON.stringify(bubbles.at(-1)));
+      composer({ chatGenerationUUID: 'abc' });
+      await new Promise((r) => setTimeout(r, 150));
+      composer();
+      await new Promise((r) => setTimeout(r, 150));
+      watcher.stop();
+      store.close();
+
+      if (!seenMessages.includes('a new reply')) {
+        fail(`the watcher should report new messages, saw ${JSON.stringify(seenMessages)}`);
+      }
+      if (seenMessages.includes('hello from the IDE')) {
+        fail('the watcher should not repeat bubbles it was told about');
+      }
+      if (!(running[0] === true && running.at(-1) === false)) {
+        fail(`the watcher should see a turn start and end, saw ${JSON.stringify(running)}`);
+      }
+
+      if (!failed) ok('v2 core: desktop thread read, filtered, and followed');
     } finally {
       if (realAppData === undefined) delete process.env.APPDATA;
       else process.env.APPDATA = realAppData;
