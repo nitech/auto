@@ -10,7 +10,7 @@
  *   npm run supervise
  */
 import { spawn } from 'node:child_process';
-import { appendFileSync, existsSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -18,6 +18,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
 const SERVER = join(ROOT, 'src', 'server', 'index.mjs');
 const LOG = join(ROOT, 'supervise.log');
+const HOST_LOG = join(ROOT, 'host.log');
 const PID_FILE = join(ROOT, 'supervise.pid');
 
 function arg(name, fallback) {
@@ -44,6 +45,23 @@ function log(...args) {
     /* logging must never take the supervisor down */
   }
   console.log(...args);
+}
+
+/**
+ * The host's own words, kept. Under the scheduled task its console goes to a
+ * window nobody can see, so without this every poll error and refused send is
+ * lost the moment it is printed.
+ */
+function hostLog(line) {
+  try {
+    appendFileSync(HOST_LOG, `[${new Date().toISOString()}] ${line}\n`);
+    if (statSync(HOST_LOG).size > 2_000_000) {
+      // This file answers "what just happened" — the newest megabyte is plenty.
+      writeFileSync(HOST_LOG, readFileSync(HOST_LOG, 'utf8').slice(-1_000_000));
+    }
+  } catch {
+    /* logging must never take the supervisor down */
+  }
 }
 
 async function healthy() {
@@ -95,14 +113,14 @@ function startChild() {
     ) + '\n',
   );
 
-  child.stdout.on('data', (d) => {
-    const s = d.toString().trimEnd();
-    if (s) console.log(s);
-  });
-  child.stderr.on('data', (d) => {
-    const s = d.toString().trimEnd();
-    if (s) console.error(s);
-  });
+  const hear = (chunk, isErr) => {
+    const s = chunk.toString().trimEnd();
+    if (!s) return;
+    for (const line of s.split(/\r?\n/)) hostLog(line);
+    (isErr ? console.error : console.log)(s);
+  };
+  child.stdout.on('data', (d) => hear(d, false));
+  child.stderr.on('data', (d) => hear(d, true));
 
   child.on('exit', (code, signal) => {
     if (gen !== generation) return;
