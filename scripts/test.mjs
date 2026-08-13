@@ -1042,6 +1042,58 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1d2. Markdown rendering: escape-first, with the blocks agent replies use.
+{
+  try {
+    const { renderMarkdown } = await import('../src/web/markdown.js');
+    let failed = false;
+    const has = (md, bits) => {
+      const html = renderMarkdown(md);
+      for (const b of bits) {
+        if (!html.includes(b)) {
+          fail(`renderMarkdown(${JSON.stringify(md)}) should include ${JSON.stringify(b)}\n  got: ${html}`);
+          failed = true;
+        }
+      }
+      return html;
+    };
+
+    has('a **bold** and *slant* and `code`', ['<strong>bold</strong>', '<em>slant</em>', '<code>code</code>']);
+    has('~~gone~~', ['<del>gone</del>']);
+    has('[link](https://example.com)', ['<a href="https://example.com"']);
+    has('## Title', ['<h4>Title</h4>']);
+    has('---', ['<hr>']);
+    has('> quoted', ['<blockquote><p>quoted</p></blockquote>']);
+    has('| a | b |\n|---|---|\n| 1 | 2 |', ['<table>', '<th>a</th>', '<td>2</td>', '</table>']);
+    has('- one\n  - two', ['<ul><li>one<ul><li>two</li></ul></li></ul>']);
+    has('- [x] done\n- [ ] todo', ['checkbox', 'checked']);
+    has('1. first\n2. second', ['<ol><li>first</li><li>second</li></ol>']);
+
+    // Emphasis must not reach inside code, inline or fenced.
+    has('`**not bold**`', ['<code>**not bold**</code>']);
+    has('```js\n**x**\n```', ['<pre><code data-lang="js">**x**</code></pre>']);
+    // Identifiers are everywhere in agent prose; intraword `_` is not emphasis.
+    if (renderMarkdown('foo_bar_baz').includes('<em>')) {
+      fail('snake_case must not italicise');
+      failed = true;
+    }
+    // The source is untrusted: markup in it stays markup-shaped text.
+    if (renderMarkdown('<script>alert(1)</script>').includes('<script>')) {
+      fail('HTML in the source must stay escaped');
+      failed = true;
+    }
+    // A pipe-rich line without a separator row is prose, not a table.
+    if (renderMarkdown('a | b\ntext').includes('<table>')) {
+      fail('pipes alone do not make a table');
+      failed = true;
+    }
+
+    if (!failed) ok('v2 web: markdown — tables, quotes, nested lists, code, escaping');
+  } catch (e) {
+    fail(`v2 markdown: ${e.message}`);
+  }
+}
+
 // 1e. Browser address bar: URLs are opened, prose is searched.
 {
   try {

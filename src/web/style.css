@@ -544,12 +544,40 @@ details.think,
 .msg.agent p:last-child { margin-bottom: 0; }
 .msg.agent ul, .msg.agent ol { margin: 0 0 10px; padding-left: 22px; }
 .msg.agent li { margin: 2px 0; }
+.msg.agent li > ul, .msg.agent li > ol { margin: 2px 0 0; }
+.msg.agent li input[type='checkbox'] { margin: 0 6px 0 0; vertical-align: -1px; }
 .msg.agent h1, .msg.agent h2, .msg.agent h3 {
   font-size: 15px;
   margin: 14px 0 6px;
   font-weight: 650;
 }
 .msg.agent a { color: var(--accent); }
+.msg.agent del { color: var(--faint); }
+.msg.agent hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+
+/* A wide table scrolls within the bubble rather than crushing the chat. */
+.msg.agent table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.msg.agent th, .msg.agent td {
+  border: 1px solid var(--line-2);
+  padding: 4px 9px;
+  text-align: left;
+}
+.msg.agent th { background: var(--bg-3); font-weight: 600; }
+
+.msg.agent blockquote {
+  margin: 0 0 10px;
+  padding: 2px 12px;
+  border-left: 3px solid var(--line-2);
+  color: var(--muted);
+}
+.msg.agent blockquote p:last-child { margin-bottom: 0; }
 
 code {
   font-family: var(--mono);

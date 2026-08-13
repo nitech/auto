@@ -15,6 +15,7 @@ import {
   writeChunk,
 } from './terminals.js';
 import { lineDiff, collapseContext, diffStats } from './diff.js';
+import { renderMarkdown } from './markdown.js';
 import { initBrowser, onFrame, onStatus } from './browser.js';
 
 const $ = (id) => document.getElementById(id);
@@ -78,65 +79,8 @@ function esc(s) {
     .replace(/>/g, '&gt;');
 }
 
-/** Small, deliberately conservative markdown. Input is escaped before markup. */
-function markdown(src) {
-  const blocks = [];
-  let text = esc(src).replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
-    blocks.push(`<pre><code data-lang="${lang}">${code.replace(/\n$/, '')}</code></pre>`);
-    return `\u0000${blocks.length - 1}\u0000`;
-  });
-
-  text = text
-    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1<em>$2</em>')
-    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-
-  const lines = text.split('\n');
-  const out = [];
-  let list = null;
-
-  const closeList = () => {
-    if (list) {
-      out.push(`</${list}>`);
-      list = null;
-    }
-  };
-
-  for (const line of lines) {
-    const h = /^(#{1,6})\s+(.*)$/.exec(line);
-    const ul = /^\s*[-*]\s+(.*)$/.exec(line);
-    const ol = /^\s*\d+\.\s+(.*)$/.exec(line);
-
-    if (h) {
-      closeList();
-      const lvl = Math.min(h[1].length + 2, 6);
-      out.push(`<h${lvl}>${h[2]}</h${lvl}>`);
-    } else if (ul) {
-      if (list !== 'ul') {
-        closeList();
-        out.push('<ul>');
-        list = 'ul';
-      }
-      out.push(`<li>${ul[1]}</li>`);
-    } else if (ol) {
-      if (list !== 'ol') {
-        closeList();
-        out.push('<ol>');
-        list = 'ol';
-      }
-      out.push(`<li>${ol[1]}</li>`);
-    } else if (!line.trim()) {
-      closeList();
-    } else {
-      closeList();
-      out.push(`<p>${line}</p>`);
-    }
-  }
-  closeList();
-
-  return out.join('').replace(/\u0000(\d+)\u0000/g, (_, i) => blocks[Number(i)]);
-}
+/** Agent prose renders as markdown; user prose stays exactly as typed. */
+const markdown = renderMarkdown;
 
 function nearBottom() {
   const t = els.transcript;
