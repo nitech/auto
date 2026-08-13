@@ -42,6 +42,9 @@ export const STATUS = {
  * Upstream failures arrive as ordinary assistant prose and end the turn
  * normally, so they need catching by shape. Observed: "RetriableError:
  * [unavailable] PING timed out".
+ *
+ * Not all of them say anything at all; the silent kind is caught in `prompt`
+ * by the turn producing no prose whatsoever.
  */
 const UPSTREAM_ERROR_RE =
   /\b(RetriableError|ConnectError|\[unavailable\]|PING timed out|rate.?limit(ed)?|upstream (error|timeout))\b/i;
@@ -397,6 +400,7 @@ export class SessionManager extends EventEmitter {
     if (mapped.kind === KIND.agentDelta) {
       const rt = this.live.get(id);
       if (rt) {
+        if (mapped.payload.text) rt.spoke = true;
         rt.streamBuffer = (rt.streamBuffer + (mapped.payload.text || '')).slice(-600);
         if (!rt.upstreamErrorFlagged && UPSTREAM_ERROR_RE.test(rt.streamBuffer)) {
           rt.upstreamErrorFlagged = true;
@@ -458,15 +462,32 @@ export class SessionManager extends EventEmitter {
     this.#update(id, { status: STATUS.busy });
     runtime.streamBuffer = '';
     runtime.upstreamErrorFlagged = false;
+    runtime.spoke = false;
+    runtime.interrupted = false;
 
     try {
       const res = await runtime.client.prompt({
         sessionId: runtime.acpSessionId,
         prompt: content,
       });
+      // An answer can also be lost without a word of complaint. Upstream drops
+      // the response mid-sentence and the CLI reports the truncation as an
+      // ordinary end_turn, so the buffer above has nothing to match on: the
+      // turn simply produces no prose. Seen once as thinking that stopped
+      // mid-word — "Found", then thirty-four seconds later "Let", then the end
+      // of the turn — which on the web is a thinking block folding shut and no
+      // reply, and on a phone is silence. Say so instead.
+      const silent = res?.stopReason === 'end_turn' && !runtime.spoke && !runtime.interrupted;
+      if (silent) {
+        this.#record(id, KIND.error, {
+          text: 'The turn ended without a reply — the answer was cut off upstream. Send it again.',
+          upstream: true,
+          retryable: true,
+        });
+      }
       this.#record(id, KIND.turnEnd, {
         stopReason: res?.stopReason,
-        upstreamError: Boolean(runtime.upstreamErrorFlagged),
+        upstreamError: Boolean(runtime.upstreamErrorFlagged) || silent,
       });
       this.#update(id, { status: STATUS.idle });
       this.#nextInTurn(id);
@@ -695,6 +716,10 @@ export class SessionManager extends EventEmitter {
 
     const runtime = this.live.get(id);
     if (!runtime?.client?.running) return Boolean(dropped);
+    // A stopped turn is allowed to end with nothing said, and "Interrupted by
+    // user." already covers it — so it must not also be reported as an answer
+    // lost upstream.
+    runtime.interrupted = true;
     runtime.client.cancel(runtime.acpSessionId);
     this.#record(id, KIND.error, { text: 'Interrupted by user.', interrupted: true });
     return true;

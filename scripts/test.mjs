@@ -1376,6 +1376,101 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1e4b. A turn that ends without a word. Upstream can drop an answer without
+// saying so, and the CLI reports the truncation as an ordinary end_turn — seen
+// as thinking stopping mid-word, then a finished turn and no reply. Recorded as
+// a success it is indistinguishable from one, so the phone gets silence.
+{
+  const dir = mkdtempSync(join(tmpdir(), 'auto-silent-'));
+  try {
+    const { SessionManager } = await import('../src/core/sessions.mjs');
+    let failed = false;
+
+    const sessions = new SessionManager({ stateDir: dir, defaultFolder: ROOT }).init();
+    const id = sessions.list()[0].id;
+    // Starting the agent is what normally opens the transcript, and this test
+    // never starts one.
+    const log = await sessions.transcript(id);
+
+    // A stand-in agent. Its `say` stands in for the update stream, which is
+    // where a real turn's prose comes from and where `spoke` is set.
+    let say = [];
+    let holding = false;
+    let release = null;
+    sessions.ensureLive = async () => {
+      const runtime = sessions.live.get(id) || {};
+      runtime.acpSessionId = 'acp-1';
+      runtime.client = {
+        running: true,
+        prompt: async () => {
+          for (const text of say) {
+            sessions.live.get(id).spoke = true;
+            log.append('agent_delta', { text });
+          }
+          if (holding) {
+            await new Promise((resolve) => {
+              release = resolve;
+            });
+          }
+          return { stopReason: 'end_turn' };
+        },
+        cancel: () => {},
+      };
+      sessions.live.set(id, runtime);
+      return runtime;
+    };
+
+    let mark = log.seq;
+    await sessions.prompt(id, { text: 'the turn that says nothing' });
+    const records = await sessions.history(id, mark);
+    const cutOff = records.find((r) => r.kind === 'error' && /cut off upstream/.test(r.text || ''));
+    if (!cutOff) {
+      fail('a turn that ends without a reply should say so');
+      failed = true;
+    }
+    const ended = records.find((r) => r.kind === 'turn_end');
+    if (!ended?.upstreamError) {
+      fail('a turn that ends without a reply is an upstream failure');
+      failed = true;
+    }
+    // The complaint belongs inside the turn, before the divider that closes it.
+    if (cutOff && ended && cutOff.seq > ended.seq) {
+      fail('the complaint should be recorded before the turn ends');
+      failed = true;
+    }
+
+    // A turn that answered is left alone.
+    say = ['Here is the answer.'];
+    mark = log.seq;
+    await sessions.prompt(id, { text: 'the turn that answers' });
+    if ((await sessions.history(id, mark)).some((r) => r.kind === 'error')) {
+      fail('a turn that replied must not be reported as cut off');
+      failed = true;
+    }
+
+    // Stopping a turn is allowed to end it in silence; "Interrupted by user."
+    // already covers that, and a second complaint would contradict it.
+    say = [];
+    holding = true;
+    mark = log.seq;
+    const stopped = sessions.prompt(id, { text: 'the turn that is stopped' });
+    await new Promise((r) => setTimeout(r, 10));
+    await sessions.cancel(id);
+    if (release) release();
+    await stopped;
+    if ((await sessions.history(id, mark)).some((r) => /cut off upstream/.test(r.text || ''))) {
+      fail('a stopped turn should not also be reported as cut off upstream');
+      failed = true;
+    }
+
+    if (!failed) ok('v2 core: a turn that ends without a reply says it was cut off');
+  } catch (e) {
+    fail(`v2 silent turn: ${e.message}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // 1e2. Reading the blob Cursor keeps a tool call in. Built by hand rather than
 // captured, so the test says what the shape is instead of only that it once was.
 {
