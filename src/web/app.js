@@ -932,6 +932,25 @@ function renderModels(models) {
   els.model.dataset.filled = String(models.length);
 }
 
+/**
+ * Modes travel with the same catalog. The three in the markup are the ones
+ * every Cursor build has; whatever the agent actually offers replaces them.
+ */
+function renderModes(modes) {
+  if (!modes?.length || els.mode.dataset.filled === String(modes.length)) return;
+  const was = els.mode.value;
+  els.mode.innerHTML = '';
+  for (const m of modes) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = m.name || m.id;
+    els.mode.append(opt);
+  }
+  // Keep the session's choice selected if the new list still contains it.
+  if ([...els.mode.options].some((o) => o.value === was)) els.mode.value = was;
+  els.mode.dataset.filled = String(modes.length);
+}
+
 function applyMeta(meta) {
   if (!meta) return;
   els.title.textContent = meta.title || 'session';
@@ -1061,6 +1080,7 @@ function connect() {
         resetTerminals();
       }
       renderModels(msg.catalog?.models);
+      renderModes(msg.catalog?.modes);
       if (msg.projects) state.projects = msg.projects;
       if (msg.chats) state.chats = msg.chats;
       applyMeta(msg.meta);
@@ -1102,6 +1122,7 @@ function connect() {
     if (msg.type === 'projects') {
       state.projects = msg.projects || [];
       renderRail();
+      renderNewbie();
       return;
     }
 
@@ -1118,6 +1139,7 @@ function connect() {
 
     if (msg.type === 'catalog') {
       renderModels(msg.catalog?.models);
+      renderModes(msg.catalog?.modes);
       const mine = state.sessions.find((s) => s.id === state.sessionId);
       if (mine?.model) els.model.value = mine.model;
       return;
@@ -1364,7 +1386,101 @@ els.toBottom.onclick = () => {
   syncToBottom();
 };
 
-$('new-session').onclick = () => sendOp({ op: 'session.create' });
+// --------------------------------------------------------- new session
+
+/**
+ * Starting a session is choosing where it works. The list is Cursor's own
+ * project list rather than anything Auto invented, and a folder can always be
+ * typed by hand for the project nobody has opened in a while.
+ */
+function setNewbie(open) {
+  $('newbie').hidden = !open;
+  if (!open) return;
+  $('newbie-filter').value = '';
+  $('newbie-path').value = '';
+  $('newbie-note').textContent = '';
+  renderNewbie();
+  // The rail's copy may be stale; the host re-reads Cursor's records on ask.
+  sendOp({ op: 'projects.list' });
+  $('newbie-filter').focus();
+}
+
+/** The same fallback the rail uses: sessions prove a folder was a project. */
+function projectChoices() {
+  if (state.projects.length) return state.projects;
+  return [...new Set(state.sessions.map((s) => s.folder))].map((path) => ({
+    path,
+    name: (path || '').split(/[\\/]/).pop(),
+    open: false,
+  }));
+}
+
+function renderNewbie() {
+  const list = $('newbie-list');
+  if ($('newbie').hidden) return;
+  const filter = $('newbie-filter').value.trim().toLowerCase();
+  list.innerHTML = '';
+
+  const choices = projectChoices().filter(
+    (p) =>
+      !filter ||
+      (p.name || '').toLowerCase().includes(filter) ||
+      (p.path || '').toLowerCase().includes(filter),
+  );
+
+  for (const p of choices) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'newbie-row';
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = p.name || p.path;
+    const path = document.createElement('span');
+    path.className = 'path';
+    path.textContent = p.path || '';
+    row.append(name, path);
+    if (p.open) {
+      const tag = document.createElement('span');
+      tag.className = 'open-here';
+      tag.textContent = 'open in Cursor';
+      row.append(tag);
+    }
+    row.onclick = () => createSession(p.path);
+    list.append(row);
+  }
+
+  if (!choices.length) {
+    list.append(
+      said(
+        'queue-note',
+        filter ? 'Nothing matches that filter.' : 'No projects yet — type a folder path below.',
+      ),
+    );
+  }
+}
+
+function createSession(folder) {
+  const path = String(folder || '').trim();
+  if (!path) return;
+  setNewbie(false);
+  sendOp({ op: 'session.create', folder: path });
+}
+
+$('new-session').onclick = () => {
+  // The rail covers the screen on a phone; the dialog has to sit above it.
+  setRail(false);
+  setNewbie(true);
+};
+$('newbie-close').onclick = () => setNewbie(false);
+$('newbie').onclick = (e) => {
+  if (e.target === $('newbie')) setNewbie(false);
+};
+$('newbie-filter').addEventListener('input', renderNewbie);
+$('newbie-create').onclick = () => createSession($('newbie-path').value);
+$('newbie-path').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') createSession($('newbie-path').value);
+});
+
 $('restart').onclick = () => {
   if (!confirm('Restart Auto? It waits for the current turn, then reconnects.')) return;
   sendOp({ op: 'host.restart', reason: 'web' });
@@ -1436,17 +1552,18 @@ prefersLight.addEventListener('change', () => {
 // -------------------------------------------------------------------- sheet
 
 /**
- * Everything that is not the conversation. The mode, model and policy pickers
- * are moved in and out of it rather than duplicated, so a narrow screen loses
- * no control the wide one has — which is how the approval policy used to go
- * missing on a phone, the one place it matters most.
+ * Everything that is not the conversation. Mode and model stay in the
+ * composer at every width, the way Cursor's chat box carries them — they say
+ * what the next message will run as. The approval policy is the rare change,
+ * so it alone moves into the sheet on a narrow screen, which is how it used
+ * to go missing on a phone, the one place it matters most.
  */
 const compact = window.matchMedia('(max-width: 900px)');
 
 function placeControls() {
   const inSheet = compact.matches;
   const host = inSheet ? $('sheet-controls') : $('topbar-controls');
-  host.append(els.mode, els.model, els.policy);
+  host.append(els.policy);
   // Whichever holder is left empty should not keep its gap.
   $('sheet-controls').hidden = !inSheet;
 }
@@ -1489,8 +1606,9 @@ $('sheet-terminals').onclick = () => {
 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  // Innermost first: the sheet sits over the rail.
-  if (!els.sheet.hidden) setSheet(false);
+  // Innermost first: the dialogs sit over the sheet, which sits over the rail.
+  if (!$('newbie').hidden) setNewbie(false);
+  else if (!els.sheet.hidden) setSheet(false);
   else if (els.app.classList.contains('rail-open')) setRail(false);
 });
 

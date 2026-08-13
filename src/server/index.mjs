@@ -281,7 +281,12 @@ const OPS = {
   },
 
   'session.create'(ws, state, msg) {
-    const meta = sessions.create({ folder: msg.folder, title: msg.title });
+    // The web client offers a folder by hand as well as from the project list,
+    // so a path that names nothing must be refused rather than spawn an agent
+    // that cannot see its own working directory.
+    const folder = msg.folder ? normalizeFolder(msg.folder) : undefined;
+    if (folder && !existsSync(folder)) throw new Error(`No such folder: ${folder}`);
+    const meta = sessions.create({ folder, title: msg.title });
     return OPS.attach(ws, state, { sessionId: meta.id });
   },
 

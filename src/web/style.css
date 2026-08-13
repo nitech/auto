@@ -784,16 +784,48 @@ details.think .body {
  */
 .composer-box {
   display: flex;
-  align-items: flex-end;
-  gap: 4px;
+  flex-direction: column;
+  gap: 2px;
   background: var(--bg-2);
   border: 1px solid var(--line-2);
-  border-radius: 24px;
-  padding: 5px 5px 5px 6px;
+  border-radius: 18px;
+  padding: 5px;
   transition: border-color 0.12s ease;
 }
 
 .composer-box:focus-within { border-color: var(--focus); }
+
+.composer-main {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+/*
+ * Mode and model sit under the text they govern, as Cursor's chat box has
+ * them: quiet until hovered, since they are read far more often than changed.
+ */
+.composer-controls {
+  display: flex;
+  gap: 4px;
+  padding: 0 2px;
+}
+
+.composer-controls select {
+  background: none;
+  border-color: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 3px 6px;
+  max-width: 46%;
+  min-width: 0;
+}
+
+.composer-controls select:hover {
+  background: var(--bg-3);
+  border-color: var(--line-2);
+  color: var(--text);
+}
 
 #box {
   flex: 1;
@@ -1204,6 +1236,77 @@ details.think .body {
 
 .sheet-panel input[type='text']:focus { border-color: var(--focus); }
 
+/* -------------------------------------------------------- new session */
+
+#newbie {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 56px 16px 16px;
+  background: var(--scrim);
+}
+
+#newbie[hidden] { display: none; }
+
+/* The projects Cursor knows, one tap each. */
+#newbie-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 40vh;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+#newbie-list:empty { display: none; }
+
+.newbie-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+}
+
+.newbie-row + .newbie-row { border-top: 1px solid var(--line); }
+.newbie-row:hover { background: var(--bg-3); }
+
+.newbie-row .name {
+  flex: none;
+  font-size: 13.5px;
+  font-weight: 550;
+}
+
+/* A path matters most at its end, so it truncates from the left. */
+.newbie-row .path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.newbie-row .open-here {
+  flex: none;
+  font-size: 11px;
+  color: var(--green);
+}
+
 /* Segmented control: system / light / dark. */
 .seg {
   display: flex;
@@ -1423,8 +1526,9 @@ pre:hover .copy,
 /* -------------------------------------------------------------- mobile */
 
 @media (max-width: 900px) {
-  /* The pickers move into the sheet at this width; the empty holder in the
-     topbar would otherwise keep its gap. */
+  /* The policy picker moves into the sheet at this width; the empty holder in
+     the topbar would otherwise keep its gap. Mode and model stay where they
+     are — the composer keeps them at every width. */
   #topbar-controls { display: none; }
 }
 
@@ -1469,7 +1573,8 @@ pre:hover .copy,
   .desk-only { display: none; }
 
   #topbar { padding: 8px 10px; gap: 6px; }
-  #sheet { padding: 0; align-items: flex-end; justify-content: center; }
+  #sheet,
+  #newbie { padding: 0; align-items: flex-end; justify-content: center; }
   .sheet-panel {
     width: 100%;
     max-height: 88vh;
@@ -1481,6 +1586,10 @@ pre:hover .copy,
   @keyframes sheet-up {
     from { transform: translateY(14px); opacity: 0; }
   }
+
+  /* A row of projects is a row of thumbs: roomier targets, legible paths. */
+  #newbie-list { max-height: 46vh; }
+  .newbie-row { padding: 12px; }
 
   /* Fingers, not cursors: everything tappable gets a 40px box. */
   button.icon {
