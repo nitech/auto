@@ -993,7 +993,17 @@ function attach(sessionId) {
 
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${proto}://${location.host}`);
+  // Say what is already on screen. The host replays the moment it accepts the
+  // socket, so this has to travel with the handshake rather than be asked for
+  // afterwards; without it every dropped connection redraws the conversation
+  // from scratch, which on a flaky phone connection is most of them.
+  const q = new URLSearchParams();
+  if (state.sessionId && state.lastSeq) {
+    q.set('session', state.sessionId);
+    q.set('fromSeq', String(state.lastSeq));
+  }
+  const query = q.toString();
+  const ws = new WebSocket(`${proto}://${location.host}/${query ? `?${query}` : ''}`);
   state.ws = ws;
 
   ws.onopen = () => {
@@ -1032,7 +1042,15 @@ function connect() {
     }
 
     if (msg.type === 'attached') {
-      const fresh = msg.sessionId !== state.sessionId || msg.records[0]?.seq === 1;
+      // The host says whether this stands in for what is on screen. It used to
+      // be guessed from the first record being number one, which stopped being
+      // true the moment a long transcript arrived as its tail — and a guess of
+      // "not fresh" draws the conversation a second time underneath itself.
+      // A catch-up that skipped records cannot be appended either: that would
+      // leave a hole in the middle of the conversation with nothing to say so.
+      const gap = !msg.replaced && msg.earlier > 0;
+      const fresh =
+        gap || (msg.replaced ?? (msg.sessionId !== state.sessionId || msg.records[0]?.seq === 1));
       state.sessionId = msg.sessionId;
       if (fresh) {
         els.transcript.innerHTML = '';
@@ -1049,6 +1067,13 @@ function connect() {
       renderRail();
       // Panes first, so replayed terminal chunks have somewhere to land.
       for (const t of msg.terminals || []) openPane(t);
+      // Say what is not on screen, so the top of a long chat reads as the middle
+      // of a conversation rather than the beginning of one.
+      if (fresh && msg.earlier > 0) {
+        const note = div('notice');
+        note.textContent = `${msg.earlier.toLocaleString()} earlier records are not shown.`;
+        add(note);
+      }
       for (const rec of msg.records) render(rec);
       // An approval the agent is still waiting on outlives the replay window,
       // and a turn stuck behind an unanswered question is the worst thing to

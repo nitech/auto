@@ -86,6 +86,31 @@ if (existsSync(SRC)) {
     if (t.readFrom(0).length !== 3) fail('transcript readFrom(0) should return 3 records');
     if (t.readFrom(2).length !== 1) fail('transcript readFrom(2) should return 1 record');
 
+    // A long transcript must travel in bounded pieces. Sending one whole was
+    // 28,000 records in a single message, and the browser never came back.
+    const long = await new Transcript(tmp, 'sess-long').open();
+    for (let i = 0; i < 5000; i += 1) long.append(KIND.agentDelta, { text: `d${i}` });
+
+    const capped = long.readFrom(0, { limit: 100 });
+    if (capped.length !== 100) fail(`a limited read should return 100, got ${capped.length}`);
+    // The newest, not the oldest: a conversation is read from its end.
+    if (capped.at(-1).seq !== 5000 || capped[0].seq !== 4901) {
+      fail(`a limited read should keep the newest records, got ${capped[0].seq}..${capped.at(-1).seq}`);
+    }
+    if (capped.some((r, i) => i && r.seq !== capped[i - 1].seq + 1)) {
+      fail('a limited read should stay in order and without gaps');
+    }
+    // Records older than the memory tail must still be reachable by number,
+    // or "load earlier" would have nothing to load.
+    const old = long.readFrom(10, { limit: 5 });
+    if (old.length !== 5 || old.at(-1).seq !== 5000) {
+      fail(`catching up from an old sequence should still be bounded, got ${old.length}`);
+    }
+    if (long.readFrom(4995).length !== 5) fail('an unlimited catch-up should return the tail');
+    if (long.readFrom(0, { limit: 99_999 }).length !== 5000) {
+      fail('a limit larger than the log should return all of it');
+    }
+
     // Reopening must continue the sequence rather than restart it.
     const again = await new Transcript(tmp, 'sess-1').open();
     if (again.seq !== 3) fail(`reopened transcript seq should be 3, got ${again.seq}`);
@@ -1251,6 +1276,54 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1e4. What the host reports as running has to be something that is running.
+// `live` is a scratchpad as much as a process table — a desktop chat parks its
+// watcher and its echoes there — so counting the map told the phone two
+// sessions were working while no agent existed at all.
+{
+  const dir = mkdtempSync(join(tmpdir(), 'auto-live-'));
+  try {
+    const { SessionManager } = await import('../src/core/sessions.mjs');
+    let failed = false;
+
+    const sessions = new SessionManager({ stateDir: dir, defaultFolder: ROOT }).init();
+    const id = sessions.list()[0].id;
+
+    if (sessions.liveCount() !== 0) fail('a fresh manager runs no agents');
+
+    // A desktop chat's bookkeeping: a watcher and a remembered echo, no agent.
+    sessions.live.set(id, { watcher: { stop() {} }, echoes: [{ text: 'hi', at: Date.now() }] });
+    if (sessions.liveCount() !== 0) {
+      fail(`a watched desktop chat is not a running agent, got ${sessions.liveCount()}`);
+      failed = true;
+    }
+    if (sessions.watchingCount() !== 1) {
+      fail(`a watched desktop chat should be counted as watched, got ${sessions.watchingCount()}`);
+      failed = true;
+    }
+
+    // An agent that has exited is not running either.
+    const other = sessions.create({ folder: ROOT });
+    sessions.live.set(other.id, { client: { running: false } });
+    if (sessions.liveCount() !== 0) {
+      fail('an agent that has exited must not be counted as live');
+      failed = true;
+    }
+
+    sessions.live.set(other.id, { client: { running: true } });
+    if (sessions.liveCount() !== 1) {
+      fail(`a running agent should be counted once, got ${sessions.liveCount()}`);
+      failed = true;
+    }
+
+    if (!failed) ok('v2 core: only a running agent counts as a live session');
+  } catch (e) {
+    fail(`v2 live count: ${e.message}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // 1e2. Reading the blob Cursor keeps a tool call in. Built by hand rather than
 // captured, so the test says what the shape is instead of only that it once was.
 {
@@ -2062,6 +2135,104 @@ try {
       } catch (e) {
         fail(`${path} failed: ${e.message}`);
       }
+    }
+
+    // Nothing may claim to be running that is not. `live` counts agents, and
+    // the desktop chats being followed are counted apart from them.
+    if (typeof body.live !== 'number' || typeof body.watching !== 'number') {
+      fail('/api/health should say how many agents run and how many chats are watched');
+    } else if (body.live > body.sessions) {
+      fail(`/api/health claims ${body.live} live of ${body.sessions} sessions`);
+    } else {
+      ok(`host reports ${body.live} live agent(s), ${body.watching} watched chat(s)`);
+    }
+
+    // The client is cached and revalidated rather than re-sent. Half a megabyte
+    // of terminal emulator on every load was most of the time to first paint.
+    try {
+      const first = await fetch(`http://127.0.0.1:${PORT}/vendor/xterm.js`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      const etag = first.headers.get('etag');
+      if (!first.ok || !etag) {
+        fail('a static asset should come back with an ETag to revalidate against');
+      } else {
+        const again = await fetch(`http://127.0.0.1:${PORT}/vendor/xterm.js`, {
+          headers: { 'If-None-Match': etag },
+          signal: AbortSignal.timeout(8000),
+        });
+        const body304 = await again.text();
+        if (again.status !== 304 || body304.length) {
+          fail(`an unchanged asset should answer 304 and no body, got ${again.status}`);
+        } else if (/no-store/.test(first.headers.get('cache-control') || '')) {
+          fail('no-store means the browser may never reuse the file');
+        } else {
+          ok('web: unchanged assets revalidate instead of downloading again');
+        }
+      }
+    } catch (e) {
+      fail(`static caching: ${e.message}`);
+    }
+
+    // Attaching must not hand over the whole log, and a client that says where
+    // it got to must not be sent what it already has.
+    try {
+      const { WebSocket } = await import('ws');
+      /** Connect, and resolve with the first `attached` payload. */
+      const attachOnce = (query = '') =>
+        new Promise((resolve, reject) => {
+          const ws = new WebSocket(`ws://127.0.0.1:${PORT}/${query}`);
+          const timer = setTimeout(() => {
+            ws.close();
+            reject(new Error('no attach within 20s'));
+          }, 20_000);
+          let bytes = 0;
+          ws.on('message', (buf) => {
+            bytes += buf.length;
+            let msg;
+            try {
+              msg = JSON.parse(buf.toString());
+            } catch {
+              return;
+            }
+            if (msg.type !== 'attached') return;
+            clearTimeout(timer);
+            ws.close();
+            resolve({ ...msg, bytes });
+          });
+          ws.on('error', (err) => (clearTimeout(timer), reject(err)));
+        });
+
+      const full = await attachOnce();
+      if (!full.replaced) {
+        fail('a replay from the start must say it replaces what the client has');
+      }
+      // The number here is the host's, not ours; what matters is that there is
+      // one. A session that had run for two days replayed 28,000 records and
+      // 27MB in a single message, and the browser never finished with it.
+      if (full.records.length > 2000) {
+        fail(`attach sent ${full.records.length} records; a replay must be bounded`);
+      } else if (full.bytes > 8_000_000) {
+        fail(`attach sent ${full.bytes} bytes; a replay must be bounded`);
+      } else {
+        ok(`web: attach replays ${full.records.length} records (${Math.round(full.bytes / 1024)}KB)`);
+      }
+
+      const seq = full.records.at(-1)?.seq;
+      if (seq) {
+        const caught = await attachOnce(`?session=${full.sessionId}&fromSeq=${seq}`);
+        if (caught.replaced) {
+          fail('catching up from a sequence number must add to the client, not replace it');
+        } else if (caught.records.some((r) => r.seq <= seq)) {
+          fail('catching up must not re-send records the client already had');
+        } else if (caught.records.length > full.records.length) {
+          fail('catching up sent more than a full replay');
+        } else {
+          ok(`web: a reconnect re-sends ${caught.records.length} record(s), not the log`);
+        }
+      }
+    } catch (e) {
+      fail(`attach replay: ${e.message}`);
     }
 
     // The host must still be alive after all of that.

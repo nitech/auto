@@ -9,7 +9,7 @@
  *   node src/server/index.mjs [--port=4331] [--folder=D:\some\repo]
  */
 import { createServer } from 'node:http';
-import { readFileSync, existsSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, writeFileSync, rmSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
@@ -177,18 +177,44 @@ function syncScreencast() {
 
 // ------------------------------------------------------------------ requests
 
+/**
+ * How much of a transcript a client is given at once.
+ *
+ * It used to be all of it. A chat running for days reaches tens of thousands
+ * of records and tens of megabytes, and that went over the socket as a single
+ * message the browser had to parse whole and then turn into a DOM node apiece
+ * — so the tab locked up and the conversation never appeared. A conversation
+ * is read from its end, so the end is what gets sent; the rest stays on disk
+ * and is still there to ask for by sequence number.
+ */
+const REPLAY_LIMIT = 1200;
+
 const OPS = {
   async attach(ws, state, msg) {
     const id = msg.sessionId || sessions.activeId;
     if (!sessions.get(id)) throw new Error(`Unknown session ${id}`);
     state.sessionId = id;
     sessions.setActive(id);
-    const records = await sessions.history(id, msg.fromSeq || 0);
+    // A client that claims to be further along than the log is holding a
+    // conversation this host has never heard of — a transcript that was reset
+    // behind it. Start it over rather than leaving it showing the impossible.
+    const asked = msg.fromSeq || 0;
+    const fromSeq = asked > (await sessions.transcript(id)).seq ? 0 : asked;
+    const records = await sessions.history(id, fromSeq, REPLAY_LIMIT);
+    // Sequence numbers are handed out one at a time with no gaps, so the first
+    // record sent says exactly how much of the conversation sits behind it.
+    const earlier = records.length ? records[0].seq - 1 - fromSeq : 0;
     send(ws, {
       type: 'attached',
       sessionId: id,
       meta: sessions.get(id),
       records,
+      // Whether this payload replaces what the client has or adds to it.
+      // Catching up from a sequence number appends; a replay from the start
+      // stands in for the lot, and saying so is what stops a reconnect drawing
+      // the same conversation twice.
+      replaced: !fromSeq,
+      earlier: Math.max(0, earlier),
       pending: sessions.permissions.list(id),
       terminals: sessions.terminals.list(id),
       terminalsAvailable: sessions.terminals.available,
@@ -407,6 +433,17 @@ const VENDOR = {
   '/vendor/addon-fit.js': 'node_modules/@xterm/addon-fit/lib/addon-fit.js',
 };
 
+/**
+ * Serve a file, and let the browser keep it.
+ *
+ * Everything here used to be `no-store`, so every load pulled the whole client
+ * down again — half a megabyte of terminal emulator among it — before a single
+ * record could be drawn. Caching it outright would be worse: Auto edits its own
+ * front end, and a stale one is unfixable from a phone. So the browser is told
+ * to ask every time and given a tag it can ask with. Nothing changed means an
+ * empty 304; a file that changed has a different size or timestamp, which
+ * breaks the cache by itself with nothing to remember to bump.
+ */
 function serveStatic(req, res) {
   const url = new URL(req.url, 'http://localhost');
   let rel = url.pathname === '/' ? '/index.html' : url.pathname;
@@ -417,12 +454,21 @@ function serveStatic(req, res) {
   const file = VENDOR[rel] ? join(ROOT, VENDOR[rel]) : join(WEB, rel);
   const ext = rel.slice(rel.lastIndexOf('.'));
   try {
-    const body = readFileSync(file);
-    res.writeHead(200, {
+    const stat = statSync(file);
+    const etag = `W/"${stat.size.toString(36)}-${Math.round(stat.mtimeMs).toString(36)}"`;
+    const headers = {
       'Content-Type': CONTENT_TYPES[ext] || 'application/octet-stream',
-      'Cache-Control': 'no-store',
-    });
-    res.end(body);
+      'Cache-Control': 'no-cache',
+      ETag: etag,
+    };
+    // Reading the file at all is the cost worth skipping here.
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304, headers);
+      res.end();
+      return;
+    }
+    res.writeHead(200, headers);
+    res.end(readFileSync(file));
   } catch {
     res.writeHead(404).end('not found');
   }
@@ -478,7 +524,8 @@ async function route(req, res) {
     return json(res, {
       ok: true,
       sessions: sessions.list().length,
-      live: sessions.live.size,
+      live: sessions.liveCount(),
+      watching: sessions.watchingCount(),
       activeId: sessions.activeId,
       telegram: telegram.running,
     });
@@ -541,9 +588,27 @@ async function route(req, res) {
 
 // ----------------------------------------------------------------- websocket
 
-const wss = new WebSocketServer({ server });
+/**
+ * Everything a client is told is JSON, and JSON of this shape — the same keys
+ * over and over, the same command echoed in a call and its result — compresses
+ * by about tenfold. On a phone that is the difference between a replay arriving
+ * and a replay timing out, so the socket negotiates deflate. Only messages
+ * worth the CPU are compressed; a keystroke is not.
+ */
+const wss = new WebSocketServer({
+  server,
+  perMessageDeflate: {
+    threshold: 2048,
+    zlibDeflateOptions: { level: 6, memLevel: 8 },
+    concurrencyLimit: 10,
+    // Contexts are what make deflate expensive to hold; a chat is bursty and
+    // long-lived, so let both ends drop theirs between bursts.
+    clientNoContextTakeover: true,
+    serverNoContextTakeover: true,
+  },
+});
 
-wss.on('connection', async (ws) => {
+wss.on('connection', async (ws, req) => {
   const state = { sessionId: null, browser: false };
   clients.set(ws, state);
 
@@ -554,8 +619,18 @@ wss.on('connection', async (ws) => {
     policies: Object.values(POLICY),
     chats: recentChats(),
   });
+  // A reconnecting client says what it already has, in the URL, because the
+  // first thing this socket does is replay and there is no room for a question
+  // first. A dropped connection on a phone is a normal event; re-sending a
+  // conversation it is still showing is not.
+  const asked = new URL(req.url || '/', 'http://localhost').searchParams;
+  const wanted = asked.get('session');
+  const known = wanted && sessions.get(wanted) ? wanted : sessions.activeId;
   try {
-    await OPS.attach(ws, state, { sessionId: sessions.activeId, fromSeq: 0 });
+    await OPS.attach(ws, state, {
+      sessionId: known,
+      fromSeq: known === wanted ? Number(asked.get('fromSeq')) || 0 : 0,
+    });
   } catch (err) {
     send(ws, { type: 'error', message: err.message });
   }

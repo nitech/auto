@@ -238,9 +238,30 @@ export class SessionManager extends EventEmitter {
     return this.transcripts.get(id);
   }
 
-  async history(id, fromSeq = 0) {
+  async history(id, fromSeq = 0, limit = 0) {
     const t = await this.transcripts.get(id);
-    return t.readFrom(fromSeq);
+    return t.readFrom(fromSeq, { limit });
+  }
+
+  /**
+   * Sessions with an agent process actually running.
+   *
+   * `live` is a scratchpad as much as a process table: a desktop chat keeps its
+   * thread watcher there, along with the echoes it is expecting and what it has
+   * already published, and none of that is an agent. Counting the map had the
+   * host reporting sessions as working when nothing was running at all.
+   */
+  liveCount() {
+    let n = 0;
+    for (const runtime of this.live.values()) if (runtime?.client?.running) n += 1;
+    return n;
+  }
+
+  /** Desktop chats being followed in the IDE, which run no agent of ours. */
+  watchingCount() {
+    let n = 0;
+    for (const runtime of this.live.values()) if (runtime?.watcher) n += 1;
+    return n;
   }
 
   #record(sessionId, kind, payload) {

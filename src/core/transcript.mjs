@@ -94,11 +94,29 @@ export class Transcript extends EventEmitter {
     return rec;
   }
 
-  /** Records with `seq` greater than `fromSeq`, in order. */
-  readFrom(fromSeq = 0) {
+  /**
+   * Records with `seq` greater than `fromSeq`, in order.
+   *
+   * `limit` keeps only the newest that many. A session that has been going for
+   * days runs to tens of thousands of records, and handing every one of them
+   * to a client that shows the end of a conversation is what stopped the web
+   * UI loading at all. The log itself is still whole; this is only how much of
+   * it travels at once.
+   */
+  readFrom(fromSeq = 0, { limit = 0 } = {}) {
+    const cut = (records) =>
+      limit > 0 && records.length > limit ? records.slice(-limit) : records;
+
+    // The newest records are the ones held in memory, so a bounded read never
+    // has to go to disk — which for a long log means not parsing megabytes to
+    // throw nearly all of it away.
+    if (limit > 0 && this.tail.length >= limit && this.tail.at(-limit).seq > fromSeq) {
+      return this.tail.slice(-limit);
+    }
+
     const oldestInMemory = this.tail.length ? this.tail[0].seq : Infinity;
     if (fromSeq + 1 >= oldestInMemory || this.tail.length === 0) {
-      return this.tail.filter((r) => r.seq > fromSeq);
+      return cut(this.tail.filter((r) => r.seq > fromSeq));
     }
     // Requested range predates the memory tail — reread the log.
     if (!existsSync(this.path)) return [];
@@ -112,7 +130,7 @@ export class Transcript extends EventEmitter {
         /* skip torn line */
       }
     }
-    return out;
+    return cut(out);
   }
 }
 
