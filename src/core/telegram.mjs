@@ -760,6 +760,12 @@ export class TelegramBridge extends EventEmitter {
         await this.send(`⚠️ ${esc(rec.text || 'error')}`);
         break;
 
+      case 'notice':
+        // Holds and queue adds are said out loud: they are the only word a
+        // phone gets that its message did not vanish.
+        await this.send(`ℹ️ ${esc(rec.text || '')}`);
+        break;
+
       default:
         break;
     }
