@@ -1471,6 +1471,49 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1e4c. A turn that spells its tool call out instead of making one. The silent
+// check above cannot see it — the agent spoke, at length — so the turn was
+// recorded as a clean success with control tokens for a reply.
+{
+  try {
+    const { upstreamComplaint } = await import('../src/core/sessions.mjs');
+    let failed = false;
+
+    // Verbatim from the session where this was first seen.
+    const leaked =
+      'Rich material. Let me grab the product page and contact details to complete the fact base.' +
+      '<|open|>toolscall tool="WebFetchargument<|sep|><|open|>argument key="url" type="string"' +
+      '<|sep|>https://www.roadtech.no/produkt/stikkemaskin/<|close|>argument<|sep|><|close|>call<|sep|>';
+    if (!/tool-call markup/.test(upstreamComplaint(leaked) || '')) {
+      fail('a printed tool call should be reported as a lost tool call');
+      failed = true;
+    }
+
+    // The older kind still says what upstream said.
+    const said = 'Error: RetriableError: [resource_exhausted] Error';
+    if (upstreamComplaint(said) !== said) {
+      fail('an upstream error should be reported in its own words');
+      failed = true;
+    }
+
+    // An answer is an answer, including one that talks about chat templates.
+    for (const fine of [
+      'Here is the answer. I fetched the page and it lists three products.',
+      'Each turn is wrapped in a <|im_start|> token by the template.',
+      'Use pipes and angles like a <| b or c |> d in prose.',
+    ]) {
+      if (upstreamComplaint(fine)) {
+        fail(`ordinary prose must not be reported as a failure: ${fine.slice(0, 40)}`);
+        failed = true;
+      }
+    }
+
+    if (!failed) ok('v2 core: a printed tool call is reported, ordinary prose is not');
+  } catch (e) {
+    fail(`v2 leaked tool call: ${e.message}`);
+  }
+}
+
 // 1e2. Reading the blob Cursor keeps a tool call in. Built by hand rather than
 // captured, so the test says what the shape is instead of only that it once was.
 {

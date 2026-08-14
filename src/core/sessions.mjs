@@ -50,6 +50,34 @@ const UPSTREAM_ERROR_RE =
   /\b(RetriableError|ConnectError|\[unavailable\]|PING timed out|rate.?limit(ed)?|upstream (error|timeout))\b/i;
 
 /**
+ * A tool call can also be lost by being *printed*. The model writes one in the
+ * control tokens its chat template reserves for the purpose, nothing upstream
+ * parses them back into a call, and the tokens arrive here as the reply — then
+ * the turn ends politely, mid-sequence, having run nothing. Seen as a session
+ * that said "Let me grab the product page" and then spelled out two web
+ * fetches as `<|open|>call tool="WebFetch…`, which read on a phone as the UI
+ * breaking.
+ *
+ * It takes two tokens to count: prose discussing chat templates quotes one.
+ */
+const LEAKED_TOOL_CALL_RE = /<\|[a-z0-9_]+\|>[\s\S]{0,400}?<\|[a-z0-9_]+\|>/i;
+
+/**
+ * What a run of assistant prose is worth complaining about, if anything.
+ *
+ * Exported because both kinds of failure are recognised by their shape alone,
+ * and a shape is worth pinning down in a test.
+ */
+export function upstreamComplaint(prose) {
+  const text = String(prose || '');
+  if (LEAKED_TOOL_CALL_RE.test(text)) {
+    return 'The reply broke into raw tool-call markup — the model printed a tool call instead of making one, so nothing ran. Send it again.';
+  }
+  if (UPSTREAM_ERROR_RE.test(text)) return text.trim();
+  return null;
+}
+
+/**
  * A command's output in the shape the views already know how to draw.
  *
  * Sent as an object rather than a bare string so the exit code and how long it
@@ -402,10 +430,11 @@ export class SessionManager extends EventEmitter {
       if (rt) {
         if (mapped.payload.text) rt.spoke = true;
         rt.streamBuffer = (rt.streamBuffer + (mapped.payload.text || '')).slice(-600);
-        if (!rt.upstreamErrorFlagged && UPSTREAM_ERROR_RE.test(rt.streamBuffer)) {
+        const complaint = rt.upstreamErrorFlagged ? null : upstreamComplaint(rt.streamBuffer);
+        if (complaint) {
           rt.upstreamErrorFlagged = true;
           this.#record(id, KIND.error, {
-            text: rt.streamBuffer.trim(),
+            text: complaint,
             upstream: true,
             retryable: true,
           });
