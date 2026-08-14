@@ -5,9 +5,11 @@ port 4331. It drives `cursor-agent` sessions on this machine and exposes them
 through a web app (PWA) and a Telegram bot.
 
 ## Responsibilities
-- Run agent sessions: new ones start as chats in the Cursor desktop app when
-  a window has that folder open; otherwise over ACP (JSON-RPC to
-  `cursor-agent acp`), one child process per session, resumable across restarts
+- Run agent sessions: new ones start as chats in the Cursor desktop app.
+  Auto opens or starts a Cursor window for that folder when it has to, with
+  the debug port if Cursor was not already listening. Otherwise over ACP
+  (JSON-RPC to `cursor-agent acp`), one child process per session, resumable
+  across restarts
 - Record everything the agent emits — prose, thinking, tool calls, tool
   results, diffs, plans, terminal output, errors — to append-only transcripts
 - Broker approvals (ask / ask-on-write / auto) answerable from web or Telegram

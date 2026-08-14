@@ -195,7 +195,7 @@ if (existsSync(SRC)) {
   // message, and never leave text behind when it fails.
   try {
     const { CursorCdp } = await import('../src/core/cursor-cdp.mjs');
-    const { samePath } = await import('../src/core/cursor-dom.mjs');
+    const { samePath, showsFolder } = await import('../src/core/cursor-dom.mjs');
 
     class FakeWindow {
       constructor(
@@ -565,6 +565,15 @@ if (existsSync(SRC)) {
     if (!samePath('/d:/Sevenfold/auto', 'D:\\Sevenfold\\auto')) fail('samePath should see one folder');
     if (samePath('/d:/Sevenfold/auto', 'D:\\Sevenfold\\other')) fail('samePath should see two folders');
     if (samePath(null, 'D:\\Sevenfold\\auto')) fail('samePath should not match nothing');
+    if (!showsFolder({ workspace: '/d:/Sevenfold/auto' }, 'D:\\Sevenfold\\auto')) {
+      fail('a window should match its workspace folder');
+    }
+    if (!showsFolder({ folders: ['/d:/Projects/other'] }, 'D:\\Projects\\other')) {
+      fail('a multi-root window should match one of its folders');
+    }
+    if (showsFolder({ workspace: '/d:/Sevenfold/auto' }, 'D:\\Projects\\other')) {
+      fail('a window should not match a different folder');
+    }
 
     // A new Auto session is a new chat in the window that already has that folder.
     const FRESH = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
@@ -620,6 +629,92 @@ if (existsSync(SRC)) {
     if ((await shut.newChat({ folder: 'D:\\Sevenfold\\auto' })).status !== 'no-cdp') {
       fail('new chat with no debug port should be no-cdp');
     }
+
+    // Opening a folder Cursor is not showing: a new window on the running instance.
+    const launches = [];
+    let live = {
+      auto: new FakeWindow({ threadId: THREAD, hasComposer: true, workspace: '/d:/Sevenfold/auto' }),
+    };
+    const opener = new CursorCdp({
+      settleMs: 1,
+      waitMs: 1,
+      windowWaitMs: 40,
+      listTargets: async () => Object.keys(live).map(target),
+      openWindow: async (t) => live[t.id],
+      cursorRunning: () => true,
+      launchCursor: async (opts) => {
+        launches.push(opts);
+        live.other = new FakeWindow({
+          threadId: OTHER,
+          hasComposer: true,
+          workspace: '/d:/Projects/other',
+        });
+      },
+      quitCursor: async () => {
+        throw new Error('must not quit Cursor when the debug port is already up');
+      },
+    });
+    result = await opener.ensureWindow({ folder: 'D:\\Projects\\other' });
+    if (result.status !== 'opened') fail(`a missing folder should open a window, got ${JSON.stringify(result)}`);
+    if (launches.length !== 1 || launches[0].debugPort != null) {
+      fail(`open-window should not restart Cursor: ${JSON.stringify(launches)}`);
+    }
+    if ((await opener.ensureWindow({ folder: 'D:\\Sevenfold\\auto' })).status !== 'showing') {
+      fail('a folder already open should not launch anything');
+    }
+
+    // Cursor running without the port: the only way in is to quit and start it.
+    let listening = false;
+    let running = true;
+    let quits = 0;
+    const restarter = new CursorCdp({
+      settleMs: 1,
+      waitMs: 1,
+      windowWaitMs: 40,
+      listTargets: async () => (listening ? [target('mine')] : []),
+      openWindow: async () =>
+        new FakeWindow({ threadId: THREAD, hasComposer: true, workspace: '/d:/Sevenfold/auto' }),
+      cursorRunning: () => running,
+      quitCursor: async () => {
+        quits += 1;
+        running = false;
+      },
+      launchCursor: async (opts) => {
+        launches.push(opts);
+        listening = true;
+        running = true;
+      },
+    });
+    result = await restarter.ensureWindow({ folder: 'D:\\Sevenfold\\auto' });
+    if (result.status !== 'restarted') fail(`blind Cursor should be restarted, got ${JSON.stringify(result)}`);
+    if (quits !== 1) fail('Cursor running without its port must be quit first');
+    if (!launches.at(-1)?.debugPort) fail('the restarted Cursor must be started with the debug port');
+
+    // Nothing running: just start it with the port.
+    listening = false;
+    running = false;
+    quits = 0;
+    const starter = new CursorCdp({
+      settleMs: 1,
+      waitMs: 1,
+      windowWaitMs: 40,
+      listTargets: async () => (listening ? [target('mine')] : []),
+      openWindow: async () =>
+        new FakeWindow({ threadId: THREAD, hasComposer: true, workspace: '/d:/Sevenfold/auto' }),
+      cursorRunning: () => running,
+      quitCursor: async () => {
+        quits += 1;
+      },
+      launchCursor: async (opts) => {
+        launches.push(opts);
+        listening = true;
+        running = true;
+      },
+    });
+    result = await starter.ensureWindow({ folder: 'D:\\Sevenfold\\auto' });
+    if (result.status !== 'started') fail(`a stopped Cursor should be started, got ${JSON.stringify(result)}`);
+    if (quits) fail('a stopped Cursor must not be killed');
+    if (!launches.at(-1)?.debugPort) fail('a first launch must include the debug port');
 
     if (!failed) ok('v2 core: typing into a Cursor window lands in the right chat, or not at all');
 
@@ -1457,6 +1552,7 @@ if (existsSync(SRC)) {
     const sessions = new SessionManager({ stateDir: dir, defaultFolder: ROOT }).init();
     sessions.cursor = {
       newChat: async () => ({ status: 'no-window', reason: 'no Cursor window has it open' }),
+      ensureWindow: async () => ({ status: 'no-window', reason: 'could not open a window' }),
     };
     const meta = await sessions.startInIde({ folder: ROOT, title: 'From the phone' });
     if (meta.kind === 'desktop') {
@@ -1484,11 +1580,54 @@ if (existsSync(SRC)) {
     }
     await sessions.stop(opened.id);
 
+    let attempts = 0;
+    sessions.cursor = {
+      newChat: async () => {
+        attempts += 1;
+        return attempts === 1
+          ? { status: 'no-window', reason: 'no Cursor window has it open' }
+          : { status: 'created', threadId: 'opened-after-launch' };
+      },
+      ensureWindow: async () => ({ status: 'opened' }),
+    };
+    const launched = await sessions.startInIde({ folder: ROOT, title: 'Opened a window' });
+    if (launched.kind !== 'desktop' || launched.desktopThreadId !== 'opened-after-launch') {
+      fail(`a missing window should be opened, then attached, got ${JSON.stringify(launched)}`);
+      failed = true;
+    }
+    if (attempts !== 2) fail(`should retry the chat after opening a window, tried ${attempts}`);
+    await sessions.stop(launched.id);
+
     if (!failed) ok('v2 core: new sessions start in the IDE, or say why they could not');
   } catch (e) {
     fail(`v2 start in ide: ${e.message}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+{
+  try {
+    const { spawnCursor } = await import('../src/core/cursor-launch.mjs');
+    const calls = [];
+    spawnCursor({
+      folder: 'D:\\Sevenfold\\auto',
+      newWindow: true,
+      debugPort: 9222,
+      exe: 'C:\\Cursor.exe',
+      spawnFn: (exe, args, opts) => {
+        calls.push({ exe, args, opts });
+        return { pid: 1, unref() {} };
+      },
+    });
+    const { args, opts } = calls[0];
+    if (!args.includes('--remote-debugging-port=9222')) fail('a first launch must pass the debug port');
+    if (!args.includes('--new-window')) fail('a launch must ask for a new window');
+    if (!args.includes('D:\\Sevenfold\\auto')) fail('a launch must pass the folder');
+    if (!opts.detached) fail('Cursor must outlive Auto');
+    ok('v2 core: Cursor is launched with a new window and the debug port');
+  } catch (e) {
+    fail(`v2 cursor launch: ${e.message}`);
   }
 }
 

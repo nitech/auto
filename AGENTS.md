@@ -30,9 +30,13 @@ value as setup documentation is fine.
 - **One host, one port.** `src/server/index.mjs` on 4331 owns everything:
   HTTP, WebSocket, the session API, Telegram, the browser, terminals.
 - **New sessions start in the IDE.** Starting from the web or Telegram opens a
-  new chat in a Cursor window that already has that folder, then Auto attaches
-  to it. If no such window is listening, it falls back to `cursor-agent acp`
-  and says so in the transcript.
+  new chat in a Cursor window that already has that folder. If no window has
+  it, Auto opens one; if Cursor is not running, Auto starts it with
+  `--remote-debugging-port=9222`. If Cursor is already running *without* that
+  port, Auto quits it and starts it again — Electron will not add the port to a
+  process that has already started, and that restart closes every Cursor
+  window. If none of that works, it falls back to `cursor-agent acp` and says
+  so in the transcript.
 - **One session, one conversation.** A desktop session is Cursor's own chat.
   An ACP session holds its own `cursor-agent acp` process and resumes via
   `session/load`, so an idle one costs nothing but its history stays intact.

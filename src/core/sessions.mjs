@@ -252,14 +252,15 @@ export class SessionManager extends EventEmitter {
   /**
    * Start a session the user asked for from the web or the phone.
    *
-   * A new chat in a Cursor window that already has this folder is the same
-   * conversation on both ends. If no such window is listening, this falls
-   * back to an Auto-only agent and says so in the transcript — silent fallback
-   * is how sessions disappeared from the IDE before.
+   * A new chat in Cursor is the same conversation on both ends. If no window
+   * has this folder, Auto opens one; if Cursor is not running, Auto starts it
+   * with the debug port. Cursor already running without that port has to be
+   * restarted — Electron will not add it later. Only if none of that works
+   * does this fall back to an Auto-only agent, and it says so.
    */
   async startInIde({ folder, title, policy, mode } = {}) {
     const dir = folder || this.defaultFolder;
-    const opened = await this.cursor.newChat({ folder: dir }).catch((err) => ({
+    let opened = await this.cursor.newChat({ folder: dir }).catch((err) => ({
       status: 'error',
       reason: err.message,
     }));
@@ -272,16 +273,47 @@ export class SessionManager extends EventEmitter {
       });
     }
 
+    let ready = null;
+    if (
+      typeof this.cursor.ensureWindow === 'function' &&
+      (opened.status === 'no-window' || opened.status === 'no-cdp')
+    ) {
+      ready = await this.cursor.ensureWindow({ folder: dir }).catch((err) => ({
+        status: 'error',
+        reason: err.message,
+      }));
+      if (['showing', 'opened', 'started', 'restarted'].includes(ready.status)) {
+        opened = await this.cursor.newChat({ folder: dir }).catch((err) => ({
+          status: 'error',
+          reason: err.message,
+        }));
+        if (opened.status === 'created' && opened.threadId) {
+          return this.attachDesktopThread({
+            threadId: opened.threadId,
+            folder: dir,
+            title,
+            fresh: true,
+          });
+        }
+      }
+    }
+
     const meta = this.create({ folder: dir, title, policy, mode });
     this.setActive(meta.id);
     await this.transcripts.get(meta.id);
-    this.#record(meta.id, KIND.notice, { text: this.#whyNotInIde(dir, opened) });
+    this.#record(meta.id, KIND.notice, { text: this.#whyNotInIde(dir, opened, ready) });
     this.emit('log', `started Auto-only session "${meta.title}" (${opened.status})`);
     return meta;
   }
 
   /** Why a new session could not be a Cursor chat. */
-  #whyNotInIde(folder, opened) {
+  #whyNotInIde(folder, opened, ready) {
+    if (ready?.status === 'error' || ready?.status === 'no-cdp' || ready?.status === 'no-window') {
+      return (
+        `This session is only in Auto — tried to open ${folder} in Cursor` +
+        (ready.reason ? ` (${ready.reason})` : '.')
+      );
+    }
     if (opened?.status === 'no-cdp') {
       return (
         `This session is only in Auto — Cursor is not listening on its debug port, ` +
@@ -290,8 +322,7 @@ export class SessionManager extends EventEmitter {
     }
     if (opened?.status === 'no-window') {
       return (
-        `This session is only in Auto — no Cursor window has ${folder} open. ` +
-        `Open that folder in Cursor to have new sessions appear there.`
+        `This session is only in Auto — no Cursor window has ${folder} open.`
       );
     }
     return (

@@ -207,8 +207,16 @@ const HELPERS = `
 export const FACTS = `(() => {
 ${HELPERS}
   let workspace = null;
+  let folders = [];
   try {
-    workspace = vscode.context.configuration().workspace?.uri?.path || null;
+    const cfg = vscode.context.configuration();
+    workspace = cfg?.workspace?.uri?.path || cfg?.workspace?.uri?.fsPath || null;
+    const roots = cfg?.workspaceFolders || cfg?.folders || cfg?.workspace?.folders || [];
+    if (Array.isArray(roots)) {
+      folders = roots
+        .map((f) => f?.uri?.path || f?.uri?.fsPath || f?.path || null)
+        .filter(Boolean);
+    }
   } catch {
     workspace = null;
   }
@@ -238,6 +246,7 @@ ${HELPERS}
   return {
     title: document.title,
     workspace,
+    folders,
     threadId: ids.size === 1 ? [...ids][0] : null,
     threadIdsSeen: ids.size,
     rows: rows.slice(-12),
@@ -672,4 +681,10 @@ export function samePath(a, b) {
       .toLowerCase();
   const left = norm(a);
   return Boolean(left) && left === norm(b);
+}
+
+/** Does this window's folder list include this repo? */
+export function showsFolder(facts, folder) {
+  if (samePath(facts?.workspace, folder)) return true;
+  return (facts?.folders || []).some((f) => samePath(f, folder));
 }

@@ -46,10 +46,16 @@ import {
   isApproval,
   pickerAt,
   queueAct,
-  samePath,
+  showsFolder,
   showThread,
 } from './cursor-dom.mjs';
 import { readSettings, readThread, threadOwning } from './desktop-threads.mjs';
+import {
+  cursorRunning as defaultCursorRunning,
+  quitCursor as defaultQuitCursor,
+  spawnCursor,
+  waitUntil,
+} from './cursor-launch.mjs';
 
 export const DEFAULT_PORT = Number(process.env.CURSOR_CDP_PORT || 9222);
 
@@ -64,6 +70,10 @@ const STOP_LOOKS = 6;
 const SHOW_LOOKS = 8;
 /** How long New Agent gets to produce a new chat id. */
 const NEW_CHAT_LOOKS = 12;
+/** How long a newly opened Cursor window gets to show this folder. */
+const WINDOW_WAIT_MS = 45_000;
+/** How long after a launch the debug port has to answer. */
+const CDP_WAIT_MS = 45_000;
 /** How long a menu gets to open, and a picker to admit it changed. */
 const MENU_LOOKS = 10;
 /** How long a pasted image gets to appear beside the chat box. */
@@ -443,6 +453,11 @@ export class CursorCdp {
    * @param {(threadId: string) => object|null} [opts.readSettings]  what a chat
    *   is set to, from the desktop's own records
    * @param {number} [opts.settleMs]
+   * @param {number} [opts.waitMs]  poll interval while waiting for a window
+   * @param {number} [opts.windowWaitMs]
+   * @param {() => boolean} [opts.cursorRunning]
+   * @param {(opts: object) => object|Promise<object>} [opts.launchCursor]
+   * @param {() => void|Promise<void>} [opts.quitCursor]
    */
   constructor({
     port = DEFAULT_PORT,
@@ -453,6 +468,11 @@ export class CursorCdp {
     readSettings: settingsOf,
     clipboard: board,
     settleMs,
+    waitMs,
+    windowWaitMs,
+    cursorRunning: running,
+    launchCursor,
+    quitCursor,
   } = {}) {
     this.port = port;
     this.listTargets = listTargets || (() => defaultTargets(port));
@@ -464,9 +484,14 @@ export class CursorCdp {
       isGenerating || ((threadId) => Boolean(readThread(threadId, { tail: 0 })?.generating));
     this.readSettings = settingsOf || ((threadId) => readSettings(threadId));
     // The machine's clipboard, borrowed to get a picture into the chat box.
-    // Injectable so tests never touch the real one.
+    // Injectable so tests never touch the machine's real clipboard.
     this.clipboard = board || clipboard;
     this.settleMs = settleMs ?? SUBMIT_SETTLE_MS;
+    this.waitMs = waitMs ?? 500;
+    this.windowWaitMs = windowWaitMs ?? WINDOW_WAIT_MS;
+    this.cursorRunning = running || defaultCursorRunning;
+    this.launchCursor = launchCursor || ((opts) => spawnCursor(opts));
+    this.quitCursor = quitCursor || defaultQuitCursor;
   }
 
   /** Is Cursor listening at all? Cheap enough to ask before every send. */
@@ -499,7 +524,92 @@ export class CursorCdp {
 
   /** The window showing a given repo, if one is open. */
   async windowFor(folder) {
-    return (await this.windows()).find((w) => samePath(w.workspace, folder)) || null;
+    return (await this.windows()).find((w) => showsFolder(w, folder)) || null;
+  }
+
+  /**
+   * Make sure a Cursor window is showing this folder, and is reachable.
+   *
+   * If one already is, nothing is launched. If Cursor is listening, a new
+   * window is asked of the running process. If nothing is running, Cursor is
+   * started with the debug port. If it is running *without* the port, it has
+   * to be quit and started again — Electron will not add the port later.
+   *
+   * @returns {Promise<{ status: 'showing'|'opened'|'started'|'restarted'|'no-cdp'|'no-window'|'error',
+   *   reason?: string, title?: string }>}
+   */
+  async ensureWindow({ folder }) {
+    if (!String(folder || '').trim()) {
+      return { status: 'error', reason: 'no folder was named' };
+    }
+    if (await this.#folderReady(folder)) return { status: 'showing' };
+
+    const listening = await this.available();
+    const running = Boolean(await this.cursorRunning());
+
+    try {
+      if (listening) {
+        await this.launchCursor({ folder, newWindow: true, debugPort: null });
+        return this.#waitForFolder(folder, 'opened');
+      }
+      if (running) {
+        await this.quitCursor();
+        const gone = await waitUntil(async () => !(await this.cursorRunning()), {
+          timeoutMs: 15_000,
+          intervalMs: this.waitMs,
+          sleep: wait,
+        });
+        if (!gone) {
+          return { status: 'error', reason: 'Cursor would not quit so its debug port could be opened' };
+        }
+        await this.launchCursor({ folder, newWindow: true, debugPort: this.port });
+        const up = await this.#waitForCdp();
+        if (!up) return { status: 'no-cdp', reason: 'Cursor was restarted but did not expose its debug port' };
+        return this.#waitForFolder(folder, 'restarted');
+      }
+      await this.launchCursor({ folder, newWindow: true, debugPort: this.port });
+      const up = await this.#waitForCdp();
+      if (!up) return { status: 'no-cdp', reason: 'Cursor started but did not expose its debug port' };
+      return this.#waitForFolder(folder, 'started');
+    } catch (err) {
+      return { status: 'error', reason: err.message };
+    }
+  }
+
+  async #folderReady(folder) {
+    try {
+      const w = await this.windowFor(folder);
+      return Boolean(w && w.hasComposer && !w.error);
+    } catch {
+      return false;
+    }
+  }
+
+  async #waitForCdp() {
+    return waitUntil(() => this.available(), {
+      timeoutMs: CDP_WAIT_MS,
+      intervalMs: this.waitMs,
+      sleep: wait,
+    });
+  }
+
+  async #waitForFolder(folder, how) {
+    const end = Date.now() + this.windowWaitMs;
+    let last = `no Cursor window has ${folder} open`;
+    while (Date.now() < end) {
+      if (!(await this.available())) {
+        last = 'debug port not listening';
+      } else {
+        const w = await this.windowFor(folder);
+        if (w?.hasComposer && !w.error) return { status: how, title: w.title };
+        last = w && !w.hasComposer ? 'that window has no chat box' : `no Cursor window has ${folder} open`;
+      }
+      await wait(this.waitMs);
+    }
+    return {
+      status: /debug port/i.test(last) ? 'no-cdp' : 'no-window',
+      reason: last,
+    };
   }
 
   /**
@@ -565,7 +675,7 @@ export class CursorCdp {
       try {
         window = await this.openWindow(target);
         const facts = await window.facts();
-        if (!samePath(facts?.workspace, folder)) continue;
+        if (!showsFolder(facts, folder)) continue;
         if (!facts?.hasComposer) {
           lastReason = 'that window has no chat box';
           continue;

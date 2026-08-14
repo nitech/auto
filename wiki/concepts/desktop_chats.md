@@ -14,9 +14,16 @@ in a window that already has that folder open, waits for the window to show a
 new thread id, and attaches to it. The same conversation is then on the phone
 and in the IDE.
 
-If no window has the folder, or Cursor was started without its debug port, Auto
-falls back to an ACP session and writes a notice saying why it is only in Auto.
-Opening the folder in Cursor is what makes the next one appear there.
+If no window has the folder, Auto asks the running Cursor for a new window
+(`--new-window`). If Cursor is not running at all, Auto starts it with
+`--remote-debugging-port=9222` so the window is born reachable. If Cursor is
+already running *without* that port, a second launch cannot add it — Electron
+hands the folder to the existing process and exits — so Auto quits Cursor and
+starts it again. That closes every window. It is the only way a new session
+can appear in the IDE.
+
+If none of that works, Auto falls back to an ACP session and writes a notice
+saying why it is only in Auto.
 
 ## The two halves
 
