@@ -109,7 +109,31 @@ function toolDetail(tool) {
     durationMs: blob?.durationMs ?? null,
     failed: Boolean(blob?.failed),
     finished: Boolean(blob?.finished),
+    diff: tool.additionalData?.precomputedDiff || null,
   };
+}
+
+/**
+ * Cursor already computed the edit as a line list. Turn that into the same
+ * `{ type: 'diff', path, oldText, newText }` block ACP attaches, so the web
+ * can draw the patch instead of an OTHER card named edit_file_v2.
+ */
+export function diffFromPrecomputed(precomputed, path) {
+  const lines = precomputed?.lines;
+  if (!Array.isArray(lines) || !lines.length) return null;
+  const oldLines = [];
+  const newLines = [];
+  for (const line of lines) {
+    const text = String(line?.content ?? '');
+    const kind = String(line?.type || '').toLowerCase();
+    if (kind === 'added' || kind === 'add') newLines.push(text);
+    else if (kind === 'deleted' || kind === 'removed' || kind === 'del') oldLines.push(text);
+    else {
+      oldLines.push(text);
+      newLines.push(text);
+    }
+  }
+  return { type: 'diff', path: path || '', oldText: oldLines.join('\n'), newText: newLines.join('\n') };
 }
 
 /**
@@ -154,6 +178,9 @@ export function toolStatus({ said, finished, verdict, failed, generating }) {
 
 /** Words in `additionalData.status` that mean nobody is being waited for. */
 const ANSWERED = /^(submitted|skipped|cancelled|accepted|rejected|error)$/i;
+
+/** Cursor has already built (or dismissed) this plan. */
+const PLAN_SETTLED = /^(done|accepted|approved|rejected|cancelled)$/i;
 
 /**
  * The question this call is putting to a person, if it is one.
@@ -202,6 +229,56 @@ export function questionOf(tool) {
 }
 
 /**
+ * The plan this call created, if it is one.
+ *
+ * `create_plan` looks like any other tool call, so without this it reaches a
+ * phone as an empty OTHER bar named `create_plan`. Cursor itself draws a
+ * "Created Plan" card: a title, a short overview, View Plan for the markdown,
+ * and Build (with a model) to start implementing. The same fields live on the
+ * bubble — `params.name` / `overview` / `plan` / `todos`, and whether anyone
+ * has built it yet in `additionalData.reviewData.status`.
+ *
+ * Older bubbles only carried the markdown. The first heading is then the
+ * title, and there is no overview until View Plan is opened. An unfamiliar
+ * review word counts as still waiting, the way a question does: being offered
+ * Build twice is recoverable, silence about a plan that is not built is not.
+ */
+export function planOf(tool) {
+  if ((tool?.name || tool?.tool) !== 'create_plan') return null;
+
+  const params = parse(tool.params) || parse(tool.rawArgs) || {};
+  const extra = tool.additionalData || {};
+  const review = extra.reviewData || {};
+  const state = review.status || null;
+  const markdown = typeof params.plan === 'string' ? params.plan : '';
+  const heading = markdown.match(/^#\s+(.+)$/m);
+  const name = params.name ? String(params.name) : heading ? heading[1].trim() : null;
+  const overview = params.overview ? String(params.overview) : null;
+  const todos = (params.todos || []).map((t) => ({
+    id: t.id,
+    content: String(t.content || ''),
+    status: String(t.status || 'pending'),
+  }));
+
+  if (!name && !overview && !markdown) {
+    return { asked: false, waiting: false, state, name: null, overview: null, markdown: '', todos: [] };
+  }
+
+  return {
+    asked: true,
+    waiting: Boolean(state) && !PLAN_SETTLED.test(state),
+    state,
+    name,
+    overview,
+    markdown,
+    todos,
+    planId: extra.planId ? String(extra.planId) : null,
+    planUri: extra.planUri ? String(extra.planUri) : null,
+    option: review.selectedOption && review.selectedOption !== 'none' ? String(review.selectedOption) : null,
+  };
+}
+
+/**
  * A short print of what a bubble is saying now, to tell a re-read of the same
  * thing from a bubble that has moved on. Length is enough: text and output only
  * ever grow.
@@ -213,13 +290,17 @@ export function questionOf(tool) {
 function printOf(message) {
   if (message.kind === 'tool') {
     const asked = message.question ? `:${message.question.state || 'none'}` : '';
-    return `${message.status}:${message.output?.length || 0}${asked}`;
+    const plan = message.plan
+      ? `:${message.plan.state || 'none'}:${message.plan.markdown?.length || 0}`
+      : '';
+    const diff = message.content?.length ? `:${message.content.length}` : '';
+    return `${message.status}:${message.output?.length || 0}${asked}${plan}${diff}`;
   }
   return `${message.kind}:${message.text?.length || 0}`;
 }
 
 /** What a bubble is worth showing, if anything. */
-function messageOf(bubble, { generating = false } = {}) {
+function messageOf(bubble, { generating = false, grouping = null } = {}) {
   if (!bubble || typeof bubble !== 'object') return null;
   const role = bubble.type === BUBBLE_USER ? 'user' : 'assistant';
 
@@ -227,6 +308,7 @@ function messageOf(bubble, { generating = false } = {}) {
   if (tool) {
     const detail = toolDetail(tool);
     const question = questionOf(tool);
+    const plan = planOf(tool);
     const status = toolStatus({
       said: tool.status,
       finished: detail.finished,
@@ -234,8 +316,29 @@ function messageOf(bubble, { generating = false } = {}) {
       failed: detail.failed,
       generating,
     });
+    const path =
+      grouping?.toolDisplayPath ||
+      detail.input?.relativeWorkspacePath ||
+      detail.input?.targetFile ||
+      detail.input?.path ||
+      null;
+    const input = detail.input ? { ...detail.input } : {};
+    if (path && !input.relativeWorkspacePath && !input.targetFile && !input.path) input.path = path;
+    if (grouping?.editLinesAdded != null) input.added = grouping.editLinesAdded;
+    if (grouping?.editLinesRemoved != null) input.removed = grouping.editLinesRemoved;
+    if (plan?.asked) {
+      if (plan.name) input.name = plan.name;
+      if (plan.overview) input.overview = plan.overview;
+      if (plan.markdown) input.plan = plan.markdown;
+      if (plan.todos?.length) input.todos = plan.todos;
+      if (plan.planId) input.planId = plan.planId;
+      if (plan.planUri) input.planUri = plan.planUri;
+    }
+    const diff = diffFromPrecomputed(detail.diff, path);
+    const emptyPlan = (tool.name || tool.tool) === 'create_plan' && !plan?.asked;
     return {
       ...(question ? { question } : {}),
+      ...(plan ? { plan } : {}),
       role,
       kind: 'tool',
       // An MCP call is written before Cursor knows what it is calling, and it
@@ -243,15 +346,21 @@ function messageOf(bubble, { generating = false } = {}) {
       // arrives with a later write.
       name: toolName(tool),
       status,
-      input: detail.input,
+      input: Object.keys(input).length ? input : null,
       output: detail.output,
       exitCode: detail.exitCode,
       durationMs: detail.durationMs,
+      ...(diff ? { content: [diff] } : {}),
       // A call still running will be written again with what it printed, so
       // this bubble is not finished with us yet. Anything else is as final as
       // it is going to get, output or no output — except a question, which is
-      // finished with nobody until it has been answered.
-      pending: status === 'in_progress' || Boolean(question?.waiting),
+      // finished with nobody until it has been answered, and a plan still
+      // waiting to be built.
+      pending:
+        status === 'in_progress' ||
+        Boolean(question?.waiting) ||
+        Boolean(plan?.waiting) ||
+        (emptyPlan && generating),
       text: '',
     };
   }
@@ -321,7 +430,7 @@ export function readThread(threadId, { seen, tail } = {}) {
         continue;
       }
 
-      const message = messageOf(bubble, { generating });
+      const message = messageOf(bubble, { generating, grouping: header?.grouping || null });
       // An empty bubble is one the desktop has created but not filled in yet,
       // so leave it unvisited and look again on the next pass. A tool call
       // waiting on its output is the same case: something is there to show,

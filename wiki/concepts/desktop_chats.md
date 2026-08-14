@@ -86,6 +86,12 @@ A thread's messages are `cursorDiskKV` rows: `composerData:<threadId>` holds
 agent, carrying either `text`, a `thinking` block, or `toolFormerData` for a
 tool call.
 
+Every tool bubble is recorded. The web and Telegram then follow Cursor's own
+lanes rather than printing each one as a named step: reads and searches fold
+into an activity group, edits sit on a file-change row with the path and a
++/- count (and the diff Cursor already stored, when it is there), and a few
+internal tools stay off the stream entirely.
+
 ## Things learned the hard way
 
 - **Assistant text is written whole, not as it streams.** A 900-character

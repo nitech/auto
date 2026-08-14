@@ -710,6 +710,41 @@ details.think .body {
 .tool[open] > summary > .peek { display: none; }
 .tool.failed > summary > .peek { color: var(--red); }
 
+.tool.bundle > summary > .row .kind { color: var(--muted); }
+.bundle-list { display: flex; flex-direction: column; gap: 2px; padding: 4px 0 8px; }
+.bundle-row .row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+}
+.bundle-row .kind {
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+  flex: none;
+}
+.bundle-row .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.bundle-row .stat { flex: none; font-size: 11px; }
+.bundle-row .stat .plus { color: var(--green); }
+.bundle-row .stat .minus { color: var(--red); }
+.bundle-row .state { font-size: 11px; color: var(--faint); flex: none; }
+.bundle-row.done .state { color: var(--green); }
+.bundle-row.failed .state { color: var(--red); }
+.bundle-row .item-body { padding: 0 12px; }
+.bundle-row .item-body:empty { display: none; }
+
 /* diffs */
 
 .diff { font-family: var(--mono); font-size: 12.5px; }

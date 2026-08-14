@@ -17,6 +17,7 @@ import {
 import { lineDiff, collapseContext, diffStats } from './diff.js';
 import { renderMarkdown } from './markdown.js';
 import { initBrowser, onFrame, onStatus } from './browser.js';
+import { classifyTool, displayLabel, fileStats, isCreatedPlan, planFields } from './desktop-tool-ui.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -56,6 +57,8 @@ const state = {
   busy: false,
   /** toolCallId -> element, so tool_update mutates the card it belongs to */
   toolCards: new Map(),
+  /** consecutive groupable/file-change calls folded into one card */
+  bundle: null,
   /** requestId -> element */
   permCards: new Map(),
   /** askId -> element, so a question can be marked answered where it stands */
@@ -332,25 +335,149 @@ function renderDiff(block) {
 
 /** Human-friendly one-liner for a tool call. */
 function toolLabel(rec) {
-  const input = rec.rawInput || {};
-  return (
-    input.command ||
-    input.path ||
-    input.file_path ||
-    input.query ||
-    rec.title ||
-    rec.toolKind ||
-    'tool'
+  return displayLabel(rec);
+}
+
+function statusWord(status, failed) {
+  if (failed || status === 'failed') return 'failed';
+  if (status === 'cancelled') return 'stopped';
+  if (status === 'completed') return 'done';
+  if (status === 'in_progress' || status === 'pending') return 'running…';
+  return String(status || 'running…').replace('_', ' ');
+}
+
+function paintItemStatus(row, status, failed) {
+  row.classList.toggle('failed', Boolean(failed) || status === 'failed');
+  row.classList.toggle('done', status === 'completed' && !failed);
+  const stateEl = row.querySelector('.state');
+  if (stateEl) stateEl.textContent = statusWord(status, failed);
+}
+
+function bundleSummary(bundle) {
+  const items = bundle.items;
+  if (bundle.lane === 'fileChange') {
+    if (items.length === 1) return { kind: 'edit', label: displayLabel(items[0].rec) };
+    return { kind: 'edit', label: `Edited ${items.length} files` };
+  }
+  const counts = new Map();
+  for (const it of items) {
+    const name = it.ui.short || it.ui.label;
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  return {
+    kind: 'read',
+    label: [...counts.entries()].map(([name, n]) => (n > 1 ? `${name} ${n}` : name)).join(' · '),
+  };
+}
+
+function paintBundle(bundle) {
+  const { card, items } = bundle;
+  const { kind, label } = bundleSummary(bundle);
+  card.querySelector('summary .kind').textContent = kind;
+  card.querySelector('summary .label').textContent = label;
+  let status = 'completed';
+  let failed = false;
+  for (const it of items) {
+    const s = it.rec.status || 'completed';
+    if (s === 'in_progress' || s === 'pending') status = 'in_progress';
+    else if (s === 'failed') failed = true;
+    else if (s === 'cancelled' && status !== 'in_progress') status = 'cancelled';
+  }
+  if (status === 'in_progress') {
+    card.classList.add('running');
+    card.classList.remove('done', 'failed');
+  } else {
+    card.classList.remove('running');
+    card.classList.toggle('failed', failed);
+    card.classList.toggle('done', !failed);
+    if (!failed && !card.dataset.opened) card.open = false;
+  }
+  card.querySelector('summary .state').textContent = statusWord(
+    failed ? 'failed' : status,
+    failed,
   );
 }
 
+function flushBundle() {
+  state.bundle = null;
+}
+
+function startBundle(lane) {
+  const card = document.createElement('details');
+  card.className = `tool bundle ${lane === 'fileChange' ? 'files' : 'activity'}`;
+  card.innerHTML = `
+    <summary>
+      <span class="row">
+        <span class="kind"></span>
+        <span class="label"></span>
+        <span class="state">running…</span>
+      </span>
+    </summary>
+    <div class="body bundle-list"></div>`;
+  card.querySelector('summary').addEventListener('click', () => {
+    card.dataset.opened = '1';
+  });
+  add(card);
+  state.bundle = { lane, card, items: [] };
+  return state.bundle;
+}
+
+function addBundleItem(rec, ui) {
+  if (state.bundle?.lane !== ui.lane) {
+    flushBundle();
+    startBundle(ui.lane);
+  }
+  const { card } = state.bundle;
+  const row = document.createElement('div');
+  row.className = 'bundle-row';
+  row.innerHTML = `
+    <span class="row">
+      <span class="kind">${esc(ui.toolKind)}</span>
+      <span class="name"></span>
+      <span class="stat"></span>
+      <span class="state">running…</span>
+    </span>
+    <div class="item-body"></div>`;
+  row.querySelector('.name').textContent = displayLabel(rec);
+  const stats = fileStats(rec);
+  if (stats) {
+    row.querySelector('.stat').innerHTML =
+      `<span class="plus">+${stats.added}</span> <span class="minus">−${stats.removed}</span>`;
+  }
+  const body = row.querySelector('.item-body');
+  renderContent(body, rec.content, null);
+  row.dataset.contentCount = String((rec.content || []).length);
+  paintItemStatus(row, rec.status, rec.status === 'failed');
+  card.querySelector('.bundle-list').appendChild(row);
+  const item = { rec, ui, row };
+  state.bundle.items.push(item);
+  if (rec.toolCallId) state.toolCards.set(rec.toolCallId, { bundle: true, item, group: state.bundle });
+  paintBundle(state.bundle);
+}
+
 function renderToolCall(rec) {
+  const ui = classifyTool(rec);
+  if (ui.lane === 'hide') {
+    if (rec.toolCallId) state.toolCards.set(rec.toolCallId, { hidden: true });
+    return;
+  }
+  if (ui.lane === 'fileChange' || ui.lane === 'group') {
+    addBundleItem(rec, ui);
+    return;
+  }
+  flushBundle();
+
+  if (isCreatedPlan(rec)) {
+    renderCreatedPlan(rec);
+    return;
+  }
+
   const card = document.createElement('details');
   card.className = 'tool';
   card.innerHTML = `
     <summary>
       <span class="row">
-        <span class="kind">${esc(rec.toolKind || 'tool')}</span>
+        <span class="kind">${esc(ui.toolKind || rec.toolKind || 'tool')}</span>
         <span class="label"></span>
         <span class="state">running…</span>
       </span>
@@ -382,7 +509,7 @@ function renderToolCall(rec) {
   if (rec.status === 'completed' || failed) {
     card.classList.add(failed ? 'failed' : 'done');
     card.querySelector('.state').textContent = failed ? 'failed' : 'done';
-  } else if (rec.toolKind === 'execute') {
+  } else if (ui.toolKind === 'execute' || rec.toolKind === 'execute') {
     // A command that is still going is the one thing worth watching, so its
     // output is shown as it arrives instead of behind a tap.
     card.classList.add('running');
@@ -392,7 +519,40 @@ function renderToolCall(rec) {
 
 function renderToolUpdate(rec) {
   const card = rec.toolCallId ? state.toolCards.get(rec.toolCallId) : null;
-  if (!card) return;
+  if (!card || card.hidden) return;
+
+  if (card.createdPlan) {
+    paintCreatedPlan(card, {
+      ...card.rec,
+      ...rec,
+      rawInput: rec.rawInput ? { ...card.rec.rawInput, ...rec.rawInput } : card.rec.rawInput,
+      awaitingBuild: rec.awaitingBuild ?? card.rec.awaitingBuild,
+    });
+    return;
+  }
+
+  if (card.bundle) {
+    const { item, group } = card;
+    if (rec.title) item.rec = { ...item.rec, title: rec.title };
+    if (rec.status) item.rec = { ...item.rec, status: rec.status };
+    if (rec.rawInput) item.rec = { ...item.rec, rawInput: { ...item.rec.rawInput, ...rec.rawInput } };
+    if (rec.title) item.row.querySelector('.name').textContent = displayLabel(item.rec);
+    const stats = fileStats(item.rec);
+    if (stats) {
+      item.row.querySelector('.stat').innerHTML =
+        `<span class="plus">+${stats.added}</span> <span class="minus">−${stats.removed}</span>`;
+    }
+    const failed = rec.status === 'failed';
+    if (rec.status) paintItemStatus(item.row, rec.status, failed);
+    const blocks = rec.content || [];
+    const seen = Number(item.row.dataset.contentCount || 0);
+    if (blocks.length > seen) {
+      renderContent(item.row.querySelector('.item-body'), blocks.slice(seen), null);
+      item.row.dataset.contentCount = String(blocks.length);
+    }
+    paintBundle(group);
+    return;
+  }
 
   const stateEl = card.querySelector('.state');
   const body = card.querySelector('.body');
@@ -401,7 +561,10 @@ function renderToolUpdate(rec) {
     rec.status === 'failed' || (out && typeof out === 'object' && out.exitCode > 0);
 
   // A name that only turns up once the call is under way, as an MCP call's does.
-  if (rec.title) card.querySelector('.label').textContent = rec.title;
+  if (rec.title) {
+    const next = { ...rec, rawInput: rec.rawInput, title: rec.title };
+    card.querySelector('.label').textContent = displayLabel(next);
+  }
 
   if (rec.status === 'completed' || rec.status === 'failed' || rec.status === 'cancelled') {
     card.classList.remove('running');
@@ -636,7 +799,102 @@ function renderQuestionAnswered(rec) {
   card.querySelector('.outcome').textContent = `Answered: ${said}`;
 }
 
+function renderCreatedPlan(rec) {
+  const card = div('created-plan');
+  card.innerHTML = `
+    <div class="head">Created Plan</div>
+    <div class="title"></div>
+    <div class="overview"></div>
+    <div class="body md" hidden></div>
+    <div class="acts">
+      <button type="button" class="view">View Plan</button>
+      <span class="build-group">
+        <button type="button" class="build">Build</button>
+        <select class="build-model" aria-label="Model to build with"></select>
+      </span>
+    </div>
+    <div class="cap outcome"></div>`;
+  card.rec = rec;
+  card.createdPlan = true;
+  fillPlanModels(card.querySelector('.build-model'));
+
+  card.querySelector('.view').onclick = () => {
+    const body = card.querySelector('.body');
+    const open = body.hidden;
+    body.hidden = !open;
+    card.querySelector('.view').textContent = open ? 'Hide Plan' : 'View Plan';
+    if (open) card.dataset.opened = '1';
+  };
+  card.querySelector('.build').onclick = () => sendPlanBuild(card);
+
+  if (rec.toolCallId) state.toolCards.set(rec.toolCallId, card);
+  paintCreatedPlan(card, rec);
+  add(card);
+}
+
+function fillPlanModels(select) {
+  select.innerHTML = '';
+  const current = document.createElement('option');
+  current.value = '';
+  current.textContent = 'Current model';
+  select.append(current);
+  for (const opt of els.model.options) {
+    if (!opt.value) continue;
+    const copy = document.createElement('option');
+    copy.value = opt.value;
+    copy.textContent = opt.textContent;
+    select.append(copy);
+  }
+  const mine = state.sessions.find((s) => s.id === state.sessionId);
+  if (mine?.model && [...select.options].some((o) => o.value === mine.model)) {
+    select.value = mine.model;
+  }
+}
+
+function sendPlanBuild(card) {
+  const rec = card.rec || {};
+  const model = card.querySelector('.build-model')?.value || '';
+  const build = card.querySelector('.build');
+  const outcome = card.querySelector('.outcome');
+  for (const b of card.querySelectorAll('button, select')) b.disabled = true;
+  if (outcome) outcome.textContent = 'building…';
+  sendOp({
+    op: 'plan.build',
+    sessionId: state.sessionId,
+    toolCallId: rec.toolCallId,
+    model,
+  });
+  build.dataset.sent = '1';
+}
+
+function paintCreatedPlan(card, rec) {
+  card.rec = { ...(card.rec || {}), ...rec };
+  const fields = planFields(card.rec);
+  card.querySelector('.title').textContent = fields.name;
+  const overview = card.querySelector('.overview');
+  overview.textContent = fields.overview;
+  overview.hidden = !fields.overview;
+  const body = card.querySelector('.body');
+  if (fields.markdown) body.innerHTML = markdown(fields.markdown);
+  const waiting = fields.awaitingBuild && card.rec.awaitingBuild !== false;
+  card.classList.toggle('resolved', !waiting);
+  const outcome = card.querySelector('.outcome');
+  if (!waiting) {
+    outcome.textContent = 'Built.';
+    for (const b of card.querySelectorAll('button, select')) {
+      if (!b.classList.contains('view')) b.disabled = true;
+    }
+  } else if (!card.querySelector('.build').dataset.sent) {
+    outcome.textContent = '';
+    for (const b of card.querySelectorAll('button, select')) b.disabled = false;
+  }
+}
+
 function renderPlan(rec) {
+  if (isCreatedPlan(rec) || rec.markdown || rec.name) {
+    renderCreatedPlan(rec);
+    return;
+  }
   const card = div('plan', '<div class="head">Plan</div>');
   const ol = document.createElement('ol');
   for (const e of rec.entries || []) {
@@ -667,6 +925,7 @@ function renderError(rec) {
 
 function render(rec) {
   if (typeof rec.seq === 'number') state.lastSeq = Math.max(state.lastSeq, rec.seq);
+  if (rec.kind !== 'tool_call' && rec.kind !== 'tool_update') flushBundle();
 
   switch (rec.kind) {
     case 'user_message':
@@ -1078,6 +1337,7 @@ function attach(sessionId) {
   state.lastSeq = 0;
   els.transcript.innerHTML = '';
   state.toolCards.clear();
+  state.bundle = null;
   state.permCards.clear();
   state.askCards.clear();
   state.stream = null;
@@ -1155,6 +1415,7 @@ function connect() {
       if (fresh) {
         els.transcript.innerHTML = '';
         state.toolCards.clear();
+        state.bundle = null;
         state.permCards.clear();
         state.askCards.clear();
         state.stream = null;

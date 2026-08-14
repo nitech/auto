@@ -31,6 +31,7 @@ import { CursorCdp } from './cursor-cdp.mjs';
 import { DesktopOutbox } from './desktop-outbox.mjs';
 import { ThreadWatcher, readThread } from './desktop-threads.mjs';
 import { labelsForAnswer } from './questions.mjs';
+import { classifyTool } from './desktop-tool-ui.mjs';
 
 export const STATUS = {
   idle: 'idle',
@@ -1163,20 +1164,34 @@ export class SessionManager extends EventEmitter {
           status: message.status || 'completed',
           rawOutput: desktopOutput(message),
           ...(better ? { title: better } : {}),
+          ...(message.content ? { content: message.content } : {}),
+          ...(message.plan?.asked
+            ? {
+                rawInput: message.input || undefined,
+                awaitingBuild: Boolean(message.plan.waiting),
+              }
+            : {}),
         });
+        if (message.plan) this.#rememberPlan(id, message);
         return;
       }
 
       runtime.toolsDrawn.add(message.id);
       runtime.toolNames.set(message.id, message.name);
+      const ui = classifyTool({ title: message.name, rawInput: message.input });
       this.#record(id, KIND.toolCall, {
         toolCallId: message.id,
         title: message.name,
-        toolKind: message.input?.command ? 'execute' : 'other',
+        toolKind: ui.toolKind,
         status: message.status || 'completed',
         rawInput: message.input || undefined,
         rawOutput: desktopOutput(message),
+        ...(message.content ? { content: message.content } : {}),
+        ...(message.plan
+          ? { awaitingBuild: Boolean(message.plan.waiting) }
+          : {}),
       });
+      if (message.plan) this.#rememberPlan(id, message);
       return;
     }
     const words = this.#newWordsOf(id, message);
@@ -1296,6 +1311,64 @@ export class SessionManager extends EventEmitter {
         pressed.status === 'pressed'
           ? `Answered in Cursor: ${what}.`
           : `Could not answer in Cursor: ${pressed.reason || pressed.status}.`,
+    });
+    return pressed;
+  }
+
+  /**
+   * Remember a Created Plan so Build from the phone still knows which bubble
+   * to press, and so a plan built in the IDE is marked built here too.
+   */
+  #rememberPlan(id, message) {
+    const { plan } = message;
+    if (!plan?.asked) return;
+    const runtime = this.live.get(id) || {};
+    runtime.plans = runtime.plans || new Map();
+    this.live.set(id, runtime);
+    runtime.plans.set(message.id, {
+      status: plan.waiting ? 'waiting' : 'built',
+      name: plan.name,
+      overview: plan.overview,
+      markdown: plan.markdown,
+      planId: plan.planId,
+    });
+  }
+
+  /**
+   * Build a plan Cursor created, from the web or Telegram.
+   *
+   * Presses the card's own Build — and the model on that card, when one was
+   * named — so the chat that wrote the plan is the one that implements it.
+   * A plan already built in the IDE is refused rather than started twice.
+   */
+  async buildPlan(id, { toolCallId, model } = {}) {
+    const meta = this.meta.get(id);
+    if (!meta) throw new Error(`Unknown session ${id}`);
+    if (meta.kind !== 'desktop' || !meta.desktopThreadId) {
+      throw new Error('Only a desktop chat can build a plan this way');
+    }
+    if (!toolCallId) throw new Error('no plan was named');
+
+    const held = this.live.get(id)?.plans?.get(toolCallId);
+    if (held?.status === 'built') {
+      return { status: 'gone', reason: 'that plan has already been built' };
+    }
+
+    const wanted = model ? this.#cursorsNameFor(model) : '';
+    const pressed = await this.cursor
+      .buildPlan({
+        threadId: meta.desktopThreadId,
+        bubbleId: toolCallId,
+        model: wanted,
+      })
+      .catch((err) => ({ status: 'error', reason: err.message }));
+
+    const how = wanted ? `Build with ${wanted}` : 'Build';
+    this.#record(id, KIND.notice, {
+      text:
+        pressed.status === 'pressed'
+          ? `Building in Cursor: ${how}.`
+          : `Could not build in Cursor: ${pressed.reason || pressed.status}.`,
     });
     return pressed;
   }

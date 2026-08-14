@@ -1313,8 +1313,8 @@ if (existsSync(SRC)) {
     fail('app.js must show the loading marker while history is on its way');
     failed = true;
   }
-  if (!js.includes('setHistoryLoading(false)')) {
-    fail('app.js must hide the loading marker once history is on screen');
+  if (!js.includes("from './desktop-tool-ui.js'")) {
+    fail('app.js must classify desktop tools the same way Telegram does');
     failed = true;
   }
   if (!failed) ok('v2 web: transcript loading marker');
@@ -1970,6 +1970,80 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1e4. Desktop tools follow Cursor’s chat lanes: edits are file changes,
+// reads fold together, and a few internal calls stay off the stream.
+{
+  try {
+    const { classifyTool, displayLabel, foldTools, isSimpleLs, diffFromPrecomputed } = {
+      ...(await import('../src/core/desktop-tool-ui.mjs')),
+      diffFromPrecomputed: (await import('../src/core/desktop-threads.mjs')).diffFromPrecomputed,
+    };
+    let failed = false;
+    const check = (what, got, want) => {
+      if (JSON.stringify(got) !== JSON.stringify(want)) {
+        fail(`${what}: expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
+        failed = true;
+      }
+    };
+
+    check('edit_file_v2 lane', classifyTool({ title: 'edit_file_v2' }).lane, 'fileChange');
+    check('edit_file_v2 kind', classifyTool({ title: 'edit_file_v2' }).toolKind, 'edit');
+    check('read_file_v2 lane', classifyTool({ title: 'read_file_v2' }).lane, 'group');
+    check('read_file_v2 kind', classifyTool({ title: 'read_file_v2' }).toolKind, 'read');
+    check(
+      'shell lane',
+      classifyTool({ title: 'run_terminal_command_v2', rawInput: { command: 'npm test' } }).lane,
+      'card',
+    );
+    check(
+      'shell kind',
+      classifyTool({ title: 'run_terminal_command_v2', rawInput: { command: 'npm test' } }).toolKind,
+      'execute',
+    );
+    check('apply_agent_diff', classifyTool({ title: 'apply_agent_diff' }).lane, 'hide');
+    check('mcp placeholder', classifyTool({ title: 'mcp--' }).lane, 'hide');
+    check('ACP Edit File stays a card', classifyTool({ title: 'Edit File', toolKind: 'edit' }).lane, 'card');
+    check('ls is grouped', isSimpleLs('ls src'), true);
+    check('ls with a pipe is not grouped', isSimpleLs('ls | wc'), false);
+
+    const folded = foldTools([
+      { title: 'read_file_v2', status: 'completed' },
+      { title: 'read_file_v2', status: 'completed' },
+      { title: 'ripgrep_raw_search', status: 'completed' },
+      { title: 'edit_file_v2', rawInput: { relativeWorkspacePath: 'a.mjs' }, status: 'completed' },
+      { title: 'edit_file_v2', rawInput: { relativeWorkspacePath: 'b.mjs' }, status: 'completed' },
+      { title: 'apply_agent_diff', status: 'completed' },
+      { title: 'run_terminal_command_v2', rawInput: { command: 'npm test' }, status: 'completed' },
+    ]);
+    check(
+      'folded labels',
+      folded.map((t) => t.label),
+      ['Read 2 · Search', 'Edited 2 files', 'npm test'],
+    );
+
+    const diff = diffFromPrecomputed(
+      {
+        lines: [
+          { type: 'deleted', content: 'old' },
+          { type: 'added', content: 'new' },
+        ],
+      },
+      'src/foo.mjs',
+    );
+    check('precomputed diff path', diff.path, 'src/foo.mjs');
+    check('precomputed diff texts', { oldText: diff.oldText, newText: diff.newText }, { oldText: 'old', newText: 'new' });
+
+    if (displayLabel({ title: 'edit_file_v2' }) !== 'Edit file') {
+      fail(`a pathless edit still needs a human name, got ${displayLabel({ title: 'edit_file_v2' })}`);
+      failed = true;
+    }
+
+    if (!failed) ok('v2 core: desktop tools follow Cursor’s chat lanes');
+  } catch (e) {
+    fail(`v2 desktop-tool-ui: ${e.message}`);
+  }
+}
+
 // 1f. Telegram turn rendering: status on top, prose escaped, size bounded.
 {
   try {
@@ -2023,8 +2097,17 @@ if (existsSync(SRC)) {
       fail('a shell tool should be labelled with its command');
       failed = true;
     }
-    if (toolLabel({ title: 'read_file' }) !== 'read_file') {
-      fail('a tool with no command keeps its name');
+    if (toolLabel({ title: 'read_file' }) !== 'Read file') {
+      fail('a desktop read should use Cursor’s name for it, not the raw tool id');
+      failed = true;
+    }
+    if (
+      toolLabel({
+        title: 'edit_file_v2',
+        rawInput: { relativeWorkspacePath: 'src/core/questions.mjs' },
+      }) !== 'Edited questions.mjs'
+    ) {
+      fail('a file edit should be labelled with the file, not edit_file_v2');
       failed = true;
     }
 
@@ -2556,6 +2639,46 @@ if (existsSync(SRC)) {
       const strange = asking({ status: 'awaiting-user-input' }, card);
       if (!strange.question?.waiting || strange.question.state !== 'awaiting-user-input') {
         fail(`an unknown state should still wait and say so, got ${JSON.stringify(strange.question)}`);
+      }
+
+      put.run(
+        `bubbleId:${thread}:b10`,
+        JSON.stringify({
+          bubbleId: 'b10',
+          type: 2,
+          toolFormerData: {
+            name: 'edit_file_v2',
+            status: 'completed',
+            params: JSON.stringify({ relativeWorkspacePath: 'src/foo.mjs' }),
+            additionalData: {
+              precomputedDiff: {
+                lines: [
+                  { type: 'deleted', content: 'old' },
+                  { type: 'added', content: 'new' },
+                ],
+                hasChanges: true,
+              },
+            },
+          },
+        }),
+      );
+      composer({
+        fullConversationHeadersOnly: [
+          ...bubbles.map((b) => ({ bubbleId: b.bubbleId })),
+          {
+            bubbleId: 'b10',
+            grouping: { toolDisplayPath: 'src/foo.mjs', editLinesAdded: 1, editLinesRemoved: 1 },
+          },
+        ],
+      });
+      const edited = threads
+        .readThread(thread, { seen: new Set(bubbles.map((b) => b.bubbleId)) })
+        .messages.find((m) => m.id === 'b10');
+      if (edited?.input?.added !== 1 || edited?.input?.removed !== 1) {
+        fail(`an edit should carry the header’s line counts, got ${JSON.stringify(edited?.input)}`);
+      }
+      if (edited?.content?.[0]?.type !== 'diff' || edited.content[0].newText !== 'new') {
+        fail(`an edit should carry Cursor’s precomputed diff, got ${JSON.stringify(edited?.content)}`);
       }
 
       store.close();

@@ -796,6 +796,92 @@ ${HELPERS}
 })()`;
 
 /**
+ * Find Cursor's Created Plan card and press View Plan or Build on it.
+ *
+ * The card is the bubble `create_plan` drew. Auto already knows its id, so this
+ * finds that bubble — a Build in another chat cannot be the one that runs.
+ * "Build Ctrl+⏎" is named Build once the shortcut is stripped, the same way
+ * Stop is. The chevron beside it is a menu, and menus only open for a real
+ * mouse, so locating it is enough: the caller presses where it sits.
+ *
+ * @param {object} opts
+ * @param {string} opts.bubbleId
+ * @param {'locate'|'view'|'build'} [opts.action]
+ */
+export const planCard = ({ bubbleId, action = 'locate' }) => `(() => {
+${HELPERS}
+  const pane = __pane();
+  const clean = (s) => String(s ?? '').replace(/\\s+/g, ' ').trim();
+  const wanted = ${JSON.stringify(String(bubbleId || ''))};
+  const action = ${JSON.stringify(String(action || 'locate'))};
+  const spot = (el, { right } = {}) => {
+    const { x, y, width, height } = el.getBoundingClientRect();
+    if (!width || !height) return null;
+    return {
+      x: Math.round(x + (right ? width - 10 : width / 2)),
+      y: Math.round(y + height / 2),
+    };
+  };
+  const named = (el) => {
+    const label = clean(el.getAttribute('aria-label') || el.getAttribute('title'));
+    const text = clean(el.textContent).replace(/(Ctrl|Alt|Shift|⌘|⌥)[^\\s]*$/i, '').trim();
+    return label || text;
+  };
+
+  let card = null;
+  for (const s of ${list(SELECTORS.message)}) {
+    for (const el of pane.querySelectorAll(s)) {
+      if (el.getAttribute('data-message-id') === wanted) card = el;
+    }
+    if (card) break;
+  }
+  if (!card) {
+    const holders = [...pane.querySelectorAll('div,span,p,h1,h2,h3,button')].filter(
+      (el) => /^Created Plan$/i.test(clean(el.textContent)) &&
+        ![...el.children].some((k) => /^Created Plan$/i.test(clean(k.textContent))),
+    );
+    card = holders.at(-1)?.closest(${JSON.stringify(SELECTORS.message[0])}) || holders.at(-1);
+  }
+  if (!card) return { found: false, pressed: false, reason: 'the plan is not on screen' };
+  card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+
+  const buttons = [...card.querySelectorAll('button, [role="button"]')].filter((el) => {
+    const rect = el.getBoundingClientRect();
+    return rect.width && rect.height;
+  });
+  const view = buttons.find((el) => /^view plan\\b/i.test(named(el)));
+  const build = [...buttons].reverse().find((el) => /^build\\b/i.test(named(el)));
+  const menu =
+    (build &&
+      [...(build.parentElement?.querySelectorAll('button, [role="button"]') || [])].find(
+        (el) =>
+          el !== build &&
+          (el.getAttribute('aria-haspopup') ||
+            /model|menu|more/i.test(named(el)) ||
+            !named(el)),
+      )) ||
+    null;
+
+  const at = {
+    viewAt: view ? spot(view) : null,
+    buildAt: build ? spot(build) : null,
+    menuAt: menu ? spot(menu) : build ? spot(build, { right: true }) : null,
+  };
+
+  const press = (el, name) => {
+    if (!el || el.disabled || el.getAttribute('aria-disabled') === 'true') {
+      return { found: true, pressed: false, reason: 'no ' + name + ' control on the card', ...at };
+    }
+    el.click();
+    return { found: true, pressed: true, name, at: spot(el), ...at };
+  };
+
+  if (action === 'view') return press(view, 'View Plan');
+  if (action === 'build') return press(build, 'Build');
+  return { found: true, pressed: false, ...at };
+})()`;
+
+/**
  * Compare two paths the way a person would.
  *
  * Cursor reports its folder as `/d:/Sevenfold/auto` while Auto holds

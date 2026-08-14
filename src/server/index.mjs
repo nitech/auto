@@ -291,6 +291,15 @@ const OPS = {
     send(ws, { type: 'question.answer', sessionId: id, askId: msg.askId, ...result });
   },
 
+  async 'plan.build'(ws, state, msg) {
+    const id = msg.sessionId || state.sessionId;
+    const result = await sessions.buildPlan(id, {
+      toolCallId: msg.toolCallId,
+      model: msg.model || '',
+    });
+    send(ws, { type: 'plan.build', sessionId: id, toolCallId: msg.toolCallId, ...result });
+  },
+
   async 'session.create'(ws, state, msg) {
     // The web client offers a folder by hand as well as from the project list,
     // so a path that names nothing must be refused rather than spawn an agent

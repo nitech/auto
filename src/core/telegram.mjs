@@ -16,6 +16,7 @@ import { join, dirname } from 'node:path';
 import { listProjects, workspaceIdFor } from './projects.mjs';
 import { desktopChats } from './desktop-chats.mjs';
 import { optionLetter, parseQuestionReply } from './questions.mjs';
+import { classifyTool, displayLabel, foldTools } from './desktop-tool-ui.mjs';
 
 const LIMIT = 4096;
 /** Telegram tolerates roughly one edit a second; stay well clear. */
@@ -86,8 +87,7 @@ const TOOL_LABEL_MAX = 70;
  * heredoc cannot take over the message.
  */
 export function toolLabel(rec) {
-  const command = rec?.rawInput?.command;
-  const name = String(command || rec?.title || rec?.toolKind || 'tool').replace(/\s+/g, ' ').trim();
+  const name = String(displayLabel(rec)).replace(/\s+/g, ' ').trim();
   return name.length > TOOL_LABEL_MAX ? `${name.slice(0, TOOL_LABEL_MAX - 1)}…` : name;
 }
 
@@ -114,7 +114,7 @@ export function failureNote(rec) {
  * answer cannot push the status out of view.
  */
 export function renderTurn({ text = '', tools = [] } = {}) {
-  const head = tools
+  const head = foldTools(tools)
     .map((t) => {
       const line = `${ICON[t.status] || '▸'} <i>${esc(t.label)}</i>`;
       // One word, on the same line: a phone has better uses for its rows.
@@ -817,7 +817,9 @@ export class TelegramBridge extends EventEmitter {
         break;
 
       case 'tool_call':
+        if (classifyTool(rec).lane === 'hide') break;
         turn.tools.set(rec.toolCallId || `t${turn.tools.size}`, {
+          rec,
           label: toolLabel(rec),
           status: rec.status || 'in_progress',
           failure: failureNote(rec),
@@ -828,7 +830,10 @@ export class TelegramBridge extends EventEmitter {
       case 'tool_update': {
         const tool = turn.tools.get(rec.toolCallId);
         // An MCP call is named only once it is under way; take the name late.
-        if (tool && rec.title) tool.label = toolLabel(rec);
+        if (tool && rec.title) {
+          tool.rec = { ...tool.rec, title: rec.title };
+          tool.label = toolLabel(tool.rec);
+        }
         if (tool && rec.status) {
           tool.status = rec.status;
           // A command that broke is the one thing worth quoting on a phone.

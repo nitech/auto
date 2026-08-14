@@ -46,6 +46,7 @@ import {
   clickAction,
   isApproval,
   pickerAt,
+  planCard,
   queueAct,
   showsFolder,
   showThread,
@@ -308,6 +309,11 @@ export class CursorWindow {
   /** Press the options on a question card, then Continue (or Skip). */
   answer(opts) {
     return this.evaluate(answerCard(opts));
+  }
+
+  /** Find or press View Plan / Build on a Created Plan card. */
+  planAction(opts) {
+    return this.evaluate(planCard(opts));
   }
 
   /** Press the control with this name. */
@@ -1044,6 +1050,90 @@ export class CursorCdp {
         reason: done?.reason || 'the question could not be answered',
       };
     });
+  }
+
+  /**
+   * Build the plan on a Created Plan card, optionally choosing the model first.
+   *
+   * The card is found by the bubble id Auto already stored. A model is chosen
+   * on that card's own menu — the chevron beside Build — which only opens for
+   * a real mouse. If the menu is not there, the chat's model picker is used
+   * instead, then Build is pressed. Picking a model from the card's menu often
+   * starts the build itself; pressing Build again would start a second one.
+   */
+  async buildPlan({ threadId, bubbleId, model } = {}) {
+    if (!bubbleId) return { status: 'error', reason: 'no plan was named' };
+
+    const shown = await this.#ensureShown(threadId);
+    if (shown) return shown;
+
+    return this.#withThread(threadId, async (window) => {
+      const loc = await window.planAction({ bubbleId, action: 'locate' });
+      if (!loc?.found) {
+        return { status: 'not-pressed', reason: loc?.reason || 'the plan is not on screen' };
+      }
+
+      if (model) {
+        const fromMenu = await this.#pickPlanModel(window, loc, model);
+        if (fromMenu.status === 'pressed') return fromMenu;
+        if (fromMenu.status !== 'picked') {
+          const fallback = await this.#inMenu(window, 'model', model);
+          if (fallback.status !== 'set' && fallback.status !== 'already') {
+            return {
+              status: 'not-pressed',
+              reason: fromMenu.reason || fallback.reason || `could not choose ${model}`,
+            };
+          }
+        }
+      }
+
+      const done = await window.planAction({ bubbleId, action: 'build' });
+      if (done?.pressed) return { status: 'pressed', name: done.name || 'Build', how: 'click' };
+      if (done?.buildAt || loc.buildAt) {
+        await window.mouseAt(done?.buildAt || loc.buildAt);
+        return { status: 'pressed', name: 'Build', how: 'mouse' };
+      }
+      return { status: 'not-pressed', reason: done?.reason || 'no Build control on the card' };
+    });
+  }
+
+  /** Open the chevron beside Build and pick a model, if that menu exists. */
+  async #pickPlanModel(window, loc, model) {
+    if (!loc?.menuAt) return { status: 'no-menu', reason: 'the plan card has no model menu' };
+    await window.mouseAt(loc.menuAt);
+    const menu = await this.#menuOpened(window);
+    if (!menu.items.length) {
+      await this.#closeMenu(window);
+      return { status: 'no-menu', reason: 'the plan model menu did not open' };
+    }
+    const found = pickItem(menu.items, model);
+    if (!found.item) {
+      await this.#closeMenu(window);
+      return { status: 'no-such-option', reason: found.reason };
+    }
+    for (const step of found.press) await window.mouseAt(step);
+    await this.#closeMenu(window);
+    const busy = await window.actions();
+    if (busy?.generating) return { status: 'pressed', name: model, how: 'menu' };
+    return { status: 'picked', name: model };
+  }
+
+  /**
+   * Bring a chat to the front if it is open but not the tab on screen.
+   * @returns {object|null} a failure to return, or null when the chat is showing
+   */
+  async #ensureShown(threadId) {
+    const here = await this.#withThread(threadId, (window) => window.facts());
+    if (here?.status === 'unknown-thread') {
+      const shown = await this.showThread({ threadId });
+      if (shown.status !== 'showing' && shown.status !== 'shown') {
+        return {
+          status: shown.status === 'no-tab' ? 'unknown-thread' : 'error',
+          reason: shown.reason,
+        };
+      }
+    }
+    return null;
   }
 
   /**
