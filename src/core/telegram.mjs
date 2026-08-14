@@ -409,9 +409,13 @@ export class TelegramBridge extends EventEmitter {
       }
 
       case '/new': {
-        const meta = this.sessions.create(arg ? { folder: arg } : {});
+        const meta = await this.sessions.startInIde(arg ? { folder: arg } : {});
         this.sessions.setActive(meta.id);
-        return this.send(`Started <b>${esc(meta.title)}</b>\n<code>${esc(meta.folder)}</code>`);
+        const where =
+          meta.kind === 'desktop'
+            ? ' in the Cursor desktop app — same conversation on both ends.'
+            : '.';
+        return this.send(`Started <b>${esc(meta.title)}</b>${where}\n<code>${esc(meta.folder)}</code>`);
       }
 
       case '/stop': {
@@ -585,11 +589,13 @@ export class TelegramBridge extends EventEmitter {
       const existing = this.sessions
         .list()
         .find((s) => sameFolder(s.folder, payload.folder));
-      const meta = existing || this.sessions.create({ folder: payload.folder });
+      const meta = existing || (await this.sessions.startInIde({ folder: payload.folder }));
       this.sessions.setActive(meta.id);
       await answer(`${existing ? 'Switched to' : 'Started'} ${meta.title}`);
       await this.send(
-        `${existing ? 'Now on' : 'Started'} <b>${esc(meta.title)}</b>\n<code>${esc(meta.folder)}</code>`,
+        `${existing ? 'Now on' : 'Started'} <b>${esc(meta.title)}</b>` +
+          (!existing && meta.kind === 'desktop' ? ' in the Cursor desktop app' : '') +
+          `\n<code>${esc(meta.folder)}</code>`,
       );
       return;
     }

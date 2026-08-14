@@ -1,10 +1,11 @@
 /**
  * Session manager — the heart of the host.
  *
- * One Auto session is one Cursor agent. Each holds its own `cursor-agent acp`
- * process, its own transcript, and its own permission policy. Agent processes
- * are spawned lazily and resumed via `session/load`, so an idle session costs
- * nothing but its history stays intact across restarts.
+ * One Auto session is one conversation. New ones start as a chat in the Cursor
+ * desktop app when a window already has that folder open; otherwise they spawn
+ * `cursor-agent acp`. Agent processes are spawned lazily and resumed via
+ * `session/load`, so an idle ACP session costs nothing but its history stays
+ * intact across restarts.
  *
  * Our session ids are ours, not the agent's: an ACP session can be rotated
  * underneath (after a crash, say) while the transcript and everything the user
@@ -246,6 +247,57 @@ export class SessionManager extends EventEmitter {
     if (!this.activeId) this.activeId = id;
     this.#persist();
     return meta;
+  }
+
+  /**
+   * Start a session the user asked for from the web or the phone.
+   *
+   * A new chat in a Cursor window that already has this folder is the same
+   * conversation on both ends. If no such window is listening, this falls
+   * back to an Auto-only agent and says so in the transcript — silent fallback
+   * is how sessions disappeared from the IDE before.
+   */
+  async startInIde({ folder, title, policy, mode } = {}) {
+    const dir = folder || this.defaultFolder;
+    const opened = await this.cursor.newChat({ folder: dir }).catch((err) => ({
+      status: 'error',
+      reason: err.message,
+    }));
+    if (opened.status === 'created' && opened.threadId) {
+      return this.attachDesktopThread({
+        threadId: opened.threadId,
+        folder: dir,
+        title,
+        fresh: true,
+      });
+    }
+
+    const meta = this.create({ folder: dir, title, policy, mode });
+    this.setActive(meta.id);
+    await this.transcripts.get(meta.id);
+    this.#record(meta.id, KIND.notice, { text: this.#whyNotInIde(dir, opened) });
+    this.emit('log', `started Auto-only session "${meta.title}" (${opened.status})`);
+    return meta;
+  }
+
+  /** Why a new session could not be a Cursor chat. */
+  #whyNotInIde(folder, opened) {
+    if (opened?.status === 'no-cdp') {
+      return (
+        `This session is only in Auto — Cursor is not listening on its debug port, ` +
+        `so a new chat could not be opened in the IDE.`
+      );
+    }
+    if (opened?.status === 'no-window') {
+      return (
+        `This session is only in Auto — no Cursor window has ${folder} open. ` +
+        `Open that folder in Cursor to have new sessions appear there.`
+      );
+    }
+    return (
+      `This session is only in Auto — Cursor would not start a new chat` +
+      (opened?.reason ? ` (${opened.reason})` : '.')
+    );
   }
 
   setActive(id) {
@@ -981,8 +1033,10 @@ export class SessionManager extends EventEmitter {
    * @param {string} opts.threadId  the desktop thread (composer) id
    * @param {string} [opts.folder]  folder the thread belongs to
    * @param {string} [opts.title]
+   * @param {boolean} [opts.fresh]  we just created it; wait for the desktop
+   *   to write it, and attach even if the database has not caught up yet
    */
-  async attachDesktopThread({ threadId, folder, title }) {
+  async attachDesktopThread({ threadId, folder, title, fresh = false }) {
     // Opening the same thread twice should land you back where you were.
     const already = [...this.meta.values()].find(
       (s) => s.desktopThreadId === threadId && s.status !== STATUS.archived,
@@ -993,7 +1047,16 @@ export class SessionManager extends EventEmitter {
       return already;
     }
 
-    const state = readThread(threadId, { tail: 40 });
+    let state = readThread(threadId, { tail: 40 });
+    if (!state && fresh) {
+      for (let look = 0; look < 12 && !state; look += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        state = readThread(threadId, { tail: 40 });
+      }
+    }
+    if (!state && fresh) {
+      state = { title: title || 'Desktop chat', generating: false, messages: [], visited: [], total: 0 };
+    }
     if (!state) throw new Error('That chat is not in the Cursor desktop database');
 
     const id = randomUUID();

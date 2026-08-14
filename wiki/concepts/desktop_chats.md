@@ -6,6 +6,18 @@ message appears in the IDE's own thread; reply in the IDE and it appears on
 the phone. This note records how, because it leans on Cursor's internals
 rather than on any published interface, and that can change under us.
 
+## Starting a chat from Auto
+
+A session started from the web or from Telegram is a new chat in Cursor, not a
+separate `cursor-agent` process. Auto presses the control labelled **New Agent**
+in a window that already has that folder open, waits for the window to show a
+new thread id, and attaches to it. The same conversation is then on the phone
+and in the IDE.
+
+If no window has the folder, or Cursor was started without its debug port, Auto
+falls back to an ACP session and writes a notice saying why it is only in Auto.
+Opening the folder in Cursor is what makes the next one appear there.
+
 ## The two halves
 
 Cursor ships a **desktop bridge**: a small HTTP server the main process runs

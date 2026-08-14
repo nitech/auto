@@ -29,8 +29,13 @@ value as setup documentation is fine.
 
 - **One host, one port.** `src/server/index.mjs` on 4331 owns everything:
   HTTP, WebSocket, the session API, Telegram, the browser, terminals.
-- **One session, one agent process.** Each session spawns `cursor-agent acp`
-  and holds an ACP session id, so sessions resume rather than restart.
+- **New sessions start in the IDE.** Starting from the web or Telegram opens a
+  new chat in a Cursor window that already has that folder, then Auto attaches
+  to it. If no such window is listening, it falls back to `cursor-agent acp`
+  and says so in the transcript.
+- **One session, one conversation.** A desktop session is Cursor's own chat.
+  An ACP session holds its own `cursor-agent acp` process and resumes via
+  `session/load`, so an idle one costs nothing but its history stays intact.
 - **The transcript is the truth.** Every prompt, tool call, result, diff,
   permission and error is appended to `state/transcripts/<id>.jsonl` with a
   monotonic sequence number. Clients replay from a sequence number; they

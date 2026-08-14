@@ -410,6 +410,29 @@ ${HELPERS}
 })()`;
 
 /**
+ * Start a new chat in this window, by the control Cursor labels New Agent.
+ *
+ * The words on it include the shortcut and an Alt-action ("New Agent (Ctrl+N)
+ * [Alt] Replace Agent"), so it is found by the name it begins with rather than
+ * by an exact match — asking for the whole string would break the moment the
+ * hint changed. It is a workbench action, not a React button, so it is pressed
+ * with a mouse the way a tab is.
+ */
+export const NEW_AGENT = `(() => {
+${HELPERS}
+  const pane = __pane();
+  for (const el of pane.querySelectorAll('[aria-label], [title]')) {
+    const name = String(el.getAttribute('aria-label') || el.getAttribute('title') || '').trim();
+    if (!/^New Agent\\b/i.test(name)) continue;
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) continue;
+    __mouse(el);
+    return { pressed: true, name };
+  }
+  return { pressed: false, reason: 'no New Agent control' };
+})()`;
+
+/**
  * Where a picker is, so that it can be pressed with a real mouse.
  *
  * Neither dropdown opens for a dispatched click — they act on input the window

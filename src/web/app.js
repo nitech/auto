@@ -1398,7 +1398,8 @@ els.toBottom.onclick = () => {
 /**
  * Starting a session is choosing where it works. The list is Cursor's own
  * project list rather than anything Auto invented, and a folder can always be
- * typed by hand for the project nobody has opened in a while.
+ * typed by hand for the project nobody has opened in a while. When that folder
+ * is already open in Cursor, the new session is a chat in the IDE.
  */
 function setNewbie(open) {
   $('newbie').hidden = !open;

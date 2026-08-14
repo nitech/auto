@@ -280,13 +280,13 @@ const OPS = {
     sessions.permissions.resolve(msg.requestId, msg.optionId, { by: msg.by || 'web' });
   },
 
-  'session.create'(ws, state, msg) {
+  async 'session.create'(ws, state, msg) {
     // The web client offers a folder by hand as well as from the project list,
     // so a path that names nothing must be refused rather than spawn an agent
     // that cannot see its own working directory.
     const folder = msg.folder ? normalizeFolder(msg.folder) : undefined;
     if (folder && !existsSync(folder)) throw new Error(`No such folder: ${folder}`);
-    const meta = sessions.create({ folder, title: msg.title });
+    const meta = await sessions.startInIde({ folder, title: msg.title });
     return OPS.attach(ws, state, { sessionId: meta.id });
   },
 
@@ -558,7 +558,7 @@ async function route(req, res) {
     if (!existsSync(folder)) return json(res, { error: `No such folder: ${folder}` }, 400);
 
     let meta = sessions.list().find((s) => sameFolder(s.folder, folder));
-    if (!meta) meta = sessions.create({ folder, title: body.title });
+    if (!meta) meta = await sessions.startInIde({ folder, title: body.title });
     sessions.setActive(meta.id);
     return json(res, { session: sessions.get(meta.id), activeId: sessions.activeId });
   }

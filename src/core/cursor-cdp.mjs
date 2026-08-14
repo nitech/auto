@@ -38,6 +38,7 @@ import {
   FACTS,
   FOCUS_COMPOSER,
   MENU_ITEMS,
+  NEW_AGENT,
   QUEUE,
   SELECTORS,
   STOP_TURN_KEY,
@@ -61,6 +62,8 @@ const SUBMIT_LOOKS = 8;
 const STOP_LOOKS = 6;
 /** How long a pressed tab gets to bring its chat forward. */
 const SHOW_LOOKS = 8;
+/** How long New Agent gets to produce a new chat id. */
+const NEW_CHAT_LOOKS = 12;
 /** How long a menu gets to open, and a picker to admit it changed. */
 const MENU_LOOKS = 10;
 /** How long a pasted image gets to appear beside the chat box. */
@@ -307,6 +310,20 @@ export class CursorWindow {
     return this.evaluate(showThread(threadId));
   }
 
+  /** Press the New Agent control in the chat pane. */
+  newAgent() {
+    return this.evaluate(NEW_AGENT);
+  }
+
+  /**
+   * The shortcut printed on that control. Used only when the control itself
+   * is not on screen — Ctrl+N is New File in stock VS Code, and must not be
+   * the first thing tried.
+   */
+  newAgentKey() {
+    return this.#key('n', 'KeyN', 78, 2);
+  }
+
   /** Where the model or mode picker is, and what it says now. */
   pickerAt(which) {
     return this.evaluate(pickerAt(which));
@@ -483,6 +500,88 @@ export class CursorCdp {
   /** The window showing a given repo, if one is open. */
   async windowFor(folder) {
     return (await this.windows()).find((w) => samePath(w.workspace, folder)) || null;
+  }
+
+  /**
+   * Open a new chat in the Cursor window that already has this folder.
+   *
+   * A chat created anywhere else would belong to the wrong repo, so a window
+   * that cannot prove it is showing this folder is left alone. The new thread
+   * id comes from the window once it has switched, not from us.
+   *
+   * @returns {Promise<{ status: 'created'|'no-cdp'|'no-window'|'error',
+   *   threadId?: string, title?: string, reason?: string }>}
+   */
+  async newChat({ folder }) {
+    if (!String(folder || '').trim()) {
+      return { status: 'error', reason: 'no folder was named' };
+    }
+
+    return this.#withFolder(folder, async (window, facts) => {
+      const before = this.#threadOf(facts);
+      const clicked = await window.newAgent();
+      if (!clicked?.pressed) await window.newAgentKey();
+
+      for (let look = 0; look < NEW_CHAT_LOOKS; look += 1) {
+        await wait(this.settleMs);
+        const now = await window.facts();
+        const threadId = this.#threadOf(now);
+        if (threadId && threadId !== before) {
+          return { status: 'created', threadId, title: now.title };
+        }
+      }
+      return {
+        status: 'error',
+        reason: clicked?.pressed
+          ? 'Cursor did not open a new chat'
+          : clicked?.reason || 'Cursor did not open a new chat',
+      };
+    });
+  }
+
+  /**
+   * Do something to the window showing a given folder, and nothing otherwise.
+   *
+   * Creating a chat has no thread id yet, so the window is identified by the
+   * repo it has open — the same proof `windowFor` uses, held open for the work.
+   */
+  async #withFolder(folder, work) {
+    let targets;
+    try {
+      targets = (await this.listTargets()).filter(isWindow);
+    } catch (err) {
+      return { status: 'no-cdp', reason: err.message };
+    }
+    if (!targets.length) {
+      return {
+        status: 'no-cdp',
+        reason: `no Cursor window is listening on port ${this.port}`,
+      };
+    }
+
+    let lastReason = null;
+    for (const target of targets) {
+      let window;
+      try {
+        window = await this.openWindow(target);
+        const facts = await window.facts();
+        if (!samePath(facts?.workspace, folder)) continue;
+        if (!facts?.hasComposer) {
+          lastReason = 'that window has no chat box';
+          continue;
+        }
+        return await work(window, facts);
+      } catch (err) {
+        lastReason = err.message;
+      } finally {
+        window?.close();
+      }
+    }
+
+    return {
+      status: 'no-window',
+      reason: lastReason || `no Cursor window has ${folder} open`,
+    };
   }
 
   /**

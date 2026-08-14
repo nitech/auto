@@ -212,6 +212,8 @@ if (existsSync(SRC)) {
           queued = [],
           queuedHidden = 0,
           deafToClicks = false,
+          hasNewAgent = false,
+          nextThreadId = null,
         } = {},
       ) {
         this.takesPaste = takesPaste;
@@ -220,6 +222,8 @@ if (existsSync(SRC)) {
         this.queued = [...queued];
         this.queuedHidden = queuedHidden;
         this.deafToClicks = deafToClicks;
+        this.hasNewAgent = hasNewAgent;
+        this.nextThreadId = nextThreadId;
         this.given = facts;
         this.box = facts.composerText || '';
         this.submits = submits;
@@ -300,6 +304,16 @@ if (existsSync(SRC)) {
         if (!(this.given.tabs || []).includes(id)) return false;
         this.given = { ...this.given, threadId: id };
         return true;
+      }
+      async newAgent() {
+        if (!this.hasNewAgent) return { pressed: false, reason: 'no New Agent control' };
+        this.pressed.push('New Agent');
+        if (this.nextThreadId) this.given = { ...this.given, threadId: this.nextThreadId };
+        return { pressed: true, name: 'New Agent (Ctrl+N) [Alt] Replace Agent' };
+      }
+      async newAgentKey() {
+        this.pressed.push('«ctrl+n»');
+        if (this.nextThreadId) this.given = { ...this.given, threadId: this.nextThreadId };
       }
       async stopTurn() {
         this.pressed.push('«keyboard»');
@@ -551,6 +565,61 @@ if (existsSync(SRC)) {
     if (!samePath('/d:/Sevenfold/auto', 'D:\\Sevenfold\\auto')) fail('samePath should see one folder');
     if (samePath('/d:/Sevenfold/auto', 'D:\\Sevenfold\\other')) fail('samePath should see two folders');
     if (samePath(null, 'D:\\Sevenfold\\auto')) fail('samePath should not match nothing');
+
+    // A new Auto session is a new chat in the window that already has that folder.
+    const FRESH = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+    const here = new FakeWindow(
+      { threadId: THREAD, hasComposer: true, workspace: '/d:/Sevenfold/auto' },
+      { hasNewAgent: true, nextThreadId: FRESH },
+    );
+    result = await machine({ here }).newChat({ folder: 'D:\\Sevenfold\\auto' });
+    if (result.status !== 'created' || result.threadId !== FRESH) {
+      fail(`new chat should open in the matching window: ${JSON.stringify(result)}`);
+    }
+    if (!here.pressed.includes('New Agent')) fail('new chat should press New Agent, not guess a shortcut');
+    if (here.pressed.includes('«ctrl+n»')) fail('Ctrl+N is the fallback, not the first try');
+
+    const elsewhere = new FakeWindow(
+      { threadId: THREAD, hasComposer: true, workspace: '/d:/Sevenfold/auto' },
+      { hasNewAgent: true, nextThreadId: FRESH },
+    );
+    result = await machine({ elsewhere }).newChat({ folder: 'D:\\Projects\\other' });
+    if (result.status !== 'no-window') {
+      fail(`a new chat must not open in the wrong repo: ${JSON.stringify(result)}`);
+    }
+    if (elsewhere.pressed.length) fail('the wrong window must not be pressed');
+
+    const noBox = new FakeWindow(
+      { threadId: THREAD, hasComposer: false, workspace: '/d:/Sevenfold/auto' },
+      { hasNewAgent: true, nextThreadId: FRESH },
+    );
+    if ((await machine({ noBox }).newChat({ folder: 'D:\\Sevenfold\\auto' })).status !== 'no-window') {
+      fail('a window with no chat box cannot start a chat');
+    }
+
+    const viaKey = new FakeWindow(
+      { threadId: THREAD, hasComposer: true, workspace: '/d:/Sevenfold/auto' },
+      { hasNewAgent: false, nextThreadId: FRESH },
+    );
+    result = await machine({ viaKey }).newChat({ folder: 'D:\\Sevenfold\\auto' });
+    if (result.status !== 'created' || result.threadId !== FRESH) {
+      fail(`new chat should fall back to Ctrl+N when the control is missing: ${JSON.stringify(result)}`);
+    }
+    if (!viaKey.pressed.includes('«ctrl+n»')) fail('the missing-control path should type Ctrl+N');
+
+    const didNothing = new FakeWindow(
+      { threadId: THREAD, hasComposer: true, workspace: '/d:/Sevenfold/auto' },
+      { hasNewAgent: true },
+    );
+    result = await machine({ didNothing }).newChat({ folder: 'D:\\Sevenfold\\auto' });
+    if (result.status !== 'error') fail(`a New Agent that does nothing should be an error, got ${result.status}`);
+
+    if ((await machine({ here }).newChat({ folder: '' })).status !== 'error') {
+      fail('new chat without a folder must be refused');
+    }
+    if ((await shut.newChat({ folder: 'D:\\Sevenfold\\auto' })).status !== 'no-cdp') {
+      fail('new chat with no debug port should be no-cdp');
+    }
 
     if (!failed) ok('v2 core: typing into a Cursor window lands in the right chat, or not at all');
 
@@ -1371,6 +1440,53 @@ if (existsSync(SRC)) {
     if (!failed) ok('v2 core: only a running agent counts as a live session');
   } catch (e) {
     fail(`v2 live count: ${e.message}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// 1e4a. Starting a session from the phone opens it in the IDE when a window
+// has that folder, and falls back to an Auto-only agent with a notice if not.
+{
+  const dir = mkdtempSync(join(tmpdir(), 'auto-start-ide-'));
+  try {
+    const { SessionManager } = await import('../src/core/sessions.mjs');
+    const { KIND } = await import('../src/core/transcript.mjs');
+    let failed = false;
+
+    const sessions = new SessionManager({ stateDir: dir, defaultFolder: ROOT }).init();
+    sessions.cursor = {
+      newChat: async () => ({ status: 'no-window', reason: 'no Cursor window has it open' }),
+    };
+    const meta = await sessions.startInIde({ folder: ROOT, title: 'From the phone' });
+    if (meta.kind === 'desktop') {
+      fail('a missing window must not pretend the session is in Cursor');
+      failed = true;
+    }
+    if (meta.title !== 'From the phone') {
+      fail(`fallback should keep the title, got ${meta.title}`);
+      failed = true;
+    }
+    const recs = await sessions.history(meta.id);
+    const notice = recs.find((r) => r.kind === KIND.notice);
+    if (!notice?.text?.includes('only in Auto') || !notice.text.includes(ROOT)) {
+      fail(`fallback should say why it is not in the IDE, got ${notice?.text}`);
+      failed = true;
+    }
+
+    sessions.cursor = {
+      newChat: async () => ({ status: 'created', threadId: 'not-a-real-thread' }),
+    };
+    const opened = await sessions.startInIde({ folder: ROOT, title: 'In Cursor' });
+    if (opened.kind !== 'desktop' || opened.desktopThreadId !== 'not-a-real-thread') {
+      fail(`a created chat should attach as desktop, got ${JSON.stringify(opened)}`);
+      failed = true;
+    }
+    await sessions.stop(opened.id);
+
+    if (!failed) ok('v2 core: new sessions start in the IDE, or say why they could not');
+  } catch (e) {
+    fail(`v2 start in ide: ${e.message}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
