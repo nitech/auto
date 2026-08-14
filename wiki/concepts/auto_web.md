@@ -13,6 +13,8 @@ through a web app (PWA) and a Telegram bot.
 - Record everything the agent emits — prose, thinking, tool calls, tool
   results, diffs, plans, terminal output, errors — to append-only transcripts
 - Broker approvals (ask / ask-on-write / auto) answerable from web or Telegram
+- Broker question cards from a desktop chat, answerable from web or Telegram
+  by pressing the chosen option in Cursor
 - Host real PTY terminals for the agent and for the user
 - Host a Chrome instance the user can drive by hand from a phone
 - Serve the web app and a WebSocket that replays transcripts from a sequence

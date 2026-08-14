@@ -30,6 +30,7 @@ import { sendMessage } from './desktop-bridge.mjs';
 import { CursorCdp } from './cursor-cdp.mjs';
 import { DesktopOutbox } from './desktop-outbox.mjs';
 import { ThreadWatcher, readThread } from './desktop-threads.mjs';
+import { labelsForAnswer } from './questions.mjs';
 
 export const STATUS = {
   idle: 'idle',
@@ -1204,10 +1205,15 @@ export class SessionManager extends EventEmitter {
     runtime.questions = runtime.questions || new Map();
     this.live.set(id, runtime);
     const said = runtime.questions.get(message.id) || null;
+    const statusOf = (s) => (typeof s === 'string' ? s : s?.status);
 
     if (question.waiting) {
-      if (said === 'waiting') return;
-      runtime.questions.set(message.id, 'waiting');
+      if (statusOf(said) === 'waiting') return;
+      runtime.questions.set(message.id, {
+        status: 'waiting',
+        title: question.title,
+        questions: question.questions,
+      });
       this.#record(id, KIND.question, {
         askId: message.id,
         title: question.title,
@@ -1219,8 +1225,8 @@ export class SessionManager extends EventEmitter {
 
     // Answered, in the IDE or from here. Either way it has stopped being an
     // open question, and what was chosen is worth keeping.
-    if (said !== 'waiting') return;
-    runtime.questions.set(message.id, 'answered');
+    if (statusOf(said) !== 'waiting') return;
+    runtime.questions.set(message.id, { status: 'answered' });
     this.#record(id, KIND.questionAnswered, {
       askId: message.id,
       selections: question.selections,
@@ -1233,8 +1239,65 @@ export class SessionManager extends EventEmitter {
   #questionWaiting(id) {
     const runtime = this.live.get(id);
     if (!runtime?.questions) return false;
-    for (const state of runtime.questions.values()) if (state === 'waiting') return true;
+    for (const state of runtime.questions.values()) {
+      if (state === 'waiting' || state?.status === 'waiting') return true;
+    }
     return false;
+  }
+
+  /** The question still waiting in this chat, if there is one. */
+  pendingQuestion(id) {
+    const runtime = this.live.get(id);
+    if (!runtime?.questions) return null;
+    let found = null;
+    for (const [askId, state] of runtime.questions) {
+      if (state === 'waiting' || state?.status === 'waiting') {
+        found = { askId, title: state?.title || null, questions: state?.questions || [] };
+      }
+    }
+    return found;
+  }
+
+  /**
+   * Answer a question from the web or Telegram, by pressing the choice in Cursor.
+   *
+   * The card stays "waiting" until Cursor itself marks it submitted: that is
+   * what draws "Answered" on the phone, and marking it here first would swallow
+   * that. A failed press leaves it waiting so it can be tried again.
+   */
+  async answerQuestion(id, { askId, selections = {}, texts = {}, skip = false } = {}) {
+    const meta = this.meta.get(id);
+    if (!meta) throw new Error(`Unknown session ${id}`);
+    if (meta.kind !== 'desktop' || !meta.desktopThreadId) {
+      throw new Error('Only a desktop chat can take an answer this way');
+    }
+
+    const held = this.live.get(id)?.questions?.get(askId);
+    const waiting = held === 'waiting' || held?.status === 'waiting';
+    if (!waiting) return { status: 'gone', reason: 'that question is no longer waiting' };
+
+    const questions = held?.questions || [];
+    const labels = skip ? [] : labelsForAnswer(questions, selections);
+    const typed = Object.values(texts || {}).filter(Boolean);
+
+    const pressed = await this.cursor
+      .answer({
+        threadId: meta.desktopThreadId,
+        askId,
+        labels,
+        texts: typed,
+        skip: Boolean(skip),
+      })
+      .catch((err) => ({ status: 'error', reason: err.message }));
+
+    const what = skip ? 'Skip' : labels.join(', ') || 'nothing';
+    this.#record(id, KIND.notice, {
+      text:
+        pressed.status === 'pressed'
+          ? `Answered in Cursor: ${what}.`
+          : `Could not answer in Cursor: ${pressed.reason || pressed.status}.`,
+    });
+    return pressed;
   }
 
   /**

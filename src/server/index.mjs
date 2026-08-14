@@ -280,6 +280,17 @@ const OPS = {
     sessions.permissions.resolve(msg.requestId, msg.optionId, { by: msg.by || 'web' });
   },
 
+  async 'question.answer'(ws, state, msg) {
+    const id = msg.sessionId || state.sessionId;
+    const result = await sessions.answerQuestion(id, {
+      askId: msg.askId,
+      selections: msg.selections || {},
+      texts: msg.texts || {},
+      skip: Boolean(msg.skip),
+    });
+    send(ws, { type: 'question.answer', sessionId: id, askId: msg.askId, ...result });
+  },
+
   async 'session.create'(ws, state, msg) {
     // The web client offers a folder by hand as well as from the project list,
     // so a path that names nothing must be refused rather than spawn an agent

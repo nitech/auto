@@ -527,9 +527,8 @@ function renderPermissionResolved(rec) {
  *
  * Not an approval, and drawn nothing like one: an approval is a short row of
  * buttons, a question is a card of sentences, sometimes several questions deep.
- * Until the answer can be pressed back into Cursor these are shown rather than
- * offered — seeing what is being asked is the whole of what was missing, and a
- * button that quietly does nothing would be worse than none.
+ * A single question with one answer each is a tap; anything more is picked
+ * then submitted, because one tap cannot honestly answer two questions.
  */
 function renderQuestion(rec) {
   const card = div('ask');
@@ -539,18 +538,60 @@ function renderQuestion(rec) {
     t.textContent = rec.title;
     card.append(t);
   }
-  for (const q of rec.questions || []) {
+
+  const questions = rec.questions || [];
+  const chosen = {};
+  const oneTap = questions.length === 1 && !questions[0]?.multiple;
+  const buttons = [];
+
+  const sendAnswer = ({ skip = false } = {}) => {
+    sendOp({
+      op: 'question.answer',
+      sessionId: state.sessionId,
+      askId: rec.askId,
+      selections: chosen,
+      skip,
+    });
+    for (const b of buttons) b.disabled = true;
+    const outcome = card.querySelector('.outcome');
+    if (outcome) outcome.textContent = 'sending…';
+  };
+
+  for (const q of questions) {
     const block = div('q');
     const prompt = div('prompt');
     prompt.textContent = q.prompt || '';
     block.append(prompt);
-    const ol = document.createElement('ol');
+    const opts = div('opts');
     for (const opt of q.options || []) {
-      const li = document.createElement('li');
-      li.textContent = opt.label || opt.id || '';
-      ol.append(li);
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = opt.label || opt.id || '';
+      b.onclick = () => {
+        if (oneTap) {
+          chosen[q.id] = [opt.id];
+          sendAnswer();
+          return;
+        }
+        const have = new Set(chosen[q.id] || []);
+        if (q.multiple) {
+          if (have.has(opt.id)) have.delete(opt.id);
+          else have.add(opt.id);
+        } else {
+          have.clear();
+          have.add(opt.id);
+        }
+        chosen[q.id] = [...have];
+        for (const other of opts.querySelectorAll('button')) {
+          const id = other.dataset.optionId;
+          other.classList.toggle('picked', (chosen[q.id] || []).includes(id));
+        }
+      };
+      b.dataset.optionId = opt.id;
+      buttons.push(b);
+      opts.append(b);
     }
-    block.append(ol);
+    block.append(opts);
     if (q.multiple) {
       const note = div('cap');
       note.textContent = 'several answers allowed';
@@ -558,8 +599,28 @@ function renderQuestion(rec) {
     }
     card.append(block);
   }
+
+  const actions = div('opts act');
+  if (!oneTap) {
+    const submit = document.createElement('button');
+    submit.type = 'button';
+    submit.className = 'allow';
+    submit.textContent = 'Submit';
+    submit.onclick = () => sendAnswer();
+    buttons.push(submit);
+    actions.append(submit);
+  }
+  const skip = document.createElement('button');
+  skip.type = 'button';
+  skip.className = 'deny';
+  skip.textContent = 'Skip';
+  skip.onclick = () => sendAnswer({ skip: true });
+  buttons.push(skip);
+  actions.append(skip);
+  card.append(actions);
+
   const where = div('cap outcome');
-  where.textContent = 'Answer in Cursor — answering from here is not wired up yet.';
+  where.textContent = oneTap ? 'Tap an option to answer.' : 'Pick, then Submit.';
   card.append(where);
   state.askCards.set(rec.askId, card);
   add(card);
@@ -1190,6 +1251,16 @@ function connect() {
 
     if (msg.type === 'terminal.closed') {
       closePane(msg.terminalId);
+      return;
+    }
+
+    if (msg.type === 'question.answer') {
+      const card = state.askCards.get(msg.askId);
+      if (!card || card.classList.contains('resolved')) return;
+      if (msg.status === 'pressed') return;
+      for (const b of card.querySelectorAll('button')) b.disabled = false;
+      const outcome = card.querySelector('.outcome');
+      if (outcome) outcome.textContent = msg.reason || 'could not answer — try again';
       return;
     }
 

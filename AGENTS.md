@@ -125,6 +125,11 @@ value as setup documentation is fine.
   everything automatically it never asks, so the vocabulary in `cursor-dom.mjs`
   has not met a real prompt. Treat the first sighting as a chance to learn the
   words Cursor actually uses.
+- **A question the agent asks can be answered from the phone.** The card
+  carries the real options, not Skip and Continue. A tap — or a letter back
+  on Telegram — presses that option in Cursor and Continue. Skip is still
+  there. Answering in the IDE first still works: Auto notices and marks it
+  answered.
 - **Whether a turn is running comes from the database.** The window is a poor
   witness: the word "Stop" belongs to the bar offering to review file changes,
   so a chat that edited nothing looks idle while it works. Stopping is confirmed

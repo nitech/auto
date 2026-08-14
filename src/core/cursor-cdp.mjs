@@ -42,6 +42,7 @@ import {
   QUEUE,
   SELECTORS,
   STOP_TURN_KEY,
+  answerCard,
   clickAction,
   isApproval,
   pickerAt,
@@ -302,6 +303,11 @@ export class CursorWindow {
   /** Press a queued message's own edit, send-now or delete button. */
   queueAct(text, which) {
     return this.evaluate(queueAct(text, which));
+  }
+
+  /** Press the options on a question card, then Continue (or Skip). */
+  answer(opts) {
+    return this.evaluate(answerCard(opts));
   }
 
   /** Press the control with this name. */
@@ -989,6 +995,54 @@ export class CursorCdp {
       return done?.clicked
         ? { status: 'pressed', name: done.name, where: done.where, of: done.of }
         : { status: 'not-pressed', reason: done?.reason || 'nothing was pressed' };
+    });
+  }
+
+  /**
+   * Answer a question Cursor is putting to a person, by pressing the options
+   * they picked and then Continue — or Skip, which answers nothing.
+   *
+   * The card is found by the bubble id Auto already stored, so a question in
+   * another chat cannot be the one that gets pressed. The chat is brought
+   * forward first: a card in a background tab is not on screen to click.
+   */
+  async answer({ threadId, askId, labels = [], texts = [], skip = false }) {
+    if (!askId) return { status: 'error', reason: 'no question was named' };
+    if (!skip && !(labels || []).length) {
+      return { status: 'error', reason: 'nothing was chosen' };
+    }
+
+    const here = await this.#withThread(threadId, (window) => window.facts());
+    if (here?.status === 'unknown-thread') {
+      const shown = await this.showThread({ threadId });
+      if (shown.status !== 'showing' && shown.status !== 'shown') {
+        return {
+          status: shown.status === 'no-tab' ? 'unknown-thread' : 'error',
+          reason: shown.reason,
+        };
+      }
+    }
+
+    return this.#withThread(threadId, async (window) => {
+      const done = await window.answer({ askId, labels, texts, skip });
+      if (done?.pressed) {
+        return { status: 'pressed', selected: done.selected || [], submitted: done.submitted };
+      }
+      // Some of Cursor's controls ignore a dispatched click and only believe a
+      // real mouse — the pickers taught us that. If the script found where to
+      // press, try there.
+      if (done?.at) {
+        await window.mouseAt(done.at);
+        return {
+          status: 'pressed',
+          selected: done.selected || [],
+          submitted: done.submitted || 'Continue',
+        };
+      }
+      return {
+        status: 'not-pressed',
+        reason: done?.reason || 'the question could not be answered',
+      };
     });
   }
 

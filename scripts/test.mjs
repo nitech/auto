@@ -373,6 +373,12 @@ if (existsSync(SRC)) {
         if (!this.deafToClicks) this.queued.splice(at, 1);
         return { pressed: true, at: { x: 10, y: 100 + at * 20 } };
       }
+      async answer({ askId, labels = [], texts = [], skip = false }) {
+        if (this.missingAsk) return { pressed: false, reason: 'the question is not on screen' };
+        this.answered = { askId, labels: [...labels], texts: [...texts], skip: Boolean(skip) };
+        this.pressed.push(skip ? 'Skip' : [...labels, 'Continue'].join('|'));
+        return { pressed: true, selected: labels, submitted: skip ? 'Skip' : 'Continue' };
+      }
       close() {
         this.closed = true;
       }
@@ -821,6 +827,31 @@ if (existsSync(SRC)) {
     }
     if ((await machine({ asking }).press({ threadId: THREAD, name: 'Demolish' })).status !== 'not-pressed') {
       fail('pressing a control that does not exist should be refused');
+    }
+
+    // A question card is answered by pressing its options, then Continue.
+    const quiz = new FakeWindow({ threadId: THREAD, hasComposer: true });
+    const picked = await machine({ quiz }).answer({
+      threadId: THREAD,
+      askId: 'b9',
+      labels: ['This way'],
+    });
+    if (picked.status !== 'pressed' || quiz.answered?.labels?.[0] !== 'This way') {
+      fail(`answering a question should press its option: ${JSON.stringify(picked)}`);
+    }
+    if (quiz.pressed.at(-1) !== 'This way|Continue') {
+      fail(`Continue should follow the option: ${JSON.stringify(quiz.pressed)}`);
+    }
+    const skipped = await machine({ quiz }).answer({ threadId: THREAD, askId: 'b9', skip: true });
+    if (skipped.status !== 'pressed' || quiz.answered?.skip !== true) {
+      fail(`skipping a question should press Skip: ${JSON.stringify(skipped)}`);
+    }
+    if ((await machine({ quiz }).answer({ threadId: THREAD, labels: ['This way'] })).status !== 'error') {
+      fail('answering with no ask id should be refused');
+    }
+    quiz.missingAsk = true;
+    if ((await machine({ quiz }).answer({ threadId: THREAD, askId: 'b9', labels: ['This way'] })).status !== 'not-pressed') {
+      fail('a question that is not on screen should be refused');
     }
 
     if (!isApproval('Run command') || !isApproval('Skip') || !isApproval('Allow once')) {
@@ -2050,6 +2081,65 @@ if (existsSync(SRC)) {
       failed = true;
     }
 
+    const { questionText } = await import('../src/core/telegram.mjs');
+    const { parseQuestionReply, labelsForAnswer, optionLetter } = await import('../src/core/questions.mjs');
+    const card = {
+      title: 'What should the plan change?',
+      questions: [
+        {
+          id: 'fix',
+          prompt: 'Which way?',
+          options: [
+            { id: 'a', label: 'Hide/fold steps' },
+            { id: 'b', label: 'Keep and label' },
+          ],
+        },
+      ],
+    };
+    const asked = questionText(card);
+    if (asked.includes('not wired up')) {
+      fail('a question on the phone should be answerable');
+      failed = true;
+    }
+    if (!asked.includes('<b>A</b>') || !asked.includes('Hide/fold steps')) {
+      fail('a question should letter its options');
+      failed = true;
+    }
+    if (optionLetter(0, 0, 1) !== 'A' || optionLetter(1, 0, 2) !== '2A') {
+      fail('letters should number only when there are several questions');
+      failed = true;
+    }
+    const picked = parseQuestionReply('A', card.questions);
+    if (picked?.selections?.fix?.[0] !== 'a' || picked.skip) {
+      fail(`"A" should pick the first option, got ${JSON.stringify(picked)}`);
+      failed = true;
+    }
+    if (parseQuestionReply('skip', card.questions)?.skip !== true) {
+      fail('Skip should skip');
+      failed = true;
+    }
+    if (parseQuestionReply('please do the first one', card.questions) !== null) {
+      fail('ordinary words are a message, not an answer');
+      failed = true;
+    }
+    const two = [
+      { id: 'q1', options: [{ id: 'a', label: 'One' }, { id: 'b', label: 'Two' }] },
+      { id: 'q2', options: [{ id: 'c', label: 'Three' }] },
+    ];
+    if (parseQuestionReply('A', two) !== null) {
+      fail('"A" with several questions is ambiguous');
+      failed = true;
+    }
+    const both = parseQuestionReply('1B 2A', two);
+    if (both?.selections?.q1?.[0] !== 'b' || both?.selections?.q2?.[0] !== 'c') {
+      fail(`"1B 2A" should pick both, got ${JSON.stringify(both)}`);
+      failed = true;
+    }
+    if (labelsForAnswer(card.questions, { fix: ['b'] })[0] !== 'Keep and label') {
+      fail('an answer should carry the label Cursor printed');
+      failed = true;
+    }
+
     if (!failed) ok('v2 telegram: turn rendering, commands, failures, limits');
   } catch (e) {
     fail(`v2 telegram: ${e.message}`);
@@ -2551,6 +2641,64 @@ if (existsSync(SRC)) {
     });
     if (resolved?.requestId !== 'r1' || resolved?.optionId !== 'allow') {
       fail(`approval did not reach the broker, got ${JSON.stringify(resolved)}`);
+      failed = true;
+    }
+
+    let answered = null;
+    fakeSessions.pendingQuestion = () => ({
+      askId: 'b9',
+      questions: [
+        {
+          id: 'fix',
+          prompt: 'Which way?',
+          options: [
+            { id: 'a', label: 'This way' },
+            { id: 'b', label: 'That way' },
+          ],
+        },
+      ],
+    });
+    fakeSessions.answerQuestion = async (id, payload) => {
+      answered = { id, ...payload };
+      return { status: 'pressed' };
+    };
+    fakeSessions.prompt = () => {
+      prompted += 1;
+      return new Promise(() => {});
+    };
+    let prompted = 0;
+
+    await bridge.handleUpdate({ update_id: 4, message: { chat: { id: 1 }, text: 'A' } });
+    if (answered?.askId !== 'b9' || answered?.selections?.fix?.[0] !== 'a') {
+      fail(`a typed letter should answer the question, got ${JSON.stringify(answered)}`);
+      failed = true;
+    }
+    if (prompted) {
+      fail('a lettered answer must not go in as a prompt');
+      failed = true;
+    }
+
+    answered = null;
+    bridge.asks.set('b9', {
+      sessionId: 's1',
+      questions: fakeSessions.pendingQuestion().questions,
+      chosen: {},
+    });
+    await bridge.handleUpdate({
+      update_id: 5,
+      callback_query: {
+        id: 'q2',
+        data: bridge.tokenFor({
+          kind: 'question',
+          askId: 'b9',
+          questionId: 'fix',
+          optionId: 'b',
+          label: 'B',
+        }),
+      },
+    });
+    if (answered?.selections?.fix?.[0] !== 'b') {
+      fail(`tapping an option should answer, got ${JSON.stringify(answered)}`);
       failed = true;
     }
 

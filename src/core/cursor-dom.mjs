@@ -667,6 +667,135 @@ ${HELPERS}
 })()`;
 
 /**
+ * Answer a question card in the chat, by the options a person picked.
+ *
+ * The card is the bubble Cursor drew for `ask_question`. Auto already knows its
+ * id and the labels on its options — those came out of the desktop's database —
+ * so this finds that bubble, presses the labels, and then Continue (or Skip).
+ * Labels are sentences, far too long for the approval vocabulary, which is why
+ * they are not found as generic controls.
+ *
+ * @param {object} opts
+ * @param {string} opts.askId
+ * @param {string[]} [opts.labels]
+ * @param {string[]} [opts.texts]
+ * @param {boolean} [opts.skip]
+ */
+export const answerCard = ({ askId, labels = [], texts = [], skip = false }) => `(() => {
+${HELPERS}
+  const pane = __pane();
+  const clean = (s) => String(s ?? '').replace(/\\s+/g, ' ').trim();
+  const wanted = ${JSON.stringify(String(askId || ''))};
+  const labels = ${JSON.stringify((labels || []).map(String))};
+  const texts = ${JSON.stringify((texts || []).map(String))};
+  const skip = ${JSON.stringify(Boolean(skip))};
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+  const spot = (el) => {
+    const { x, y, width, height } = el.getBoundingClientRect();
+    if (!width || !height) return null;
+    return { x: Math.round(x + width / 2), y: Math.round(y + height / 2) };
+  };
+
+  let card = null;
+  for (const s of ${list(SELECTORS.message)}) {
+    for (const el of pane.querySelectorAll(s)) {
+      if (el.getAttribute('data-message-id') === wanted) card = el;
+    }
+    if (card) break;
+  }
+  // The id is the honest handle, but a Cursor update can stop writing it. Fall
+  // back to the first option's words: those belong to this card and no other.
+  if (!card) {
+    const needle = labels[0] || '';
+    if (needle) {
+      const holders = [...pane.querySelectorAll('div,span,p,li,label,button')].filter(
+        (el) => clean(el.textContent).includes(clean(needle)) &&
+          ![...el.children].some((k) => clean(k.textContent).includes(clean(needle))),
+      );
+      const holder = holders[holders.length - 1];
+      card = holder?.closest(${JSON.stringify(SELECTORS.message[0])}) || holder;
+    }
+  }
+  if (!card) return Promise.resolve({ pressed: false, reason: 'the question is not on screen' });
+  card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+
+  const pressWord = (scope, word) => {
+    const want = clean(word).toLowerCase();
+    if (!want) return null;
+    const nodes = [...scope.querySelectorAll('button, [role="button"], [role="radio"], [role="checkbox"], [role="option"]')];
+    const matches = nodes.filter((el) => {
+      const name = clean(el.getAttribute('aria-label') || el.textContent).toLowerCase();
+      return name === want || name.startsWith(want + ' ') || name.startsWith(want);
+    });
+    const target = matches[matches.length - 1];
+    if (!target || target.disabled || target.getAttribute('aria-disabled') === 'true') return null;
+    target.click();
+    return { name: clean(target.getAttribute('aria-label') || target.textContent), at: spot(target) };
+  };
+
+  const pressLabel = (label) => {
+    const needle = clean(label);
+    if (!needle) return null;
+    const hit = pressWord(card, needle);
+    if (hit) return hit;
+    // Options are often a row, not a button: the deepest element holding the
+    // words, then the pressable thing around it.
+    const holders = [...card.querySelectorAll('div,span,p,li,label,button')].filter((el) => {
+      const t = clean(el.textContent);
+      return t === needle || t.startsWith(needle);
+    });
+    const exact = holders.filter((el) => clean(el.textContent) === needle);
+    const pool = exact.length ? exact : holders;
+    const leaf = pool.filter((el) => ![...el.children].some((k) => pool.includes(k))).pop();
+    if (!leaf) return null;
+    const target =
+      leaf.closest('button, [role="button"], [role="radio"], [role="checkbox"], [role="option"]') || leaf;
+    target.click();
+    return { name: needle, at: spot(target) };
+  };
+
+  const pressSubmit = async (word) => {
+    for (let look = 0; look < 8; look += 1) {
+      const hit = pressWord(card, word) || pressWord(pane, word);
+      if (hit) return hit;
+      await pause(40);
+    }
+    return null;
+  };
+
+  return (async () => {
+    if (skip) {
+      const hit = await pressSubmit('Skip');
+      return hit
+        ? { pressed: true, selected: [], submitted: 'Skip', at: hit.at }
+        : { pressed: false, reason: 'no Skip control on the card' };
+    }
+
+    const selected = [];
+    for (const label of labels) {
+      const hit = pressLabel(label);
+      if (!hit) return { pressed: false, reason: 'no option says ' + JSON.stringify(label), selected };
+      selected.push(label);
+      await pause(40);
+    }
+
+    for (const [i, text] of texts.entries()) {
+      const box = [...card.querySelectorAll('textarea, input[type="text"]')][i];
+      if (!box || !text) continue;
+      box.focus();
+      box.value = text;
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      box.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    const hit = (await pressSubmit('Continue')) || (await pressSubmit('Submit'));
+    return hit
+      ? { pressed: true, selected, submitted: hit.name, at: hit.at }
+      : { pressed: false, reason: 'no Continue control on the card', selected };
+  })();
+})()`;
+
+/**
  * Compare two paths the way a person would.
  *
  * Cursor reports its folder as `/d:/Sevenfold/auto` while Auto holds

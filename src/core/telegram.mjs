@@ -15,6 +15,7 @@ import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { listProjects, workspaceIdFor } from './projects.mjs';
 import { desktopChats } from './desktop-chats.mjs';
+import { optionLetter, parseQuestionReply } from './questions.mjs';
 
 const LIMIT = 4096;
 /** Telegram tolerates roughly one edit a second; stay well clear. */
@@ -125,6 +126,34 @@ export function renderTurn({ text = '', tools = [] } = {}) {
   return [head, clamp(body, Math.max(500, room))].filter(Boolean).join('\n\n') || '…';
 }
 
+/**
+ * A question card as words on a phone.
+ *
+ * Options are lettered so a typed answer can name one in a word. A single
+ * question is "A"; several questions keep their own numbers: "1A" is
+ * unambiguous where "the second one" is not.
+ */
+export function questionText(rec) {
+  const lines = [`❓ <b>${esc(rec.title || 'Question')}</b>`];
+  const questions = rec.questions || [];
+  for (const [i, q] of questions.entries()) {
+    const number = questions.length > 1 ? `${i + 1}. ` : '';
+    lines.push('', `${number}${esc(q.prompt || '')}`);
+    for (const [j, opt] of (q.options || []).entries()) {
+      lines.push(`  <b>${optionLetter(i, j, questions.length)}</b> ${esc(opt.label || opt.id || '')}`);
+    }
+    if (q.multiple) lines.push('  <i>several answers allowed</i>');
+  }
+  const oneTap = questions.length === 1 && !questions[0]?.multiple;
+  lines.push(
+    '',
+    oneTap
+      ? '<i>Tap an option, or reply with a letter (A, B, …).</i>'
+      : '<i>Tap options, then Submit — or reply with letters (1A 2B).</i>',
+  );
+  return lines.join('\n');
+}
+
 export class TelegramBridge extends EventEmitter {
   constructor({ sessions, stateDir, auth = loadTelegramAuth(), webUrl = '', restart = null }) {
     super();
@@ -141,6 +170,10 @@ export class TelegramBridge extends EventEmitter {
     this.callbacks = new Map();
     this.callbackSeq = 0;
     this.permMessages = new Map();
+    /** askId -> Telegram message id, so the buttons can be taken off once answered */
+    this.askMessages = new Map();
+    /** askId -> { sessionId, questions, chosen } while a multi-pick is in progress */
+    this.asks = new Map();
   }
 
   get enabled() {
@@ -272,6 +305,16 @@ export class TelegramBridge extends EventEmitter {
 
     const id = this.sessions.activeId;
     if (!id) return this.send('No active session. /new to start one.');
+
+    // A lettered reply to a waiting question is an answer, not a prompt.
+    const pending = this.sessions.pendingQuestion?.(id);
+    const parsed = pending && !images.length ? parseQuestionReply(text, pending.questions) : null;
+    if (parsed) {
+      this.sessions.answerQuestion(id, { askId: pending.askId, ...parsed }).catch((err) => {
+        this.send(`⚠️ ${esc(err.message)}`);
+      });
+      return undefined;
+    }
 
     // Deliberately not awaited: a turn does not resolve until the agent is
     // done, and it can stop mid-way to ask for permission. Blocking here would
@@ -647,6 +690,57 @@ export class TelegramBridge extends EventEmitter {
         by: 'telegram',
       });
       await answer(done ? payload.label : 'Already answered.');
+      return;
+    }
+
+    if (payload.kind === 'question') {
+      const id = this.sessions.activeId;
+      if (!id) {
+        await answer('No active session.');
+        return;
+      }
+      if (payload.action === 'skip') {
+        this.sessions.answerQuestion(id, { askId: payload.askId, skip: true }).catch((err) => {
+          this.send(`⚠️ ${esc(err.message)}`);
+        });
+        await answer('Skip');
+        return;
+      }
+      const held = this.asks.get(payload.askId);
+      const questions = held?.questions || this.sessions.pendingQuestion?.(id)?.questions || [];
+      if (payload.action === 'submit') {
+        this.sessions
+          .answerQuestion(id, { askId: payload.askId, selections: held?.chosen || {} })
+          .catch((err) => {
+            this.send(`⚠️ ${esc(err.message)}`);
+          });
+        await answer('Submit');
+        return;
+      }
+      const q = questions.find((item) => item.id === payload.questionId);
+      if (!q) {
+        await answer('That question is gone.');
+        return;
+      }
+      const oneTap = questions.length === 1 && !questions[0]?.multiple;
+      const chosen = held?.chosen || {};
+      if (q.multiple) {
+        const have = new Set(chosen[q.id] || []);
+        if (have.has(payload.optionId)) have.delete(payload.optionId);
+        else have.add(payload.optionId);
+        chosen[q.id] = [...have];
+      } else {
+        chosen[q.id] = [payload.optionId];
+      }
+      if (held) held.chosen = chosen;
+      if (oneTap) {
+        this.sessions
+          .answerQuestion(id, { askId: payload.askId, selections: chosen })
+          .catch((err) => {
+            this.send(`⚠️ ${esc(err.message)}`);
+          });
+      }
+      await answer(payload.label || 'picked');
     }
   }
 
@@ -762,17 +856,24 @@ export class TelegramBridge extends EventEmitter {
         await this.#flush(sessionId);
         break;
 
-      // A question, spelled out. Not buttons: a card can hold several
-      // questions, allow several answers to one of them and take typed text
-      // besides, and an inline keyboard that can only send one tap would
-      // answer the wrong thing confidently. Until it can be answered from
-      // here, the words are what matter — the alternative was a phone being
-      // offered "Skip" and "Continue" with no idea what was being asked.
-      case 'question':
-        await this.send(this.#questionText(rec));
+      // A question, spelled out, with buttons for each option. A card can hold
+      // several questions, so a single tap is only enough when there is one
+      // question and one answer; otherwise the taps collect and Submit sends.
+      case 'question': {
+        const sent = await this.send(questionText(rec), {
+          reply_markup: { inline_keyboard: this.#questionButtons(rec) },
+        });
+        if (sent?.message_id) this.askMessages.set(rec.askId, sent.message_id);
+        this.asks.set(rec.askId, {
+          sessionId,
+          questions: rec.questions || [],
+          chosen: {},
+        });
         break;
+      }
 
       case 'question_answered': {
+        await this.#closeQuestion(rec);
         const chosen = Object.values(rec.selections || {}).flat().filter(Boolean);
         const typed = Object.values(rec.texts || {}).filter(Boolean);
         const said = [...chosen, ...typed].join(', ') || rec.state || 'answered';
@@ -802,20 +903,54 @@ export class TelegramBridge extends EventEmitter {
    * one in a word, and each question keeps its own letters: "1A" is unambiguous
    * where "the second one" is not.
    */
-  #questionText(rec) {
-    const lines = [`❓ <b>${esc(rec.title || 'Question')}</b>`];
+  #questionButtons(rec) {
     const questions = rec.questions || [];
+    const rows = [];
     for (const [i, q] of questions.entries()) {
-      const number = questions.length > 1 ? `${i + 1}. ` : '';
-      lines.push('', `${number}${esc(q.prompt || '')}`);
       for (const [j, opt] of (q.options || []).entries()) {
-        const letter = String.fromCharCode(65 + j);
-        lines.push(`  <b>${number ? `${i + 1}` : ''}${letter}</b> ${esc(opt.label || opt.id || '')}`);
+        const letter = optionLetter(i, j, questions.length);
+        const label = String(opt.label || opt.id || '');
+        const text = `${letter} ${label}`.replace(/\s+/g, ' ').trim();
+        rows.push([
+          {
+            text: text.length > 64 ? `${text.slice(0, 63)}…` : text,
+            callback_data: this.tokenFor({
+              kind: 'question',
+              askId: rec.askId,
+              questionId: q.id,
+              optionId: opt.id,
+              label: letter,
+            }),
+          },
+        ]);
       }
-      if (q.multiple) lines.push('  <i>several answers allowed</i>');
     }
-    lines.push('', '<i>Answer in Cursor — answering from here is not wired up yet.</i>');
-    return lines.join('\n');
+    const oneTap = questions.length === 1 && !questions[0]?.multiple;
+    if (!oneTap) {
+      rows.push([
+        {
+          text: 'Submit',
+          callback_data: this.tokenFor({ kind: 'question', askId: rec.askId, action: 'submit' }),
+        },
+      ]);
+    }
+    rows.push([
+      {
+        text: 'Skip',
+        callback_data: this.tokenFor({ kind: 'question', askId: rec.askId, action: 'skip' }),
+      },
+    ]);
+    return rows;
+  }
+
+  async #closeQuestion(rec) {
+    const messageId = this.askMessages.get(rec.askId);
+    this.askMessages.delete(rec.askId);
+    this.asks.delete(rec.askId);
+    if (!messageId) return;
+    const chosen = Object.values(rec.selections || {}).flat().filter(Boolean);
+    const said = chosen.join(', ') || rec.state || 'answered';
+    await this.edit(messageId, `❓ <b>Question</b> — ${esc(said)}`, { reply_markup: undefined });
   }
 
   async #askPermission(rec) {
