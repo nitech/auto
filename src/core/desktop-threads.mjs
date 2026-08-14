@@ -152,13 +152,69 @@ export function toolStatus({ said, finished, verdict, failed, generating }) {
   return failed || verdict === 'error' ? 'failed' : 'completed';
 }
 
+/** Words in `additionalData.status` that mean nobody is being waited for. */
+const ANSWERED = /^(submitted|skipped|cancelled|accepted|rejected|error)$/i;
+
+/**
+ * The question this call is putting to a person, if it is one.
+ *
+ * `ask_question` looks like any other tool call, but it is the one that stops
+ * and waits, and Cursor's own marks do not say so where you would expect:
+ * `status` reads "completed" as soon as the card has been *drawn*, long before
+ * anybody has answered it. Whether a person still has it in front of them is in
+ * `additionalData.status` — "pending" until they answer, "submitted" after.
+ * Reading the outer status is why a question reached a phone as a finished tool
+ * call with nothing to answer and no text on it.
+ *
+ * A card holds several questions, each with its own options and its own
+ * free-text box, and selections are arrays because a question can allow more
+ * than one answer. That shape comes from Cursor, not from us.
+ *
+ * An unfamiliar state counts as still waiting, and the exact word is carried
+ * along: being nagged about a question that is over is recoverable, and silence
+ * about one that is not is exactly the bug this exists to fix.
+ */
+export function questionOf(tool) {
+  if ((tool?.name || tool?.tool) !== 'ask_question') return null;
+
+  const params = parse(tool.params) || parse(tool.rawArgs) || null;
+  const questions = (params?.questions || []).map((q) => ({
+    id: q.id,
+    prompt: String(q.prompt || ''),
+    multiple: Boolean(q.allow_multiple),
+    options: (q.options || []).map((o) => ({ id: o.id, label: String(o.label || '') })),
+  }));
+
+  const state = tool.additionalData?.status || null;
+  // The card exists but Cursor has not written what it asks yet. Nothing can be
+  // put to anyone, and saying "a question with no text" is worse than waiting.
+  if (!questions.length) return { asked: false, waiting: false, state, questions: [] };
+
+  return {
+    asked: true,
+    waiting: Boolean(state) && !ANSWERED.test(state),
+    state,
+    title: params.title ? String(params.title) : null,
+    questions,
+    selections: tool.additionalData?.currentSelections || null,
+    texts: tool.additionalData?.freeformTexts || null,
+  };
+}
+
 /**
  * A short print of what a bubble is saying now, to tell a re-read of the same
  * thing from a bubble that has moved on. Length is enough: text and output only
  * ever grow.
+ *
+ * A question is the exception: it is answered without anything about the call
+ * getting longer or changing status, so the print carries the state of the
+ * question too. Without it, the answer to a question is never noticed.
  */
 function printOf(message) {
-  if (message.kind === 'tool') return `${message.status}:${message.output?.length || 0}`;
+  if (message.kind === 'tool') {
+    const asked = message.question ? `:${message.question.state || 'none'}` : '';
+    return `${message.status}:${message.output?.length || 0}${asked}`;
+  }
   return `${message.kind}:${message.text?.length || 0}`;
 }
 
@@ -170,6 +226,7 @@ function messageOf(bubble, { generating = false } = {}) {
   const tool = bubble.toolFormerData;
   if (tool) {
     const detail = toolDetail(tool);
+    const question = questionOf(tool);
     const status = toolStatus({
       said: tool.status,
       finished: detail.finished,
@@ -178,6 +235,7 @@ function messageOf(bubble, { generating = false } = {}) {
       generating,
     });
     return {
+      ...(question ? { question } : {}),
       role,
       kind: 'tool',
       // An MCP call is written before Cursor knows what it is calling, and it
@@ -191,8 +249,9 @@ function messageOf(bubble, { generating = false } = {}) {
       durationMs: detail.durationMs,
       // A call still running will be written again with what it printed, so
       // this bubble is not finished with us yet. Anything else is as final as
-      // it is going to get, output or no output.
-      pending: status === 'in_progress',
+      // it is going to get, output or no output — except a question, which is
+      // finished with nobody until it has been answered.
+      pending: status === 'in_progress' || Boolean(question?.waiting),
       text: '',
     };
   }

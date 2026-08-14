@@ -93,6 +93,12 @@ export const SELECTORS = {
     '.aislash-editor-input-readonly',
     '.ui-markdown',
     '.ui-shell-tool-call__output',
+    // The top line of a tool call: the description the agent wrote for it and a
+    // summary of the command. Pointer-styled, holding no button, and prose — so
+    // a phone was offered "Run the test suite" as something to approve, three
+    // times in one turn, because the words start with "Run". Only the header is
+    // excluded; a real approval belongs to the card's body and must survive.
+    '.ui-tool-call-card__header',
   ],
 };
 

@@ -57,6 +57,8 @@ const state = {
   toolCards: new Map(),
   /** requestId -> element */
   permCards: new Map(),
+  /** askId -> element, so a question can be marked answered where it stands */
+  askCards: new Map(),
   stream: null,
   streamKind: null,
   /** the thinking block being written to, so it can be folded when it ends */
@@ -510,6 +512,59 @@ function renderPermissionResolved(rec) {
   card.querySelector('.opts').innerHTML = `<span class="outcome">${esc(how)}</span>`;
 }
 
+/**
+ * A question the agent is asking, with its real options.
+ *
+ * Not an approval, and drawn nothing like one: an approval is a short row of
+ * buttons, a question is a card of sentences, sometimes several questions deep.
+ * Until the answer can be pressed back into Cursor these are shown rather than
+ * offered — seeing what is being asked is the whole of what was missing, and a
+ * button that quietly does nothing would be worse than none.
+ */
+function renderQuestion(rec) {
+  const card = div('ask');
+  card.innerHTML = '<div class="head">Question</div>';
+  if (rec.title) {
+    const t = div('title');
+    t.textContent = rec.title;
+    card.append(t);
+  }
+  for (const q of rec.questions || []) {
+    const block = div('q');
+    const prompt = div('prompt');
+    prompt.textContent = q.prompt || '';
+    block.append(prompt);
+    const ol = document.createElement('ol');
+    for (const opt of q.options || []) {
+      const li = document.createElement('li');
+      li.textContent = opt.label || opt.id || '';
+      ol.append(li);
+    }
+    block.append(ol);
+    if (q.multiple) {
+      const note = div('cap');
+      note.textContent = 'several answers allowed';
+      block.append(note);
+    }
+    card.append(block);
+  }
+  const where = div('cap outcome');
+  where.textContent = 'Answer in Cursor — answering from here is not wired up yet.';
+  card.append(where);
+  state.askCards.set(rec.askId, card);
+  add(card);
+}
+
+function renderQuestionAnswered(rec) {
+  const card = state.askCards.get(rec.askId);
+  if (!card) return;
+  card.classList.add('resolved');
+  const chosen = Object.values(rec.selections || {}).flat().filter(Boolean);
+  const typed = Object.values(rec.texts || {}).filter(Boolean);
+  const said = [...chosen, ...typed].join(', ') || rec.state || 'answered';
+  card.querySelector('.outcome').textContent = `Answered: ${said}`;
+}
+
 function renderPlan(rec) {
   const card = div('plan', '<div class="head">Plan</div>');
   const ol = document.createElement('ol');
@@ -561,6 +616,12 @@ function render(rec) {
       break;
     case 'permission_resolved':
       renderPermissionResolved(rec);
+      break;
+    case 'question':
+      renderQuestion(rec);
+      break;
+    case 'question_answered':
+      renderQuestionAnswered(rec);
       break;
     case 'plan':
       renderPlan(rec);
@@ -947,6 +1008,7 @@ function attach(sessionId) {
   els.transcript.innerHTML = '';
   state.toolCards.clear();
   state.permCards.clear();
+  state.askCards.clear();
   state.stream = null;
   state.thinking = null;
   resetTerminals();
@@ -1019,6 +1081,7 @@ function connect() {
         els.transcript.innerHTML = '';
         state.toolCards.clear();
         state.permCards.clear();
+        state.askCards.clear();
         state.stream = null;
         state.thinking = null;
         resetTerminals();

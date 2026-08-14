@@ -1025,6 +1025,8 @@ export class SessionManager extends EventEmitter {
       runtime.toolNames = runtime.toolNames || new Map();
       this.live.set(id, runtime);
 
+      if (message.question) this.#recordQuestion(id, message);
+
       if (runtime.toolsDrawn.has(message.id)) {
         // Cursor writes an MCP call before it knows what it is calling, so the
         // card was drawn as "mcp--" and stayed that way for good. If the name
@@ -1055,6 +1057,61 @@ export class SessionManager extends EventEmitter {
     }
     const words = this.#newWordsOf(id, message);
     if (words) this.#record(id, KIND.agentDelta, { text: words });
+  }
+
+  /**
+   * A question Cursor is putting to a person, said out loud once.
+   *
+   * The bubble holding one is re-read every couple of seconds for as long as it
+   * goes unanswered, so this is where the repetition stops: the question when it
+   * appears, the answer when it arrives, nothing in between.
+   *
+   * It is also what tells the approval watcher to keep its hands off. A question
+   * card's own buttons are "Skip" and "Continue" — indistinguishable from an
+   * approval by their words, and pressing either from a phone answers the
+   * question with whatever happened to be selected, which is usually nothing.
+   */
+  #recordQuestion(id, message) {
+    const { question } = message;
+    // The card is drawn before Cursor writes what it asks. A question with no
+    // text is not worth putting on a phone; the next read will have it.
+    if (!question.asked) return;
+
+    const runtime = this.live.get(id) || {};
+    runtime.questions = runtime.questions || new Map();
+    this.live.set(id, runtime);
+    const said = runtime.questions.get(message.id) || null;
+
+    if (question.waiting) {
+      if (said === 'waiting') return;
+      runtime.questions.set(message.id, 'waiting');
+      this.#record(id, KIND.question, {
+        askId: message.id,
+        title: question.title,
+        questions: question.questions,
+        state: question.state,
+      });
+      return;
+    }
+
+    // Answered, in the IDE or from here. Either way it has stopped being an
+    // open question, and what was chosen is worth keeping.
+    if (said !== 'waiting') return;
+    runtime.questions.set(message.id, 'answered');
+    this.#record(id, KIND.questionAnswered, {
+      askId: message.id,
+      selections: question.selections,
+      texts: question.texts,
+      state: question.state,
+    });
+  }
+
+  /** Is a question card waiting for a person in this chat? */
+  #questionWaiting(id) {
+    const runtime = this.live.get(id);
+    if (!runtime?.questions) return false;
+    for (const state of runtime.questions.values()) if (state === 'waiting') return true;
+    return false;
   }
 
   /**
@@ -1156,7 +1213,12 @@ export class SessionManager extends EventEmitter {
       // the next turn does.
       if (state.status !== 'ok') return stop();
 
-      const names = (state.asking || []).map((c) => c.label || c.text).filter(Boolean);
+      // A question card is not an approval. Its buttons read "Skip" and
+      // "Continue", the words alone cannot tell them apart from one, and the
+      // question has already gone to the phone with its own real options.
+      const names = this.#questionWaiting(id)
+        ? []
+        : (state.asking || []).map((c) => c.label || c.text).filter(Boolean);
       if (names.length) this.#askOnBehalfOfCursor(id, meta, names);
       else this.#withdrawAsk(id, 'answered in Cursor');
 

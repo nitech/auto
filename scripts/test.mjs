@@ -2079,6 +2079,66 @@ if (existsSync(SRC)) {
         fail(`a command left running in an idle chat is stopped, got ${stopped.status}`);
       }
 
+      // A question put to a person. Cursor writes the card before it writes
+      // what it asks, marks the call "completed" the moment it is drawn, and
+      // says whether anyone has answered somewhere else entirely — in
+      // `additionalData.status`. Reading the outer status is why a question
+      // reached a phone as a finished tool call with nothing on it.
+      const asking = (additionalData, params) => {
+        const bubble = {
+          bubbleId: 'b9',
+          type: 2,
+          toolFormerData: {
+            name: 'ask_question',
+            status: 'completed',
+            ...(params ? { params: JSON.stringify(params) } : {}),
+            ...(additionalData ? { additionalData } : {}),
+          },
+        };
+        put.run(`bubbleId:${thread}:b9`, JSON.stringify(bubble));
+        if (!bubbles.some((b) => b.bubbleId === 'b9')) bubbles.push(bubble);
+        // The header list is what says a bubble exists; rewrite it so the new
+        // one is part of the conversation rather than an orphan row.
+        composer();
+        return threads.readThread(thread, { seen: older }).messages.find((m) => m.id === 'b9');
+      };
+
+      const card = { questions: [{ id: 'fix', prompt: 'Which way?', options: [{ id: 'a', label: 'This way' }] }] };
+
+      // Drawn, but Cursor has not said what it asks yet.
+      const blank = asking(null, null);
+      if (blank.question?.asked || blank.question?.waiting) {
+        fail(`a card with no text asks nothing yet, got ${JSON.stringify(blank.question)}`);
+      }
+
+      const waiting = asking({ status: 'pending' }, card);
+      if (!waiting.question?.waiting) {
+        fail(`a pending question is waiting for someone, got ${JSON.stringify(waiting.question)}`);
+      }
+      if (waiting.question.questions[0]?.prompt !== 'Which way?') {
+        fail('a question should carry what it asks');
+      }
+      if (waiting.question.questions[0]?.options[0]?.label !== 'This way') {
+        fail('a question should carry its real options, not the card buttons');
+      }
+      if (!waiting.pending) fail('a question is not finished with until it is answered');
+      if (abandoned.visited.includes('b9')) fail('an unanswered question must be read again');
+
+      const answered = asking(
+        { status: 'submitted', currentSelections: { fix: ['a'] }, freeformTexts: { fix: '' } },
+        card,
+      );
+      if (answered.question?.waiting) fail('a submitted question is nobody’s business any more');
+      if (answered.question.selections?.fix?.[0] !== 'a') fail('what was chosen is worth keeping');
+      if (answered.pending) fail('an answered question is finished with');
+
+      // An unfamiliar word for the state counts as still waiting, and carries
+      // the word itself — being nagged is recoverable, silence is the bug.
+      const strange = asking({ status: 'awaiting-user-input' }, card);
+      if (!strange.question?.waiting || strange.question.state !== 'awaiting-user-input') {
+        fail(`an unknown state should still wait and say so, got ${JSON.stringify(strange.question)}`);
+      }
+
       store.close();
 
       if (!events.includes('message:a new reply')) {

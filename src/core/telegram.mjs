@@ -756,6 +756,24 @@ export class TelegramBridge extends EventEmitter {
         await this.#flush(sessionId);
         break;
 
+      // A question, spelled out. Not buttons: a card can hold several
+      // questions, allow several answers to one of them and take typed text
+      // besides, and an inline keyboard that can only send one tap would
+      // answer the wrong thing confidently. Until it can be answered from
+      // here, the words are what matter — the alternative was a phone being
+      // offered "Skip" and "Continue" with no idea what was being asked.
+      case 'question':
+        await this.send(this.#questionText(rec));
+        break;
+
+      case 'question_answered': {
+        const chosen = Object.values(rec.selections || {}).flat().filter(Boolean);
+        const typed = Object.values(rec.texts || {}).filter(Boolean);
+        const said = [...chosen, ...typed].join(', ') || rec.state || 'answered';
+        await this.send(`✅ Answered: ${esc(said)}`);
+        break;
+      }
+
       case 'error':
         await this.send(`⚠️ ${esc(rec.text || 'error')}`);
         break;
@@ -769,6 +787,29 @@ export class TelegramBridge extends EventEmitter {
       default:
         break;
     }
+  }
+
+  /**
+   * A question card as words on a phone.
+   *
+   * Options are lettered rather than bulleted so an answer typed back can name
+   * one in a word, and each question keeps its own letters: "1A" is unambiguous
+   * where "the second one" is not.
+   */
+  #questionText(rec) {
+    const lines = [`❓ <b>${esc(rec.title || 'Question')}</b>`];
+    const questions = rec.questions || [];
+    for (const [i, q] of questions.entries()) {
+      const number = questions.length > 1 ? `${i + 1}. ` : '';
+      lines.push('', `${number}${esc(q.prompt || '')}`);
+      for (const [j, opt] of (q.options || []).entries()) {
+        const letter = String.fromCharCode(65 + j);
+        lines.push(`  <b>${number ? `${i + 1}` : ''}${letter}</b> ${esc(opt.label || opt.id || '')}`);
+      }
+      if (q.multiple) lines.push('  <i>several answers allowed</i>');
+    }
+    lines.push('', '<i>Answer in Cursor — answering from here is not wired up yet.</i>');
+    return lines.join('\n');
   }
 
   async #askPermission(rec) {

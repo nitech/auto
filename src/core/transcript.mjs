@@ -30,6 +30,9 @@ export const KIND = {
   terminalChunk: 'terminal_chunk',
   permissionRequest: 'permission_request',
   permissionResolved: 'permission_resolved',
+  /** The agent asking a person to choose, rather than to authorise. */
+  question: 'question',
+  questionAnswered: 'question_answered',
   plan: 'plan',
   sessionInfo: 'session_info',
   commands: 'commands',
