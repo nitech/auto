@@ -130,6 +130,11 @@ value as setup documentation is fine.
   on Telegram — presses that option in Cursor and Continue. Skip is still
   there. Answering in the IDE first still works: Auto notices and marks it
   answered.
+- **A plan Cursor created can be read and built from the phone.** `create_plan`
+  is a Created Plan card: title, overview, View Plan for the markdown, and
+  Build with a model picker. Build presses Cursor's own button on that card,
+  after choosing the model there if one was named. Telegram gets the same
+  two actions.
 - **Whether a turn is running comes from the database.** The window is a poor
   witness: the word "Stop" belongs to the bar offering to review file changes,
   so a chat that edited nothing looks idle while it works. Stopping is confirmed

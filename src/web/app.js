@@ -1525,6 +1525,25 @@ function connect() {
       return;
     }
 
+    if (msg.type === 'plan.build') {
+      const card = state.toolCards.get(msg.toolCallId);
+      if (!card?.createdPlan) return;
+      const outcome = card.querySelector('.outcome');
+      if (msg.status === 'pressed') {
+        card.classList.add('resolved');
+        if (outcome) outcome.textContent = 'Building in Cursor…';
+        for (const b of card.querySelectorAll('button, select')) {
+          if (!b.classList.contains('view')) b.disabled = true;
+        }
+        return;
+      }
+      for (const b of card.querySelectorAll('button, select')) b.disabled = false;
+      const build = card.querySelector('.build');
+      if (build) delete build.dataset.sent;
+      if (outcome) outcome.textContent = msg.reason || 'could not build — try again';
+      return;
+    }
+
     if (msg.type === 'queue') {
       if (msg.sessionId && msg.sessionId !== state.sessionId) return;
       state.queue = {

@@ -379,6 +379,20 @@ if (existsSync(SRC)) {
         this.pressed.push(skip ? 'Skip' : [...labels, 'Continue'].join('|'));
         return { pressed: true, selected: labels, submitted: skip ? 'Skip' : 'Continue' };
       }
+      async planAction({ bubbleId, action = 'locate' } = {}) {
+        if (this.missingPlan) return { found: false, pressed: false, reason: 'the plan is not on screen' };
+        const at = { x: 80, y: 200 };
+        const loc = {
+          found: true,
+          pressed: false,
+          viewAt: at,
+          buildAt: at,
+          menuAt: this.planMenuAt || null,
+        };
+        if (action === 'locate') return loc;
+        this.pressed.push(action === 'build' ? 'Build' : 'View Plan');
+        return { ...loc, pressed: true, name: action === 'build' ? 'Build' : 'View Plan' };
+      }
       close() {
         this.closed = true;
       }
@@ -827,6 +841,19 @@ if (existsSync(SRC)) {
     }
     if ((await machine({ asking }).press({ threadId: THREAD, name: 'Demolish' })).status !== 'not-pressed') {
       fail('pressing a control that does not exist should be refused');
+    }
+
+    const planner = new FakeWindow({ threadId: THREAD, hasComposer: true });
+    const built = await machine({ planner }).buildPlan({
+      threadId: THREAD,
+      bubbleId: 'plan-bubble',
+    });
+    if (built.status !== 'pressed' || planner.pressed.at(-1) !== 'Build') {
+      fail(`building a plan should press Build: ${JSON.stringify(built)}`);
+    }
+    planner.missingPlan = true;
+    if ((await machine({ planner }).buildPlan({ threadId: THREAD, bubbleId: 'gone' })).status !== 'not-pressed') {
+      fail('building a plan that is not on screen should be refused');
     }
 
     // A question card is answered by pressing its options, then Continue.
@@ -2164,7 +2191,7 @@ if (existsSync(SRC)) {
       failed = true;
     }
 
-    const { questionText } = await import('../src/core/telegram.mjs');
+    const { questionText, planText } = await import('../src/core/telegram.mjs');
     const { parseQuestionReply, labelsForAnswer, optionLetter } = await import('../src/core/questions.mjs');
     const card = {
       title: 'What should the plan change?',
@@ -2220,6 +2247,25 @@ if (existsSync(SRC)) {
     }
     if (labelsForAnswer(card.questions, { fix: ['b'] })[0] !== 'Keep and label') {
       fail('an answer should carry the label Cursor printed');
+      failed = true;
+    }
+
+    const { classifyTool, isCreatedPlan, planFields } = await import('../src/core/desktop-tool-ui.mjs');
+    if (classifyTool({ title: 'create_plan' }).toolKind !== 'plan') {
+      fail('create_plan should be a plan card, not OTHER');
+      failed = true;
+    }
+    const created = {
+      title: 'create_plan',
+      rawInput: { name: 'Match IDE tool stream', overview: 'Fold the cards.', plan: '# Hello' },
+    };
+    if (!isCreatedPlan(created) || planFields(created).name !== 'Match IDE tool stream') {
+      fail('a create_plan record should expose the plan title');
+      failed = true;
+    }
+    const said = planText(created);
+    if (!said.includes('Created Plan') || !said.includes('Match IDE tool stream') || !said.includes('Fold the cards.')) {
+      fail(`a plan on the phone should show title and overview: ${said}`);
       failed = true;
     }
 
@@ -2679,6 +2725,62 @@ if (existsSync(SRC)) {
       }
       if (edited?.content?.[0]?.type !== 'diff' || edited.content[0].newText !== 'new') {
         fail(`an edit should carry Cursor’s precomputed diff, got ${JSON.stringify(edited?.content)}`);
+      }
+
+      const planning = (additionalData, params) => {
+        const bubble = {
+          bubbleId: 'b11',
+          type: 2,
+          toolFormerData: {
+            name: 'create_plan',
+            status: 'completed',
+            ...(params ? { params: JSON.stringify(params) } : {}),
+            ...(additionalData ? { additionalData } : {}),
+          },
+        };
+        put.run(`bubbleId:${thread}:b11`, JSON.stringify(bubble));
+        composer({
+          fullConversationHeadersOnly: [
+            ...bubbles.map((b) => ({ bubbleId: b.bubbleId })),
+            { bubbleId: 'b10' },
+            { bubbleId: 'b11' },
+          ],
+        });
+        return threads.readThread(thread, { seen: new Set(['b1', 'b2', 'b3', 'b4', 'b6', 'b7', 'b9', 'b10']) })
+          .messages.find((m) => m.id === 'b11');
+      };
+
+      const blankPlan = planning(null, null);
+      if (blankPlan.plan?.asked) fail('a plan with no text is not ready to show');
+
+      const written = planning(
+        { reviewData: { status: 'Requested', selectedOption: 'none' }, planId: 'match_ide' },
+        {
+          name: 'Match IDE tool stream',
+          overview: 'Fold the OTHER cards.',
+          plan: '# Match Auto’s stream\n\nDo the fold.',
+          todos: [{ id: 'web-fold', content: 'Fold on the web', status: 'pending' }],
+        },
+      );
+      if (!written.plan?.asked || written.plan.name !== 'Match IDE tool stream') {
+        fail(`a written plan should carry its title, got ${JSON.stringify(written.plan)}`);
+      }
+      if (written.plan.overview !== 'Fold the OTHER cards.') fail('a plan should carry its overview');
+      if (!written.plan.markdown.includes('Do the fold.')) fail('a plan should carry its markdown');
+      if (!written.plan.waiting) fail('a Requested plan is waiting to be built');
+      if (!written.pending) fail('a plan waiting to be built is not finished with');
+      if (written.input?.planId !== 'match_ide') fail('a plan should carry its id on the input');
+
+      const builtPlan = planning(
+        { reviewData: { status: 'Done', selectedOption: 'approve' }, planId: 'match_ide' },
+        { name: 'Match IDE tool stream', overview: 'Fold the OTHER cards.', plan: '# done' },
+      );
+      if (builtPlan.plan?.waiting) fail('a Done plan is nobody’s to build any more');
+      if (builtPlan.pending) fail('a built plan is finished with');
+
+      const headed = planning(null, { plan: '# Smooth lyric transitions\n\nFix the clip.' });
+      if (headed.plan?.name !== 'Smooth lyric transitions') {
+        fail(`a plan with only markdown should take its title from the heading, got ${headed.plan?.name}`);
       }
 
       store.close();

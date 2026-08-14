@@ -16,7 +16,7 @@ import { join, dirname } from 'node:path';
 import { listProjects, workspaceIdFor } from './projects.mjs';
 import { desktopChats } from './desktop-chats.mjs';
 import { optionLetter, parseQuestionReply } from './questions.mjs';
-import { classifyTool, displayLabel, foldTools } from './desktop-tool-ui.mjs';
+import { classifyTool, displayLabel, foldTools, isCreatedPlan, planFields } from './desktop-tool-ui.mjs';
 
 const LIMIT = 4096;
 /** Telegram tolerates roughly one edit a second; stay well clear. */
@@ -154,6 +154,14 @@ export function questionText(rec) {
   return lines.join('\n');
 }
 
+/** A Created Plan card as words on a phone. */
+export function planText(rec) {
+  const fields = planFields(rec);
+  const lines = ['📋 <b>Created Plan</b>', `<b>${esc(fields.name)}</b>`];
+  if (fields.overview) lines.push('', esc(fields.overview));
+  return lines.join('\n');
+}
+
 export class TelegramBridge extends EventEmitter {
   constructor({ sessions, stateDir, auth = loadTelegramAuth(), webUrl = '', restart = null }) {
     super();
@@ -174,6 +182,8 @@ export class TelegramBridge extends EventEmitter {
     this.askMessages = new Map();
     /** askId -> { sessionId, questions, chosen } while a multi-pick is in progress */
     this.asks = new Map();
+    /** toolCallId -> latest plan fields, so View Plan sends what we have now */
+    this.plans = new Map();
   }
 
   get enabled() {
@@ -742,6 +752,30 @@ export class TelegramBridge extends EventEmitter {
       }
       await answer(payload.label || 'picked');
     }
+
+    if (payload.kind === 'plan') {
+      const id = payload.sessionId || this.sessions.activeId;
+      if (!id) {
+        await answer('No active session.');
+        return;
+      }
+      if (payload.action === 'view') {
+        await answer('View Plan');
+        await this.#sendPlanMarkdown(payload.toolCallId);
+        return;
+      }
+      if (payload.action === 'models') {
+        await answer('Build');
+        await this.#sendPlanModels(id, payload.toolCallId);
+        return;
+      }
+      this.sessions
+        .buildPlan(id, { toolCallId: payload.toolCallId, model: payload.model || '' })
+        .catch((err) => {
+          this.send(`⚠️ ${esc(err.message)}`);
+        });
+      await answer(payload.label || 'Build');
+    }
   }
 
   // ------------------------------------------------------------------- output
@@ -818,6 +852,10 @@ export class TelegramBridge extends EventEmitter {
 
       case 'tool_call':
         if (classifyTool(rec).lane === 'hide') break;
+        if (isCreatedPlan(rec)) {
+          await this.#sendPlan(sessionId, rec);
+          break;
+        }
         turn.tools.set(rec.toolCallId || `t${turn.tools.size}`, {
           rec,
           label: toolLabel(rec),
@@ -828,6 +866,11 @@ export class TelegramBridge extends EventEmitter {
         break;
 
       case 'tool_update': {
+        const held = this.plans.get(rec.toolCallId);
+        if (held && rec.rawInput) {
+          held.rawInput = { ...held.rawInput, ...rec.rawInput };
+          held.awaitingBuild = rec.awaitingBuild ?? held.awaitingBuild;
+        }
         const tool = turn.tools.get(rec.toolCallId);
         // An MCP call is named only once it is under way; take the name late.
         if (tool && rec.title) {
@@ -956,6 +999,90 @@ export class TelegramBridge extends EventEmitter {
     const chosen = Object.values(rec.selections || {}).flat().filter(Boolean);
     const said = chosen.join(', ') || rec.state || 'answered';
     await this.edit(messageId, `❓ <b>Question</b> — ${esc(said)}`, { reply_markup: undefined });
+  }
+
+  async #sendPlan(sessionId, rec) {
+    const fields = planFields(rec);
+    this.plans.set(rec.toolCallId, { ...rec, rawInput: rec.rawInput || {}, sessionId });
+    const rows = [
+      [
+        {
+          text: 'View Plan',
+          callback_data: this.tokenFor({
+            kind: 'plan',
+            action: 'view',
+            toolCallId: rec.toolCallId,
+            sessionId,
+          }),
+        },
+      ],
+    ];
+    if (fields.awaitingBuild) {
+      rows.push([
+        {
+          text: 'Build',
+          callback_data: this.tokenFor({
+            kind: 'plan',
+            action: 'models',
+            toolCallId: rec.toolCallId,
+            sessionId,
+          }),
+        },
+      ]);
+    }
+    await this.send(planText(rec), { reply_markup: { inline_keyboard: rows } });
+  }
+
+  async #sendPlanMarkdown(toolCallId) {
+    const rec = this.plans.get(toolCallId);
+    const markdown = planFields(rec || {}).markdown;
+    if (!markdown) {
+      await this.send('That plan has no contents yet.');
+      return;
+    }
+    const chunks = [];
+    let rest = markdown;
+    while (rest.length) {
+      chunks.push(rest.slice(0, LIMIT - 20));
+      rest = rest.slice(LIMIT - 20);
+    }
+    for (const chunk of chunks) {
+      await this.send(`<pre>${esc(chunk)}</pre>`);
+    }
+  }
+
+  async #sendPlanModels(sessionId, toolCallId) {
+    const models = this.sessions.catalog?.models || [];
+    const rows = [
+      [
+        {
+          text: 'Current model',
+          callback_data: this.tokenFor({
+            kind: 'plan',
+            action: 'build',
+            toolCallId,
+            sessionId,
+            label: 'Build',
+          }),
+        },
+      ],
+    ];
+    for (let i = 0; i < models.length; i += 2) {
+      rows.push(
+        models.slice(i, i + 2).map((m) => ({
+          text: m.modelId === 'default[]' ? 'Auto-select' : m.name || m.modelId,
+          callback_data: this.tokenFor({
+            kind: 'plan',
+            action: 'build',
+            toolCallId,
+            sessionId,
+            model: m.modelId,
+            label: m.name,
+          }),
+        })),
+      );
+    }
+    await this.send('Build with which model?', { reply_markup: { inline_keyboard: rows } });
   }
 
   async #askPermission(rec) {

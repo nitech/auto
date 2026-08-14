@@ -15,6 +15,8 @@ through a web app (PWA) and a Telegram bot.
 - Broker approvals (ask / ask-on-write / auto) answerable from web or Telegram
 - Broker question cards from a desktop chat, answerable from web or Telegram
   by pressing the chosen option in Cursor
+- Broker Created Plan cards from a desktop chat — view the markdown, pick a
+  model, and press Build in Cursor
 - Host real PTY terminals for the agent and for the user
 - Host a Chrome instance the user can drive by hand from a phone
 - Serve the web app and a WebSocket that replays transcripts from a sequence
