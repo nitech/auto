@@ -79,7 +79,13 @@
     </section>
 
     <div class="scroller">
-      <div id="transcript"></div>
+      <!-- Visible before JS runs: a long transcript takes a few seconds to
+          replay, and an empty pane reads as the app having frozen. -->
+      <div id="transcript-loading" class="transcript-loading" role="status" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span>
+        <span>Loading conversation…</span>
+      </div>
+      <div id="transcript" aria-busy="true"></div>
       <button id="to-bottom" title="Jump to newest" aria-label="Jump to newest" hidden>↓</button>
     </div>
 

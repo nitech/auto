@@ -1258,6 +1258,37 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1d3. Chat history is not a blank pane while it loads. A long transcript
+// takes a few seconds to replay, and an empty #transcript used to look like
+// the app had frozen.
+{
+  const html = readFileSync(join(ROOT, 'src/web/index.html'), 'utf8');
+  const css = readFileSync(join(ROOT, 'src/web/style.css'), 'utf8');
+  const js = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  let failed = false;
+  if (!html.includes('id="transcript-loading"')) {
+    fail('the page must ship a loading marker so history is not a blank pane');
+    failed = true;
+  }
+  if (!/id="transcript-loading"[^>]*role="status"/.test(html)) {
+    fail('the loading marker should announce itself as a status');
+    failed = true;
+  }
+  if (!css.includes('.transcript-loading') || !css.includes('.transcript-loading[hidden]')) {
+    fail('the loading marker needs a style, and a way to leave the screen');
+    failed = true;
+  }
+  if (!js.includes('function setHistoryLoading') || !js.includes('setHistoryLoading(true)')) {
+    fail('app.js must show the loading marker while history is on its way');
+    failed = true;
+  }
+  if (!js.includes('setHistoryLoading(false)')) {
+    fail('app.js must hide the loading marker once history is on screen');
+    failed = true;
+  }
+  if (!failed) ok('v2 web: transcript loading marker');
+}
+
 // 1e. Browser address bar: URLs are opened, prose is searched.
 {
   try {

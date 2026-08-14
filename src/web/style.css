@@ -1075,6 +1075,29 @@ details.think .body {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Covers the chat until history is on screen, so a slow replay is not a blank. */
+.transcript-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 13.5px;
+  pointer-events: none;
+}
+
+.transcript-loading[hidden] { display: none; }
+
+.transcript-loading .spinner {
+  width: 22px;
+  height: 22px;
+}
+
 .browser-view {
   position: relative;
   flex: 1;

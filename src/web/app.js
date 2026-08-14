@@ -24,6 +24,7 @@ const els = {
   app: $('app'),
   rail: $('session-list'),
   transcript: $('transcript'),
+  historyLoading: $('transcript-loading'),
   box: $('box'),
   send: $('send'),
   stop: $('stop'),
@@ -87,6 +88,15 @@ const markdown = renderMarkdown;
 function nearBottom() {
   const t = els.transcript;
   return t.scrollHeight - t.scrollTop - t.clientHeight < 160;
+}
+
+/**
+ * A long transcript takes a few seconds to arrive and draw. The overlay is
+ * in the markup so it is there before this file runs; this only flips it.
+ */
+function setHistoryLoading(on) {
+  els.historyLoading.hidden = !on;
+  els.transcript.setAttribute('aria-busy', on ? 'true' : 'false');
 }
 
 function scrollDown(force = false) {
@@ -1012,6 +1022,7 @@ function attach(sessionId) {
   state.stream = null;
   state.thinking = null;
   resetTerminals();
+  setHistoryLoading(true);
   setRail(false);
   sendOp({ op: 'attach', sessionId, fromSeq: 0 });
 }
@@ -1028,6 +1039,9 @@ function connect() {
     q.set('fromSeq', String(state.lastSeq));
   }
   const query = q.toString();
+  // A reconnect that already has the conversation on screen should not cover
+  // it; a first load (or a replay from scratch) has nothing else to show.
+  if (!state.lastSeq) setHistoryLoading(true);
   const ws = new WebSocket(`${proto}://${location.host}/${query ? `?${query}` : ''}`);
   state.ws = ws;
 
@@ -1116,6 +1130,7 @@ function connect() {
       }
       decorate(els.transcript);
       scrollDown(true);
+      setHistoryLoading(false);
       // Whatever was queued before you looked is still queued.
       sendOp({ op: 'queue.list', sessionId: msg.sessionId });
       return;
@@ -1197,6 +1212,7 @@ function connect() {
     }
 
     if (msg.type === 'error') {
+      setHistoryLoading(false);
       render({ kind: 'error', text: msg.message });
     }
   };
