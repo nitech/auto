@@ -1038,12 +1038,12 @@ details.think .body {
   --mode-color: var(--mode-agent);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
   background: var(--bg-2);
   border: 1px solid var(--mode-color);
   border-radius: 18px;
-  /* 6px is enough for the 18px radius; tighter than that clips into the curve. */
-  padding: 4px 6px 6px;
+  /* One inset for the whole field, so text, chips and circles share an edge. */
+  padding: 8px;
   transition: border-color 0.12s ease;
 }
 
@@ -1069,10 +1069,9 @@ details.think .body {
  */
 .composer-controls {
   display: flex;
-  /* Chips and + share the bottom edge so a 40px attach does not float them. */
-  align-items: flex-end;
+  align-items: center;
   gap: 6px;
-  padding: 0 2px;
+  padding: 0;
 }
 
 .composer-controls select {
@@ -1113,7 +1112,9 @@ details.think .body {
   outline: none;
   resize: none;
   max-height: 40vh;
-  padding: 8px;
+  /* Horizontal inset lives on the box, so the placeholder lines up with the chips. */
+  padding: 4px 0;
+  min-height: 32px;
   line-height: 1.45;
   /* iOS zooms the page into any field under 16px, and never zooms back out. */
   font-size: 16px;
@@ -1121,8 +1122,8 @@ details.think .body {
 
 .in-box {
   flex: none;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border-radius: 50%;
   display: grid;
@@ -1133,6 +1134,14 @@ details.think .body {
   font-size: 17px;
   line-height: 1;
   cursor: pointer;
+  position: relative;
+}
+
+/* Keep a 40px thumb without letting the circle inflate the box. */
+.in-box::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
 }
 
 .in-box[hidden] { display: none; }
@@ -1912,7 +1921,6 @@ pre:hover .copy,
     font-size: 17px;
   }
   .sheet-panel button:not(.icon) { min-height: 40px; }
-  .in-box { width: 40px; height: 40px; }
 
   /* Same rule as the composer: iOS zooms into anything smaller than 16px and
      leaves the page there, so every field a finger can reach is 16px. The
