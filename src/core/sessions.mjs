@@ -1005,6 +1005,18 @@ export class SessionManager extends EventEmitter {
             ? `This chat was already on ${now}.`
             : `Cursor's ${picker} for this chat is now ${now} (was ${result.was}).`,
       });
+      // Changing the model can end a paused turn; anything still waiting was
+      // taken out first so Cursor would not auto-send it. Say what was held.
+      if (result.held?.length) {
+        const listed = result.held.map((t) => `"${short(t)}"`).join('; ');
+        this.#record(id, KIND.notice, {
+          text:
+            `Took ${result.held.length} queued message${result.held.length === 1 ? '' : 's'} ` +
+            `out so changing the ${picker} would not send ${result.held.length === 1 ? 'it' : 'them'}: ${listed}. ` +
+            `Send again if you still want ${result.held.length === 1 ? 'it' : 'them'}.`,
+        });
+        this.emit('queue', { sessionId: id, owner: 'cursor', waiting: 0, items: [], hidden: 0 });
+      }
       return true;
     }
 

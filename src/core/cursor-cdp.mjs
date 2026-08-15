@@ -1192,6 +1192,11 @@ export class CursorCdp {
    * With nothing wanted this only reads. With something wanted it presses it and
    * then checks the desktop's own records agree, because a menu closing proves
    * nothing about what it did.
+   *
+   * A model switch can end a paused or failing turn (high demand is one case).
+   * Cursor then drains its own queue into the next turn — so from a phone it
+   * looks like changing the model submitted the next waiting message. The queue
+   * is taken out first; put back only if the turn is still running afterwards.
    */
   async #inMenu(window, picker, wanted) {
     const which = picker === 'mode' ? 'mode' : 'model';
@@ -1203,10 +1208,14 @@ export class CursorCdp {
       return { status: 'already', picker: which, was: at.label };
     }
 
+    // Only a real switch can end the turn; reading the menu must leave the queue.
+    const held = wanted ? await this.#holdQueue(window) : [];
+
     await window.mouseAt(at);
     const menu = await this.#menuOpened(window);
     if (!menu.items.length) {
       await this.#closeMenu(window);
+      await this.#putBackQueue(window, held);
       return { status: 'no-menu', reason: `the ${which} picker did not open` };
     }
 
@@ -1219,6 +1228,7 @@ export class CursorCdp {
     const found = pickItem(menu.items, wanted);
     if (!found.item) {
       await this.#closeMenu(window);
+      await this.#putBackQueue(window, held);
       return { status: 'no-such-option', reason: found.reason, picker: which, options };
     }
 
@@ -1226,9 +1236,45 @@ export class CursorCdp {
     await this.#closeMenu(window);
 
     const now = await this.#settled(window, which, at.label);
-    return now === at.label
-      ? { status: 'unchanged', reason: `it still says ${now}`, picker: which, was: at.label }
-      : { status: 'set', picker: which, was: at.label, now };
+    const leftover = await this.#putBackQueue(window, held);
+    const base =
+      now === at.label
+        ? { status: 'unchanged', reason: `it still says ${now}`, picker: which, was: at.label }
+        : { status: 'set', picker: which, was: at.label, now };
+    return leftover.length ? { ...base, held: leftover } : base;
+  }
+
+  /**
+   * Take Cursor's waiting messages out before a picker change can end the turn.
+   * Dropped one by one by their words — the same rule as a phone deleting a row.
+   */
+  async #holdQueue(window) {
+    const held = [];
+    for (;;) {
+      const seen = await window.queue();
+      const next = seen?.items?.[0];
+      if (!next?.text) return held;
+      const pressed = await window.queueAct(next.text, 'drop');
+      if (!pressed?.pressed) return held;
+      held.push(next.text);
+    }
+  }
+
+  /**
+   * Put held messages back only while a turn is still running (they re-queue).
+   * If the turn has ended, return them so the caller can say so — sending now
+   * would start a new turn with the wrong message.
+   */
+  async #putBackQueue(window, held) {
+    if (!held?.length) return [];
+    const busy = Boolean((await window.actions())?.generating);
+    if (!busy) return [...held];
+    for (const text of held) {
+      await window.clearComposer();
+      await window.insertText(text);
+      await window.pressEnter();
+    }
+    return [];
   }
 
   /** Wait for a menu to appear, and say what is in it. */

@@ -214,6 +214,7 @@ if (existsSync(SRC)) {
           deafToClicks = false,
           hasNewAgent = false,
           nextThreadId = null,
+          modelChangeEndsTurn = true,
         } = {},
       ) {
         this.takesPaste = takesPaste;
@@ -224,6 +225,7 @@ if (existsSync(SRC)) {
         this.deafToClicks = deafToClicks;
         this.hasNewAgent = hasNewAgent;
         this.nextThreadId = nextThreadId;
+        this.modelChangeEndsTurn = modelChangeEndsTurn;
         this.given = facts;
         this.box = facts.composerText || '';
         this.submits = submits;
@@ -258,6 +260,14 @@ if (existsSync(SRC)) {
        * A real mouse press: on a picker it opens that menu, inside an open menu
        * it chooses, and choosing changes what the picker says — as Cursor's does.
        */
+      /** When a turn ends, Cursor sends the next queued message on its own. */
+      endTurn() {
+        this.generating = false;
+        if (!this.queued.length) return;
+        this.sent = this.queued.shift();
+        this.sentWith = this.pills;
+        this.generating = true;
+      }
       async mouseAt({ x, y }) {
         this.clicks.push({ x, y });
         const item = (this.menus[this.openMenu] || []).find(
@@ -271,8 +281,14 @@ if (existsSync(SRC)) {
             (i) => i !== item && Math.abs(i.y - item.y) < 2,
           );
           if (beside.length && !item.becomes) return;
+          const which = this.openMenu;
           if (!item.inert) this.pickers[this.openMenu] = item.becomes || item.label;
           this.openMenu = null;
+          // A model switch while a turn is stuck (high demand, etc.) ends that
+          // turn in Cursor, which would otherwise drain the queue into the next.
+          if (which === 'model' && this.generating && this.modelChangeEndsTurn !== false) {
+            this.endTurn();
+          }
           return;
         }
         for (const which of ['mode', 'model']) {
@@ -1109,6 +1125,70 @@ if (existsSync(SRC)) {
     }
     if ((await machine({ listing }).choose({ threadId: OTHER, picker: 'mode', wanted: 'Plan' })).status !== 'unknown-thread') {
       picking = fail('a chat no window shows must not have its mode changed') ?? true;
+    }
+
+    // Changing the model while Cursor is holding a queue must not submit the
+    // next message — high demand ending the turn used to drain the queue.
+    const queuedSwitch = new FakeWindow(
+      { threadId: THREAD, hasComposer: true },
+      {
+        generating: true,
+        queued: ['next please', 'after that'],
+        pickers: { mode: 'Agent', model: 'Opus 5 High' },
+        menus: {
+          model: [
+            { label: 'Opus 5', x: 300, y: 100 },
+            { label: 'High', x: 380, y: 100, becomes: 'Opus 5 High' },
+            { label: 'Kimi K3', x: 300, y: 130 },
+          ],
+        },
+      },
+    );
+    const held = await machine({ queuedSwitch }).choose({
+      threadId: THREAD,
+      picker: 'model',
+      wanted: 'Kimi K3',
+    });
+    if (held.status !== 'set' || held.now !== 'Kimi K3') {
+      picking = fail(`model switch with a queue should still set it: ${JSON.stringify(held)}`) ?? true;
+    }
+    if (queuedSwitch.sent === 'next please' || queuedSwitch.sent === 'after that') {
+      picking = fail(`changing the model must not submit a queued message, sent ${queuedSwitch.sent}`) ?? true;
+    }
+    if (!held.held || held.held.join('|') !== 'next please|after that') {
+      picking = fail(`held queue should be returned, got ${JSON.stringify(held.held)}`) ?? true;
+    }
+    if (queuedSwitch.queued.length) {
+      picking = fail('held messages must leave Cursor’s queue') ?? true;
+    }
+
+    // If the turn is still running after the switch, put the queue back.
+    const stillBusy = new FakeWindow(
+      { threadId: THREAD, hasComposer: true },
+      {
+        generating: true,
+        modelChangeEndsTurn: false,
+        queued: ['keep me'],
+        pickers: { model: 'Opus 5 High' },
+        menus: {
+          model: [
+            { label: 'Opus 5', x: 300, y: 100 },
+            { label: 'High', x: 380, y: 100, becomes: 'Opus 5 High' },
+            { label: 'Kimi K3', x: 300, y: 130 },
+          ],
+        },
+      },
+    );
+    const restored = await machine({ stillBusy }).choose({
+      threadId: THREAD,
+      picker: 'model',
+      wanted: 'Kimi K3',
+    });
+    if (restored.held?.length) {
+      picking = fail('a still-running turn should get its queue back') ?? true;
+    }
+    if (stillBusy.queued.join('|') !== 'keep me') {
+      picking = fail(`queue should be restored while generating, got ${stillBusy.queued.join('|')}`) ?? true;
     }
 
     // Matching names the way a reader does, and refusing what is ambiguous.

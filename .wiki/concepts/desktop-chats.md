@@ -23,7 +23,7 @@ sources:
   - id: outbox
     resource: /src/core/desktop-outbox.mjs
     title: Held messages
-generated: { by: agent, at: 2026-08-15T17:30:00Z }
+generated: { by: agent, at: 2026-08-15T17:45:00Z }
 ---
 
 # Continuing Cursor desktop chats
@@ -107,6 +107,11 @@ hides. `create_plan` stays a card. See [approvals](approvals.md).
   was down — the last tool results, the closing prose — is visited in the
   IDE and missing here. An open `turn_start` with no `turn_end` is the
   signal; only skip bubbles we actually wrote down.
+- Changing the model (or mode) while Cursor holds a queue can end a paused
+  turn — high demand is one case — and Cursor would then send the next
+  waiting message on its own. Auto takes the queue out first; if the turn
+  is still running afterwards the messages go back in, otherwise a notice
+  lists what was held so it is not fired as a new turn.
 
 ## What the desktop keeps
 
