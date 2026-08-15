@@ -56,7 +56,9 @@ export function optionMatches(label, text) {
   const needle = clean(label);
   const name = clean(text);
   if (same(needle, name)) return true;
-  const stripped = name.replace(/^(?:[a-z]|\d+)[.)]?\s+/, '');
+  // "A Red", "B. Blue", or glued "ARed" — the letter is its own button, and
+  // Cursor puts no space between that button and the label span.
+  const stripped = name.replace(/^(?:[a-z]|\d+)[.)]?(?:\s+|(?=[a-z]))/, '');
   return stripped !== name && same(needle, stripped);
 }
 

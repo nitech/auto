@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-15
+* **Update**: Question answers press Cursor's questionnaire toolbar (sibling of the tool bubble). Option text is often glued as "ARed"; Continue is located even while disabled.
 * **Update**: Question answers are a real mouse on lettered option rows, not a click for `role=radio` inside the tool bubble — that was "no option says Red".
 * **Update**: The web composer's attach control is a binder on the lower-right of the box, not a + in the typing row.
 * **Update**: Skip/Continue on an `ask_question` bubble are not approvals. A question with no options yet still keeps the approval watcher off. Option press matches a truncated label and falls back to the Nth row.

@@ -17,7 +17,7 @@ sources:
   - id: clipboard
     resource: /src/core/clipboard.mjs
     title: Image paste via clipboard
-generated: { by: agent, at: 2026-08-15T13:05:00Z }
+generated: { by: agent, at: 2026-08-15T13:30:00Z }
 ---
 
 # The Cursor window
@@ -51,19 +51,18 @@ generated. What a conversation says is excluded, or a message beginning
 Queue icon buttons carry no words — those alone are found by `codicon`
 name (VS Code's icon vocabulary).
 
-A question card is pressed *where the option rows sit*, with a real mouse —
-they ignore a dispatched click the same way the pickers do. The rows are
-lettered pointer-cursor controls ("A Red"), often a sibling of the
-`ask_question` bubble rather than a `role=radio` inside it, which is why
-searching that bubble for the word "Red" missed. Long labels are truncated;
-a prefix still counts, a letter prefix is stripped, and the Nth row above
-Continue is the fallback. Skip and Continue on that card are the question's
-own buttons.
+A question is answered on Cursor's questionnaire toolbar above the chat
+box — a sibling of the `ask_question` bubble, not inside it. Each option
+is a lettered row ("A" in one element, "Red" in the next, often glued as
+"ARed"). Auto matches the label, including that glued letter, and presses
+the row then Continue with a real mouse. Continue stays disabled until a
+row is chosen, so it is found even while disabled. Skip is on that
+toolbar, not an approval. `spike/question-card.mjs` dumps a real card
+when a press misses.
 
 When Cursor's UI moves, `src/core/cursor-dom.mjs` is the only file that
 should need to change. `spike/cdp-probe.mjs --discover` is how to find the
-new selectors. `spike/question-card.mjs` dumps a real card when a press
-misses.
+new selectors.
 
 ## Model and mode from the phone
 

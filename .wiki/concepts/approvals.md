@@ -14,7 +14,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: How desktop tools are drawn
-generated: { by: agent, at: 2026-08-15T13:05:00Z }
+generated: { by: agent, at: 2026-08-15T13:30:00Z }
 ---
 
 # Approvals, questions, and plans
@@ -58,14 +58,15 @@ deliberate action instead.
 `ask_question` is not an approval: it holds real options, often several
 questions. The phone letters them (`A`, or `1A` when there are several) so
 a tap or a typed `A` / `1B` presses that option in Cursor and Continue.
-`Skip` is still there, on the question card, not as a permission. Cursor
-letters and truncates the rows in the window ("A Red", or a long label cut
-short); Auto strips the letter, matches a prefix, and falls back to the Nth
-row above Continue. The press is a real mouse on the row — a click on the
-word is not enough, and was the miss behind "no option says Red". Anything
-that is not a lettered pick is a message, not an answer — a thought that
-happened to start with a letter must not vanish into the question.
-Answering in the IDE first still works; Auto notices and marks it answered.
+Cursor draws those options on a questionnaire toolbar above the chat box,
+not inside the tool bubble. The letter and the label are separate nodes
+(often glued as "ARed"); Auto matches the stored label, including that
+prefix, and falls back to the Nth row. Continue is disabled until a row is
+chosen, so it is located anyway and pressed after the option. `Skip` is
+still there, on that toolbar, not as a permission. Anything that is not a
+lettered pick is a message, not an answer — a thought that happened to
+start with a letter must not vanish into the question. Answering in the
+IDE first still works; Auto notices and marks it answered.
 
 ## Created Plan
 

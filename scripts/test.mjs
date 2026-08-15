@@ -935,7 +935,7 @@ if (existsSync(SRC)) {
       fail(`the Nth option is the fallback when the label is missing: ${JSON.stringify(nth)}`);
     }
     const lettered = new FakeWindow({ threadId: THREAD, hasComposer: true });
-    lettered.optionNames = ['A Red', 'B Blue'];
+    lettered.optionNames = ['ARed', 'BBlue'];
     lettered.optionMatch = { optionMatches };
     const letterHit = await machine({ lettered }).answer({
       threadId: THREAD,
@@ -2513,6 +2513,10 @@ if (existsSync(SRC)) {
     }
     if (!optionMatches('Red', 'A Red') || !optionMatches('Blue', 'B. Blue')) {
       fail('a lettered row still belongs to its label');
+      failed = true;
+    }
+    if (!optionMatches('Red', 'ARed')) {
+      fail('a letter glued to the label still belongs to it');
       failed = true;
     }
     if (optionMatches('Red', 'Bored') || optionMatches('Red', 'A')) {

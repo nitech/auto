@@ -68,6 +68,18 @@ export const SELECTORS = {
   queueEdit: ['[class*="codicon-edit"]'],
   queueNow: ['[class*="codicon-arrow-up-two"]'],
   queueDrop: ['[class*="codicon-trashcan"]'],
+  /**
+   * The questionnaire Cursor draws above the chat box while `ask_question` waits.
+   *
+   * These names are Cursor's own composer classes, not the generated `ui-*`
+   * ones. The form is a sibling of the tool bubble, which is why searching
+   * `[data-message-id]` for "Red" missed.
+   */
+  questionBar: ['.composer-questionnaire-toolbar'],
+  questionOption: ['.composer-questionnaire-toolbar-option'],
+  questionLabel: ['.composer-questionnaire-toolbar-option-label'],
+  questionContinue: ['.composer-run-button'],
+  questionSkip: ['.composer-skip-button'],
   /** The model button, and the text inside it naming the current model. */
   modelName: ['.ui-model-picker__trigger-text'],
   modelButton: ['button[aria-haspopup="menu"]'],
@@ -674,13 +686,14 @@ ${HELPERS}
 })()`;
 
 /**
- * Answer a question card in the chat, by the options a person picked.
+ * Answer a question Cursor is putting to a person.
  *
- * Locates rather than clicks: the rows ignore a dispatched click the same way
- * the model picker does, so the caller presses where they sit with a real mouse.
- * They are often not buttons — lettered pointer-cursor rows, sometimes a sibling
- * of the `ask_question` bubble rather than inside it — which is why searching
- * only for `role=radio` inside `[data-message-id]` missed "Red".
+ * The form is `.composer-questionnaire-toolbar`, above the chat box — a sibling
+ * of the `ask_question` bubble, not a descendant. Each option is a `role=button`
+ * row whose letter lives in one element and whose label lives in the next, so
+ * the row's text is often "ARed" with no space. Continue stays disabled until a
+ * row is chosen, so it is located even while disabled; the caller then presses
+ * the option, waits, and presses Continue with a real mouse.
  *
  * @param {object} opts
  * @param {string} opts.askId
@@ -692,6 +705,7 @@ export const answerCard = ({ askId, labels = [], indexes = [], texts = [], skip 
 ${HELPERS}
 ${PRESSABLE}
   const pane = __pane();
+  const root = document;
   const clean = (s) => String(s ?? '').replace(/\\s+/g, ' ').trim();
   const wanted = ${JSON.stringify(String(askId || ''))};
   const labels = ${JSON.stringify((labels || []).map(String))};
@@ -700,6 +714,7 @@ ${PRESSABLE}
   const skip = ${JSON.stringify(Boolean(skip))};
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
   const spot = (el) => {
+    if (!el) return null;
     const { x, y, width, height } = el.getBoundingClientRect();
     if (!width || !height) return null;
     return { x: Math.round(x + width / 2), y: Math.round(y + height / 2) };
@@ -710,15 +725,34 @@ ${PRESSABLE}
     if (!want || !have) return false;
     if (have === want || have.startsWith(want) || want.startsWith(have + ' ')) return true;
     if (have.length >= 12 && want.startsWith(have)) return true;
-    const stripped = have.replace(/^(?:[a-z]|\\d+)[.)]?\\s+/, '');
+    const stripped = have.replace(/^(?:[a-z]|\\d+)[.)]?(?:\\s+|(?=[a-z]))/, '');
     if (stripped === have) return false;
     if (stripped === want || stripped.startsWith(want) || want.startsWith(stripped + ' ')) return true;
     return stripped.length >= 12 && want.startsWith(stripped);
   };
   const isSubmit = (name) => /^(skip|continue|submit)\\b/i.test(clean(name));
   const named = (c) => c.label || c.text;
+  const first = (selectors, scope) => {
+    for (const s of selectors) {
+      const el = scope.querySelector(s);
+      if (el) return el;
+    }
+    return null;
+  };
+  const all = (selectors, scope) => {
+    const found = [];
+    for (const s of selectors) found.push(...scope.querySelectorAll(s));
+    return found;
+  };
 
-  // Bring the bubble on screen so a virtualized card actually exists to press.
+  const findBar = () =>
+    first(${list(SELECTORS.questionBar)}, pane) ||
+    first(${list(SELECTORS.questionBar)}, root);
+  let bar = findBar();
+  if (bar?.classList.contains('composer-questionnaire-toolbar-collapsed')) {
+    bar.querySelector('.composer-questionnaire-toolbar-header')?.click();
+  }
+
   let card = null;
   for (const el of pane.querySelectorAll('[data-message-id], [data-find-bubble-ids], [data-tool-call-id]')) {
     const ids = [
@@ -728,60 +762,64 @@ ${PRESSABLE}
     ].filter(Boolean);
     if (ids.some((id) => id === wanted || String(id).includes(wanted))) card = el;
   }
-  if (!card) {
-    const needle = labels[0] || '';
-    if (needle) {
-      const holders = [...pane.querySelectorAll('div,span,p,li,label,button')].filter((el) => {
-        const t = clean(el.textContent);
-        return same(needle, t) && ![...el.children].some((k) => same(needle, clean(k.textContent)));
-      });
-      card = holders.at(-1)?.closest('[data-message-id], [data-find-bubble-ids]') || holders.at(-1);
-    }
-  }
   if (card) card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 
-  const matchesControl = (c, word) =>
-    same(word, named(c)) || same(word, c.label) || same(word, c.text);
+  const optionRows = () => {
+    const scope = bar || pane;
+    const rows = all(${list(SELECTORS.questionOption)}, scope).filter(
+      (el) =>
+        !el.classList.contains('composer-questionnaire-toolbar-option-freeform') &&
+        el.getBoundingClientRect().width &&
+        el.getBoundingClientRect().height,
+    );
+    if (rows.length) return rows;
+    return [...scope.querySelectorAll('[role="button"]')].filter((el) => {
+      const name = clean(el.getAttribute('aria-label') || el.textContent);
+      if (!name || isSubmit(name)) return false;
+      if (el.disabled || el.getAttribute('aria-disabled') === 'true') return false;
+      if (el.parentElement?.getAttribute('role') === 'button') return false;
+      return el.getBoundingClientRect().width && el.getBoundingClientRect().height;
+    });
+  };
+  const labelOf = (row) => {
+    const leaf = first(${list(SELECTORS.questionLabel)}, row);
+    return clean((leaf || row).textContent);
+  };
 
   const locate = (word) => {
-    const all = __pressable().filter((c) => !c.disabled);
-    const submitBtn = all.filter((c) => isSubmit(named(c))).at(-1);
-    const submitTop = submitBtn?.el.getBoundingClientRect().top ?? Infinity;
-    const hits = all.filter((c) => matchesControl(c, word) && !isSubmit(named(c)));
-    const above = hits.filter((c) => c.el.getBoundingClientRect().top < submitTop);
-    const target = (above.length ? above : hits).at(-1);
-    const at = target ? spot(target.el) : null;
-    return at ? { name: named(target), at } : null;
+    const hit = optionRows().filter((el) => same(word, labelOf(el))).at(-1);
+    const at = spot(hit);
+    return at ? { name: labelOf(hit), at } : null;
   };
 
   const locateNth = (n) => {
     if (!Number.isInteger(n) || n < 0) return null;
-    const all = __pressable().filter((c) => !c.disabled && !isSubmit(named(c)));
-    const submitBtn = __pressable().filter((c) => isSubmit(named(c))).at(-1);
-    const submitTop = submitBtn?.el.getBoundingClientRect().top ?? Infinity;
-    const rows = all
-      .filter((c) => c.el.getBoundingClientRect().top < submitTop)
-      .sort((a, b) => a.el.getBoundingClientRect().top - b.el.getBoundingClientRect().top);
-    const target = rows[n];
-    const at = target ? spot(target.el) : null;
-    return at ? { name: named(target), at } : null;
+    const hit = optionRows()[n];
+    const at = spot(hit);
+    return at ? { name: labelOf(hit), at } : null;
   };
 
   const locateSubmit = (word) => {
-    const target = __pressable()
-      .filter((c) => !c.disabled && same(word, named(c)))
-      .at(-1);
+    const scope = bar || pane;
+    const selectors =
+      /^skip$/i.test(word) ? ${list(SELECTORS.questionSkip)} : ${list(SELECTORS.questionContinue)};
+    const byClass = first(selectors, scope);
+    const atClass = spot(byClass);
+    if (atClass) return { name: clean(byClass.textContent) || word, at: atClass };
+    // Continue is disabled until a row is chosen; still locate it.
+    const target = __pressable().filter((c) => same(word, named(c))).at(-1);
     const at = target ? spot(target.el) : null;
     return at ? { name: named(target), at } : null;
   };
 
   return (async () => {
     await pause(80);
-    const offered = __pressable();
-    if (
-      !card &&
-      !offered.some((c) => isSubmit(named(c)) || labels.some((l) => matchesControl(c, l)))
-    ) {
+    bar = findBar();
+    if (bar?.classList.contains('composer-questionnaire-toolbar-collapsed')) {
+      bar.querySelector('.composer-questionnaire-toolbar-header')?.click();
+      await pause(80);
+    }
+    if (!bar && !card && !optionRows().length && !locateSubmit('Continue') && !locateSubmit('Skip')) {
       return { pressed: false, reason: 'the question is not on screen' };
     }
 
@@ -801,7 +839,7 @@ ${PRESSABLE}
       press.push(hit.at);
     }
 
-    const scope = card || pane;
+    const scope = bar || card || pane;
     for (const [i, text] of texts.entries()) {
       const box = [...scope.querySelectorAll('textarea, input[type="text"]')][i];
       if (!box || !text) continue;

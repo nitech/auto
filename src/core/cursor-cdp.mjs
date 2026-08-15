@@ -1013,10 +1013,10 @@ export class CursorCdp {
    * Answer a question Cursor is putting to a person, by pressing the options
    * they picked and then Continue — or Skip, which answers nothing.
    *
-   * The bubble is scrolled into view first (a virtualized card is not in the
-   * DOM to click), then the option rows are pressed *where they are* with a
-   * real mouse. They are lettered pointer-cursor rows, not radios, and a
-   * dispatched click on the word "Red" does not select the row.
+   * The questionnaire toolbar is scrolled into view, option rows are located
+   * by their labels (a letter glued to the word still counts), and they are
+   * pressed *where they are* with a real mouse. Continue is disabled until a
+   * row is chosen, so it is found anyway and pressed after the option.
    */
   async answer({ threadId, askId, labels = [], indexes = [], texts = [], skip = false }) {
     if (!askId) return { status: 'error', reason: 'no question was named' };
@@ -1024,16 +1024,8 @@ export class CursorCdp {
       return { status: 'error', reason: 'nothing was chosen' };
     }
 
-    const here = await this.#withThread(threadId, (window) => window.facts());
-    if (here?.status === 'unknown-thread') {
-      const shown = await this.showThread({ threadId });
-      if (shown.status !== 'showing' && shown.status !== 'shown') {
-        return {
-          status: shown.status === 'no-tab' ? 'unknown-thread' : 'error',
-          reason: shown.reason,
-        };
-      }
-    }
+    const shown = await this.#ensureShown(threadId);
+    if (shown) return shown;
 
     return this.#withThread(threadId, async (window) => {
       const done = await window.answer({ askId, labels, indexes, texts, skip });
