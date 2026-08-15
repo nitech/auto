@@ -17,7 +17,7 @@ task, not from a shell.
 
 | What changed / what's wrong | Action |
 |---|---|
-| Skills, docs, wiki | Nothing — picked up automatically |
+| Skills, docs, `.wiki/` | Nothing — picked up automatically |
 | Anything under `src/` | Restart the host |
 | Host wedged, or Telegram silent | Restart the host |
 | Supervisor itself misbehaving | Restart the scheduled task |

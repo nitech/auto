@@ -17,6 +17,14 @@ prose. Simon reads these on a phone, often from Telegram. Lead with the
 outcome, one bullet per thing that actually changed, and say plainly what you
 did not do. Long explanations belong in the commit message or the wiki.
 
+## Wiki
+
+Compiled knowledge lives in `.wiki/` (schema: `.wiki/AGENTS.md`). After any
+non-trivial change to architecture, contracts, APIs, or agent-critical
+behaviour, update the touched pages, `overview.md`, `index.md`, and `log.md`
+in the same turn. Skip trivial/no-behaviour diffs. The old `wiki/` + `raw/`
+layout is retired.
+
 ## Agent independence
 
 Auto's docs and wiki describe behaviour, not models. The agent behind a

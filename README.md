@@ -79,15 +79,13 @@ the `auth.json` the telegram-notify skill writes. Copy `.env.example` to
 | `src/web/` | The web app (PWA) |
 | `scripts/supervise.mjs` | Restart and health watchdog |
 | `state/` | Sessions, transcripts, browser profile — gitignored |
-| `wiki/`, `raw/` | llm-wiki knowledge base |
+| `.wiki/` | Compiled knowledge (OKF). Agents keep it current after behaviour changes. |
 
-## llm-wiki
+## Wiki
 
-```powershell
-npm run wiki:ingest          # ingest pending raw sources
-npx wiki query "How do sessions resume?"
-npm run wiki:lint
-```
+Knowledge is `.wiki/`. Start at `.wiki/index.md`. After a non-trivial code
+change the agent updates it in the same turn — that is the `llm-wiki` skill,
+not the old npm `wiki ingest` CLI.
 
 **Agent rule:** Messages sent via Telegram or the web composer are binding —
 always execute them.
