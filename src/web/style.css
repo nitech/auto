@@ -1260,23 +1260,46 @@ details.think .body {
   position: fixed;
   inset: 0;
   z-index: 40;
-  display: grid;
-  place-items: end center;
-  padding: 12px;
-  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: max(10px, env(safe-area-inset-top)) 0 0;
   background: color-mix(in srgb, #000 45%, transparent);
 }
 
 #usage-sheet[hidden] { display: none; }
 
 .usage-panel {
-  width: min(440px, 100%);
-  max-height: min(78vh, 720px);
-  overflow: auto;
-  margin-bottom: 8px;
+  width: min(480px, 100%);
+  /* Use the space under the status bar — 78vh left a dead band above the home indicator. */
+  height: calc(100dvh - max(10px, env(safe-area-inset-top)));
+  max-height: calc(100dvh - max(10px, env(safe-area-inset-top)));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin: 0;
+  border-radius: 16px 16px 0 0;
+  border-bottom: 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: sheet-up 0.18s ease;
 }
 
-.usage-body { padding: 0 16px 16px; }
+.usage-panel .sheet-head {
+  flex: 0 0 auto;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-2);
+}
+
+.usage-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 16px 20px;
+}
 
 .usage-hero {
   display: flex;
@@ -1716,6 +1739,10 @@ details.think .body {
 
 @keyframes sheet-in {
   from { opacity: 0; transform: translateY(-6px); }
+}
+
+@keyframes sheet-up {
+  from { transform: translateY(14px); opacity: 0; }
 }
 
 .sheet-head {
@@ -2187,6 +2214,11 @@ pre:hover .copy,
   .desk-only { display: none; }
 
   #topbar { padding: 8px 10px; gap: 6px; }
+  .usage-panel {
+    /* Phone: edge-to-edge sheet from the bottom. */
+    width: 100%;
+  }
+
   #newbie { padding: 0; align-items: flex-end; justify-content: center; }
   #newbie .sheet-panel {
     width: 100%;

@@ -2626,8 +2626,11 @@ function startUsagePoll() {
 
 function setUsageSheet(open) {
   els.usageSheet.hidden = !open;
-  if (open && state.usage) renderUsageSheet(state.usage);
-  else if (open) els.usageBody.innerHTML = '<div class="sheet-note">Loading…</div>';
+  if (open) {
+    if (state.usage) renderUsageSheet(state.usage);
+    else els.usageBody.innerHTML = '<div class="sheet-note">Loading…</div>';
+    els.usageBody.scrollTop = 0;
+  }
 }
 
 function money(n) {
