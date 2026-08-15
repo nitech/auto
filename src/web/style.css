@@ -623,6 +623,8 @@ details.think summary {
   user-select: none;
 }
 
+details.think summary .n { color: var(--text); }
+
 details.think summary::-webkit-details-marker { display: none; }
 details.think summary::before { content: "▸ "; }
 details.think[open] summary::before { content: "▾ "; }
@@ -711,6 +713,51 @@ details.think .body {
 .tool.failed > summary > .peek { color: var(--red); }
 
 .tool.bundle > summary > .row .kind { color: var(--muted); }
+
+/* Reads and searches are a status line, not a card: quiet words, loud counts,
+   the way Cursor draws "Explored 22 files, 13 searches". */
+.tool.bundle.activity,
+.tool.bundle.files {
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+}
+.tool.bundle.activity.running,
+.tool.bundle.files.running,
+.tool.bundle.activity.done,
+.tool.bundle.files.done,
+.tool.bundle.activity.failed,
+.tool.bundle.files.failed {
+  border: 0;
+}
+.tool.bundle.activity > summary > .row,
+.tool.bundle.files > summary > .row {
+  padding: 3px 2px;
+  gap: 6px;
+}
+.tool.bundle.activity .kind,
+.tool.bundle.files .kind,
+.tool.bundle.activity:not(.failed) .state,
+.tool.bundle.files:not(.failed) .state {
+  display: none;
+}
+.tool.bundle.activity .label,
+.tool.bundle.files .label {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--faint);
+  white-space: normal;
+}
+.tool.bundle.activity .label .n,
+.tool.bundle.files .label .n {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.tool.bundle.activity > .body,
+.tool.bundle.files > .body {
+  border-top: 0;
+  padding: 2px 0 6px;
+}
 .bundle-list { display: flex; flex-direction: column; gap: 2px; padding: 4px 0 8px; }
 .bundle-row .row {
   display: flex;

@@ -17,7 +17,16 @@ import {
 import { lineDiff, collapseContext, diffStats } from './diff.js';
 import { renderMarkdown } from './markdown.js';
 import { initBrowser, onFrame, onStatus } from './browser.js';
-import { classifyTool, displayLabel, fileStats, isCreatedPlan, planFields } from './desktop-tool-ui.js';
+import {
+  activityCopy,
+  classifyTool,
+  displayLabel,
+  editCopy,
+  fileStats,
+  groupTally,
+  isCreatedPlan,
+  planFields,
+} from './desktop-tool-ui.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -157,12 +166,38 @@ function syncToBottom() {
  * Reasoning is worth reading while it is the only thing happening and worth
  * getting out of the way the moment anything else is, so a thinking block is
  * born open and closed by whatever comes next — including the end of the turn,
- * which lands here too.
+ * which lands here too. A live spell of it is timed the way Cursor's is, so
+ * the summary becomes "Thought for 8s" rather than staying "Thinking".
  */
 function closeThinking() {
   if (!state.thinking) return;
+  const started = Number(state.thinking.dataset.started || 0);
+  const ms = started ? Date.now() - started : 0;
+  if (ms >= 500) {
+    const sec = Math.max(1, Math.round(ms / 1000));
+    const sum = state.thinking.querySelector('summary');
+    if (sum) sum.replaceChildren('Thought for ', nSpan(sec), 's');
+  }
   state.thinking.open = false;
   state.thinking = null;
+}
+
+function nSpan(n) {
+  const s = document.createElement('span');
+  s.className = 'n';
+  s.textContent = String(n);
+  return s;
+}
+
+/** Draw a status line the way Cursor does: quiet words, loud counts. */
+function paintParts(el, parts) {
+  if (!el) return;
+  el.replaceChildren(
+    ...(parts || []).map((p) => {
+      if (p.n == null) return document.createTextNode(p.t);
+      return nSpan(p.n);
+    }),
+  );
 }
 
 function add(node, { keepStream = false } = {}) {
@@ -209,6 +244,7 @@ function renderStreaming(rec) {
       // Open while it runs: on a phone this is the only sign of life between a
       // prompt and the first words of an answer.
       d.open = true;
+      d.dataset.started = String(Date.now());
       add(d, { keepStream: true });
       state.thinking = d;
       state.stream = d.querySelector('.body');
@@ -355,29 +391,25 @@ function paintItemStatus(row, status, failed) {
 
 function bundleSummary(bundle) {
   const items = bundle.items;
+  const running = items.some((it) => {
+    const s = it.rec.status;
+    return s === 'in_progress' || s === 'pending';
+  });
   if (bundle.lane === 'fileChange') {
-    if (items.length === 1) return { kind: 'edit', label: displayLabel(items[0].rec) };
-    return { kind: 'edit', label: `Edited ${items.length} files` };
+    const one = items.length === 1 ? displayLabel(items[0].rec) : '';
+    return { kind: 'edit', ...editCopy(items.length, one) };
   }
-  const counts = new Map();
-  for (const it of items) {
-    const name = it.ui.short || it.ui.label;
-    counts.set(name, (counts.get(name) || 0) + 1);
-  }
-  return {
-    kind: 'read',
-    label: [...counts.entries()].map(([name, n]) => (n > 1 ? `${name} ${n}` : name)).join(' · '),
-  };
+  const { files, searches } = groupTally(items);
+  return { kind: 'read', ...activityCopy({ files, searches, running }) };
 }
 
 function paintBundle(bundle) {
-  const { card, items } = bundle;
-  const { kind, label } = bundleSummary(bundle);
-  card.querySelector('summary .kind').textContent = kind;
-  card.querySelector('summary .label').textContent = label;
+  const { card } = bundle;
+  const { label, parts } = bundleSummary(bundle);
+  paintParts(card.querySelector('summary .label'), parts || [{ t: label }]);
   let status = 'completed';
   let failed = false;
-  for (const it of items) {
+  for (const it of bundle.items) {
     const s = it.rec.status || 'completed';
     if (s === 'in_progress' || s === 'pending') status = 'in_progress';
     else if (s === 'failed') failed = true;
@@ -392,10 +424,10 @@ function paintBundle(bundle) {
     card.classList.toggle('done', !failed);
     if (!failed && !card.dataset.opened) card.open = false;
   }
-  card.querySelector('summary .state').textContent = statusWord(
-    failed ? 'failed' : status,
-    failed,
-  );
+  const stateEl = card.querySelector('summary .state');
+  if (stateEl) {
+    stateEl.textContent = statusWord(failed ? 'failed' : status, failed);
+  }
 }
 
 function flushBundle() {

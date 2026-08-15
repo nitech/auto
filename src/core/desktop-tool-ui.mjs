@@ -3,10 +3,13 @@
  * lives with the web client so both projections share one copy.
  */
 export {
+  activityCopy,
   classifyTool,
   displayLabel,
+  editCopy,
   fileStats,
   foldTools,
+  groupTally,
   isCreatedPlan,
   isSimpleLs,
   planFields,

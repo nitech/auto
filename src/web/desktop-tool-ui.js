@@ -2,9 +2,10 @@
  * How Cursor's own chat shows a desktop tool call, so Auto's stream can
  * follow it instead of printing every database bubble as OTHER.
  *
- * The IDE groups reads and searches, puts edits on a file-change lane, and
- * hides a handful of tools entirely. Auto still records every call; this is
- * only how a projection (web or Telegram) should draw one.
+ * The IDE groups reads and searches into a quiet status line ("Explored 22
+ * files, 13 searches"), puts edits on a file-change lane, and hides a handful
+ * of tools entirely. Auto still records every call; this is only how a
+ * projection (web or Telegram) should draw one.
  */
 
 const HIDE = new Set([
@@ -200,36 +201,93 @@ function mergeStatus(a, b) {
   return (RANK[b] || 0) > (RANK[a] || 0) ? b : a;
 }
 
-function groupSummary(batch) {
-  const counts = new Map();
+function word(n, one, many = `${one}s`) {
+  return n === 1 ? one : many;
+}
+
+function lineOf(...bits) {
+  const parts = bits.map((b) => (typeof b === 'number' ? { n: b } : { t: b }));
+  return { parts, label: bits.join('') };
+}
+
+/**
+ * Cursor's activity copy: muted verbs, bright counts.
+ *
+ * A turn in flight is present ("Exploring 1 search"); a finished one is past
+ * ("Searched 3 files", "Explored 22 files, 13 searches"). The counts are
+ * separate from the words so a renderer can draw them louder.
+ */
+export function activityCopy({ files = 0, searches = 0, running = false } = {}) {
+  const fileWord = word(files, 'file');
+  const searchWord = word(searches, 'search', 'searches');
+  if (running) {
+    if (files && searches) {
+      return lineOf('Exploring ', files, ` ${fileWord}, `, searches, ` ${searchWord}`);
+    }
+    if (searches) return lineOf('Exploring ', searches, ` ${searchWord}`);
+    if (files) return lineOf('Exploring ', files, ` ${fileWord}`);
+    return lineOf('Exploring');
+  }
+  if (files && searches) {
+    return lineOf('Explored ', files, ` ${fileWord}, `, searches, ` ${searchWord}`);
+  }
+  if (searches) return lineOf('Searched ', searches, ` ${fileWord}`);
+  if (files) return lineOf('Explored ', files, ` ${fileWord}`);
+  return lineOf('Explored');
+}
+
+export function editCopy(count, oneLabel) {
+  if (count === 1 && oneLabel) return lineOf(oneLabel);
+  return lineOf('Edited ', count, ` ${word(count, 'file')}`);
+}
+
+/** How many reads vs searches sit in a group of tool calls. */
+export function groupTally(items = []) {
+  let files = 0;
+  let searches = 0;
+  for (const item of items) {
+    const rec = recOf(item);
+    const ui = item.ui || classifyTool(rec);
+    if (ui.toolKind === 'search') searches += 1;
+    else files += 1;
+  }
+  return { files, searches };
+}
+
+function batchStatus(batch) {
   let status = 'completed';
   let failure = null;
   for (const item of batch) {
     const rec = recOf(item);
-    const ui = classifyTool(rec);
-    const name = ui.short || ui.label;
-    counts.set(name, (counts.get(name) || 0) + 1);
     status = mergeStatus(status, item.status || rec.status || 'completed');
     failure = item.failure || failure;
   }
-  const label = [...counts.entries()]
-    .map(([name, n]) => (n > 1 ? `${name} ${n}` : name))
-    .join(' · ');
-  return { label, status, failure, lane: 'group', count: batch.length };
+  return { status, failure };
+}
+
+function groupSummary(batch) {
+  const { status, failure } = batchStatus(batch);
+  const running = status === 'in_progress' || status === 'pending';
+  const { files, searches } = groupTally(batch);
+  return {
+    ...activityCopy({ files, searches, running }),
+    status,
+    failure,
+    lane: 'group',
+    count: batch.length,
+  };
 }
 
 function fileChangeSummary(batch) {
-  let status = 'completed';
-  let failure = null;
-  for (const item of batch) {
-    const rec = recOf(item);
-    status = mergeStatus(status, item.status || rec.status || 'completed');
-    failure = item.failure || failure;
-  }
+  const { status, failure } = batchStatus(batch);
   const first = recOf(batch[0]);
-  const label =
-    batch.length === 1 ? displayLabel(first) : `Edited ${batch.length} files`;
-  return { label, status, failure, lane: 'fileChange', count: batch.length };
+  return {
+    ...editCopy(batch.length, displayLabel(first)),
+    status,
+    failure,
+    lane: 'fileChange',
+    count: batch.length,
+  };
 }
 
 /**

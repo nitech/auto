@@ -116,7 +116,10 @@ export function failureNote(rec) {
 export function renderTurn({ text = '', tools = [] } = {}) {
   const head = foldTools(tools)
     .map((t) => {
-      const line = `${ICON[t.status] || '▸'} <i>${esc(t.label)}</i>`;
+      const said = t.parts?.length
+        ? t.parts.map((p) => (p.n != null ? `<b>${p.n}</b>` : esc(p.t))).join('')
+        : esc(t.label);
+      const line = `${ICON[t.status] || '▸'} <i>${said}</i>`;
       // One word, on the same line: a phone has better uses for its rows.
       return t.failure ? `${line} — ${esc(t.failure)}` : line;
     })

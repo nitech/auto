@@ -2098,7 +2098,32 @@ if (existsSync(SRC)) {
     check(
       'folded labels',
       folded.map((t) => t.label),
-      ['Read 2 · Search', 'Edited 2 files', 'npm test'],
+      ['Explored 2 files, 1 search', 'Edited 2 files', 'npm test'],
+    );
+
+    check(
+      'a live search',
+      foldTools([{ title: 'ripgrep_raw_search', status: 'in_progress' }]).map((t) => t.label),
+      ['Exploring 1 search'],
+    );
+    check(
+      'a finished search',
+      foldTools([
+        { title: 'ripgrep_raw_search', status: 'completed' },
+        { title: 'ripgrep_raw_search', status: 'completed' },
+        { title: 'ripgrep_raw_search', status: 'completed' },
+      ]).map((t) => t.label),
+      ['Searched 3 files'],
+    );
+    const live = foldTools([
+      { title: 'read_file_v2', status: 'completed' },
+      { title: 'ripgrep_raw_search', status: 'in_progress' },
+    ]);
+    check('a mixed live group', live.map((t) => t.label), ['Exploring 1 file, 1 search']);
+    check(
+      'counts stay separate from words',
+      (live[0].parts || []).filter((p) => p.n != null).map((p) => p.n),
+      [1, 1],
     );
 
     const diff = diffFromPrecomputed(
@@ -2164,6 +2189,14 @@ if (existsSync(SRC)) {
     }
     if (renderTurn({}) !== '…') {
       fail('an empty turn should render a placeholder');
+      failed = true;
+    }
+
+    const exploring = renderTurn({
+      tools: [{ title: 'ripgrep_raw_search', status: 'in_progress' }],
+    });
+    if (!exploring.includes('Exploring <b>1</b> search')) {
+      fail(`a live search should bold its count, got ${JSON.stringify(exploring)}`);
       failed = true;
     }
 

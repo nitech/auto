@@ -88,11 +88,14 @@ tool call.
 
 Every tool bubble is recorded. The web and Telegram then follow Cursor's own
 lanes rather than printing each one as a named step: reads and searches fold
-into an activity group, edits sit on a file-change row with the path and a
-+/- count (and the diff Cursor already stored, when it is there), and a few
-internal tools stay off the stream entirely. `create_plan` is the exception
-that stays a card: Auto draws Cursor's Created Plan (title, overview, View
-Plan, Build with a model), and Build presses the button on that bubble.
+into a quiet activity line — *Exploring 1 search* while it runs, *Searched 3
+files* or *Explored 22 files, 13 searches* when it finishes — with the counts
+drawn brighter than the words. Edits sit on a file-change row with the path
+and a +/- count (and the diff Cursor already stored, when it is there), and a
+few internal tools stay off the stream entirely. `create_plan` is the
+exception that stays a card: Auto draws Cursor's Created Plan (title,
+overview, View Plan, Build with a model), and Build presses the button on
+that bubble.
 
 ## Things learned the hard way
 
