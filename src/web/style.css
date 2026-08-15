@@ -1863,7 +1863,12 @@ pre:hover .copy,
     box-shadow: var(--shadow);
   }
   #app.rail-open #rail { transform: none; }
-  #rail-toggle { display: block; }
+  #rail-toggle {
+    display: block;
+    /* ☰ sits small in the em square; 22px reads even with the 20px close. */
+    font-size: 22px;
+    line-height: 1;
+  }
   /* The rail covers the topbar's toggle when open, so it carries its own way
      out: this button, the scrim beside it, or Escape. */
   /* The way out of a rail covering the whole screen should be obvious, so
