@@ -2890,6 +2890,32 @@ if (existsSync(SRC)) {
       if (read.title !== 'A desktop chat') fail(`a named thread should keep its name, got ${read.title}`);
       if (!threads.threadExists(thread)) fail('threadExists should find a thread that is there');
       if (threads.threadExists('nope')) fail('threadExists should not invent threads');
+      if (threads.isHarnessPrompt('hello')) fail('ordinary prose is not a harness prompt');
+      if (!threads.isHarnessPrompt('<system_notification>\nThe following task has finished.\n</system_notification>')) {
+        fail('a system_notification is a harness prompt');
+      }
+
+      put.run(
+        `bubbleId:${thread}:bHarness`,
+        JSON.stringify({
+          bubbleId: 'bHarness',
+          type: 1,
+          text: '<timestamp>Saturday, Aug 15, 2026, 6:38 PM (UTC+2)</timestamp>\n<system_notification>\nThe following task has finished.\n</system_notification><user_query>Briefly inform the user…</user_query>',
+        }),
+      );
+      composer({
+        fullConversationHeadersOnly: [
+          ...bubbles.map((b) => ({ bubbleId: b.bubbleId })),
+          { bubbleId: 'bHarness' },
+        ],
+      });
+      const harnessed = threads.readThread(thread, { seen: new Set() });
+      if (harnessed.messages.some((m) => /system_notification/.test(m.text || ''))) {
+        fail('a Cursor harness notification must not appear as a chat message');
+      }
+      if (!harnessed.visited.includes('bHarness')) {
+        fail('a harness notification must still be marked seen, or it is re-read forever');
+      }
 
       // An unnamed thread has no title yet — "Desktop chat" is Auto's label,
       // not a name the desktop chose, and must not be reported as one.

@@ -28,6 +28,15 @@ const BUBBLE_USER = 1;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * Cursor's agent harness, not a person. The IDE keeps these off the chat —
+ * they are how a background command tells the agent it finished. Auto used
+ * to copy them onto the phone because they are stored as user bubbles.
+ */
+export function isHarnessPrompt(text) {
+  return /<(system_notification|system_reminder)\b/i.test(String(text || ''));
+}
+
+/**
  * How many more times to look after a turn's generation id disappears, before
  * accepting that the turn really is over. Four polls is a couple of seconds in
  * practice: long enough for the desktop to finish writing its last message,
@@ -389,7 +398,13 @@ function messageOf(bubble, { generating = false, grouping = null } = {}) {
   // command that has not printed yet. Someone else's message is never a
   // prefix: the desktop writes it whole before the turn starts.
   const growing = generating && role === 'assistant';
-  if (text) return { role, kind: 'text', text, pending: growing };
+  if (text) {
+    // Seen, not shown: otherwise the phone gets a "user" bubble the IDE never painted.
+    if (role === 'user' && isHarnessPrompt(text)) {
+      return { role, kind: 'harness', text: '', pending: false };
+    }
+    return { role, kind: 'text', text, pending: growing };
+  }
 
   const thinking = String(bubble.thinking?.text || '').trim();
   if (thinking) return { role, kind: 'thinking', text: thinking, pending: growing };
@@ -453,6 +468,7 @@ export function readThread(threadId, { seen, tail } = {}) {
       if (!message) continue;
 
       if (!message.pending) visited.push(bubbleId);
+      if (message.kind === 'harness') continue;
       messages.push({ id: bubbleId, at: bubble.createdAt || null, ...message });
     }
 

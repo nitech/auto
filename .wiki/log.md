@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-15
+* **Update**: Cursor harness notes (`system_notification` when a background command finishes) are not copied onto the phone — they are stored as user bubbles, but the IDE never paints them.
 * **Update**: Bare http(s) URLs in the chat are links — on the web and on Telegram.
 * **Update**: Swiping the session rail left on iPhone uses touch events, because Safari never fires pointermove on a scrolling list.
 * **Update**: On a phone, × archives a session on the first tap, and swiping the session rail left closes it.

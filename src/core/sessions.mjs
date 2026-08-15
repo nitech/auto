@@ -29,7 +29,7 @@ import { TerminalRegistry } from './terminals.mjs';
 import { sendMessage } from './desktop-bridge.mjs';
 import { CursorCdp } from './cursor-cdp.mjs';
 import { DesktopOutbox } from './desktop-outbox.mjs';
-import { ThreadWatcher, readThread, realTitle, UNTITLED_THREAD, SETTLE_LOOKS } from './desktop-threads.mjs';
+import { ThreadWatcher, readThread, realTitle, UNTITLED_THREAD, SETTLE_LOOKS, isHarnessPrompt } from './desktop-threads.mjs';
 import { labelsForAnswer, indexesForAnswer } from './questions.mjs';
 import { classifyTool } from './desktop-tool-ui.mjs';
 
@@ -1200,6 +1200,7 @@ export class SessionManager extends EventEmitter {
   /** Turn one desktop bubble into transcript records. */
   #recordDesktopMessage(id, message) {
     if (message.role === 'user') {
+      if (isHarnessPrompt(message.text)) return;
       this.#record(id, KIND.userMessage, { text: message.text, desktopBubbleId: message.id });
       return;
     }

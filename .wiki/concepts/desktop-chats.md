@@ -23,7 +23,7 @@ sources:
   - id: outbox
     resource: /src/core/desktop-outbox.mjs
     title: Held messages
-generated: { by: agent, at: 2026-08-15T14:43:00Z }
+generated: { by: agent, at: 2026-08-15T16:50:00Z }
 ---
 
 # Continuing Cursor desktop chats
@@ -88,6 +88,9 @@ file-change row; a few internal tools stay off the stream.
   pass before calling a turn over.
 - Your own message is written to the transcript when sent *and* stored as a
   bubble. Auto shows it once.
+- Cursor stores agent-harness notes (`system_notification` when a background
+  command finishes) as user bubbles. The IDE does not paint them; Auto must
+  not copy them onto the phone.
 - Empty bubbles are created before they are filled; leave them unread.
 - `cursorDiskKV` values come back as bytes or as text; read `typeof(value)`.
 - A host restart in the middle of a turn must not treat Cursor's current
