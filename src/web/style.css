@@ -1071,7 +1071,7 @@ details.think .body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0;
+  padding: 0 0 0 4px;
 }
 
 .composer-controls select {
@@ -1112,8 +1112,9 @@ details.think .body {
   outline: none;
   resize: none;
   max-height: 40vh;
-  /* Horizontal inset lives on the box, so the placeholder lines up with the chips. */
-  padding: 4px 0;
+  /* Horizontal inset lives on the box, plus a little extra so the placeholder
+     clears the 18px corner. The picker row matches this on the left. */
+  padding: 4px 0 4px 4px;
   min-height: 32px;
   line-height: 1.45;
   /* iOS zooms the page into any field under 16px, and never zooms back out. */
