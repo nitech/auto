@@ -17,6 +17,7 @@ import { listProjects, workspaceIdFor } from './projects.mjs';
 import { desktopChats } from './desktop-chats.mjs';
 import { optionLetter, parseQuestionReply } from './questions.mjs';
 import { classifyTool, displayLabel, foldTools, isCreatedPlan, planFields, turnCopy } from './desktop-tool-ui.mjs';
+import { linkify } from '../web/markdown.js';
 
 const LIMIT = 4096;
 /** Telegram tolerates roughly one edit a second; stay well clear. */
@@ -126,10 +127,10 @@ export function renderTurn({ text = '', tools = [], conclusion = '' } = {}) {
       return t.failure ? `${line} — ${esc(t.failure)}` : line;
     })
     .join('\n');
-  const body = esc(String(text).trim());
   const done = conclusion ? `<i>${esc(conclusion)}</i>` : '';
   const room = LIMIT - head.length - done.length - 8;
-  return [head, clamp(body, Math.max(500, room)), done].filter(Boolean).join('\n\n') || '…';
+  const body = linkify(clamp(esc(String(text).trim()), Math.max(500, room)), '');
+  return [head, body, done].filter(Boolean).join('\n\n') || '…';
 }
 
 /**

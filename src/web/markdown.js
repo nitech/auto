@@ -17,7 +17,7 @@ const esc = (s) =>
 /** Inline markup. Code spans are already gone by now, so `**` inside
     backticks cannot be eaten here. */
 function inline(text) {
-  return (
+  return linkify(
     text
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/__([^_]+)__/g, '<strong>$1</strong>')
@@ -29,8 +29,32 @@ function inline(text) {
       .replace(
         /\[([^\]]+)\]\((https?:[^)\s]+)\)/g,
         '<a href="$2" target="_blank" rel="noopener">$1</a>',
-      )
+      ),
   );
+}
+
+/**
+ * Bare http(s) URLs become links. The text is already HTML-escaped, and
+ * markdown `[label](url)` has already become `<a href="…">`, so a match
+ * that sits after a quote is already a link and is left alone. Trailing
+ * punctuation stays outside the href, or "see https://x.com." includes the
+ * period.
+ *
+ * `attrs` is extra attributes on the tag. The web opens a new tab;
+ * Telegram's HTML mode only allows href.
+ */
+export function linkify(text, attrs = ' target="_blank" rel="noopener"') {
+  return String(text ?? '').replace(/(^|[\s>(])(https?:\/\/[^\s<"]+)/g, (all, pre, url) => {
+    let core = url;
+    let trail = '';
+    while (core.length > 8 && /[),.;:!?]$/.test(core)) {
+      if (core.endsWith(')') && core.includes('(')) break;
+      trail = core.slice(-1) + trail;
+      core = core.slice(0, -1);
+    }
+    if (!/^https?:\/\/./i.test(core)) return all;
+    return `${pre}<a href="${core}"${attrs}>${core}</a>${trail}`;
+  });
 }
 
 /** A task list item wears its checkbox; the box is display-only. */

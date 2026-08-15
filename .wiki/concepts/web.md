@@ -17,7 +17,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-15T16:20:00Z }
+generated: { by: agent, at: 2026-08-15T16:30:00Z }
 ---
 
 # Web app
@@ -54,6 +54,8 @@ touch swipe, not a pointer drag), or tap × in the header, or tap beside it.
 - Diffs, thinking (folded when the block ends, timed from the record so a
   replay says "Thought for 8s" rather than staying "Thinking"), permission
   and question cards, [terminals](terminals.md), [browser](browser.md).
+  A http(s) URL in the chat is a link — markdown `[text](url)` and a bare
+  address both. User bubbles too.
 - A turn still going says **Working…** at the bottom of the stream. When it
   ends, that line becomes **Worked for 7m 3s** or **Thought for 1s** above
   the answer, the way Cursor labels a finished turn. Commands left

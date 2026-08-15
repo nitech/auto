@@ -16,7 +16,7 @@ import {
   writeChunk,
 } from './terminals.js';
 import { lineDiff, collapseContext, diffStats } from './diff.js';
-import { renderMarkdown } from './markdown.js';
+import { renderMarkdown, linkify } from './markdown.js';
 import { initBrowser, onFrame, onStatus } from './browser.js';
 import {
   activityCopy,
@@ -107,7 +107,9 @@ function esc(s) {
     .replace(/>/g, '&gt;');
 }
 
-/** Agent prose renders as markdown; user prose stays exactly as typed. */
+/** Agent prose renders as markdown; user prose stays as typed, except that
+bare http(s) URLs are links in both. Markdown `[text](url)` was already a
+link; a URL sitting in the sentence was not. */
 const markdown = renderMarkdown;
 
 function nearBottom() {
@@ -315,7 +317,7 @@ function div(cls, html) {
 // ----------------------------------------------------------------- renderers
 
 function renderUser(rec) {
-  const node = div('msg user', esc(rec.text));
+  const node = div('msg user', linkify(esc(rec.text)));
   if (rec.images) {
     const cap = div('cap');
     cap.textContent = `${rec.images} image${rec.images === 1 ? '' : 's'} attached`;

@@ -612,7 +612,11 @@ details.think,
   margin: 14px 0 6px;
   font-weight: 650;
 }
-.msg.agent a { color: var(--accent); }
+.msg a,
+.created-plan .body a {
+  color: var(--accent);
+  text-decoration: underline;
+}
 .msg.agent del { color: var(--faint); }
 .msg.agent hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 

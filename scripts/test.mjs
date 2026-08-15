@@ -1348,6 +1348,17 @@ if (existsSync(SRC)) {
     has('a **bold** and *slant* and `code`', ['<strong>bold</strong>', '<em>slant</em>', '<code>code</code>']);
     has('~~gone~~', ['<del>gone</del>']);
     has('[link](https://example.com)', ['<a href="https://example.com"']);
+    has('see https://example.com/x', ['<a href="https://example.com/x"', '>https://example.com/x</a>']);
+    has('end https://example.com.', ['href="https://example.com"', 'example.com</a>.']);
+    // A markdown link is already an <a>; wrapping it again would nest them.
+    if ((renderMarkdown('[x](https://example.com)').match(/<a /g) || []).length !== 1) {
+      fail('a markdown link must stay a single <a>');
+      failed = true;
+    }
+    if (renderMarkdown('`https://example.com`').includes('<a ')) {
+      fail('a url in code must stay code');
+      failed = true;
+    }
     has('## Title', ['<h4>Title</h4>']);
     has('---', ['<hr>']);
     has('> quoted', ['<blockquote><p>quoted</p></blockquote>']);
@@ -1372,6 +1383,11 @@ if (existsSync(SRC)) {
     // A pipe-rich line without a separator row is prose, not a table.
     if (renderMarkdown('a | b\ntext').includes('<table>')) {
       fail('pipes alone do not make a table');
+      failed = true;
+    }
+    const app = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+    if (!app.includes('linkify(esc(rec.text))')) {
+      fail('user bubbles must turn urls into links without running markdown');
       failed = true;
     }
 
@@ -2439,6 +2455,11 @@ if (existsSync(SRC)) {
     }
     if (!out.includes('&lt;script&gt;') || !out.includes('&amp;')) {
       fail('escaping should preserve the original characters');
+      failed = true;
+    }
+    const linked = renderTurn({ text: 'see https://example.com' });
+    if (!linked.includes('<a href="https://example.com">https://example.com</a>')) {
+      fail('a url in the reply must be a Telegram <a>');
       failed = true;
     }
 

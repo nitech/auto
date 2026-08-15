@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-15
+* **Update**: Bare http(s) URLs in the chat are links — on the web and on Telegram.
 * **Update**: Swiping the session rail left on iPhone uses touch events, because Safari never fires pointermove on a scrolling list.
 * **Update**: On a phone, × archives a session on the first tap, and swiping the session rail left closes it.
 * **Update**: The web tab remembers the open chat (`?session=` and the browser) so a refresh or returning to Auto opens the same conversation, not the host's active session.
