@@ -121,6 +121,9 @@ Plan, Build with a model), and Build presses the button on that bubble.
 A desktop session is a session like any other in Auto's rail, marked *in
 Cursor*, but the IDE owns it:
 
+- **The name** is the desktop's. A new chat shows as *Desktop chat* until
+  Cursor names it after the first exchange; Auto then takes that name unless
+  you renamed it here.
 - **Model and mode** are set there, not here.
 - **Stopping a turn** is the IDE's button; the bridge sends but cannot
   interrupt.

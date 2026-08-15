@@ -35,6 +35,21 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  */
 const SETTLE_LOOKS = 4;
 
+/** What Auto calls a desktop thread before the IDE has named it. */
+export const UNTITLED_THREAD = 'Desktop chat';
+
+/**
+ * A name the desktop actually chose, not our placeholder for an unnamed one.
+ *
+ * Cursor writes the real title after the first exchange. Until then the
+ * field is empty, and treating the placeholder as a name locked every new
+ * Auto chat as "Desktop chat" forever.
+ */
+export function realTitle(name) {
+  const t = String(name || '').trim();
+  return t && t !== UNTITLED_THREAD ? t : null;
+}
+
 function withDb(fn) {
   if (!existsSync(IDE_DB)) return null;
   const db = new DatabaseSync(IDE_DB, { readOnly: true });
@@ -392,7 +407,7 @@ function messageOf(bubble, { generating = false, grouping = null } = {}) {
  *   keep its own record
  * @param {number} [opts.tail]  keep only the last N messages — a thread can
  *   hold thousands, and nobody wants them all replayed onto a phone
- * @returns {{ title: string, generating: boolean, messages: object[],
+ * @returns {{ title: string|null, generating: boolean, messages: object[],
  *   visited: string[], total: number } | null}
  */
 export function readThread(threadId, { seen, tail } = {}) {
@@ -442,7 +457,7 @@ export function readThread(threadId, { seen, tail } = {}) {
     }
 
     return {
-      title: data.name || 'Desktop chat',
+      title: realTitle(data.name),
       generating,
       messages: tail && messages.length > tail ? messages.slice(-tail) : messages,
       visited,
@@ -623,9 +638,10 @@ export class ThreadWatcher extends EventEmitter {
         this.emit('message', message);
       }
 
-      if (state.title && state.title !== this.title) {
-        this.title = state.title;
-        this.emit('title', state.title);
+      const named = realTitle(state.title);
+      if (named && named !== this.title) {
+        this.title = named;
+        this.emit('title', named);
       }
 
       if (state.generating && !this.running) {

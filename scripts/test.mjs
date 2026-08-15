@@ -1667,7 +1667,23 @@ if (existsSync(SRC)) {
       fail(`a created chat should attach as desktop, got ${JSON.stringify(opened)}`);
       failed = true;
     }
+    if (opened.title !== 'In Cursor' || !opened.titleLocked) {
+      fail(`an explicit title should stick, got ${opened.title} locked=${opened.titleLocked}`);
+      failed = true;
+    }
     await sessions.stop(opened.id);
+
+    sessions.cursor = {
+      newChat: async () => ({ status: 'created', threadId: 'unnamed-fresh-thread' }),
+    };
+    const unnamed = await sessions.startInIde({ folder: ROOT });
+    if (unnamed.title !== 'Desktop chat' || unnamed.titleLocked) {
+      fail(
+        `a new desktop chat is unnamed until Cursor names it, got ${unnamed.title} locked=${unnamed.titleLocked}`,
+      );
+      failed = true;
+    }
+    await sessions.stop(unnamed.id);
 
     let attempts = 0;
     sessions.cursor = {
@@ -1855,6 +1871,43 @@ if (existsSync(SRC)) {
     if (!failed) ok('v2 core: a printed tool call is reported, ordinary prose is not');
   } catch (e) {
     fail(`v2 leaked tool call: ${e.message}`);
+  }
+}
+
+// A new desktop chat is unnamed until Cursor names it. The placeholder must
+// not lock, and a name we chose here must not be overwritten.
+{
+  try {
+    const { adoptDesktopTitle } = await import('../src/core/sessions.mjs');
+    const { realTitle } = await import('../src/core/desktop-threads.mjs');
+    let failed = false;
+
+    if (realTitle('') || realTitle('Desktop chat') || realTitle('  ')) {
+      fail('the placeholder is not a real title');
+      failed = true;
+    }
+    if (realTitle('Hidden file edits session') !== 'Hidden file edits session') {
+      fail('a name Cursor chose should pass through');
+      failed = true;
+    }
+
+    const take = adoptDesktopTitle({ title: 'Desktop chat', titleLocked: true }, 'Plan mode content issue');
+    if (take?.title !== 'Plan mode content issue') {
+      fail(`a locked placeholder should still take the desktop's name, got ${JSON.stringify(take)}`);
+      failed = true;
+    }
+    if (adoptDesktopTitle({ title: 'I named it', titleLocked: true }, 'Plan mode content issue')) {
+      fail('a name chosen here must not be overwritten');
+      failed = true;
+    }
+    if (adoptDesktopTitle({ title: 'Desktop chat', titleLocked: false }, '')) {
+      fail('an empty name is not one');
+      failed = true;
+    }
+
+    if (!failed) ok('v2 core: desktop chats take Cursor’s name unless renamed here');
+  } catch (e) {
+    fail(`v2 desktop title: ${e.message}`);
   }
 }
 
@@ -2479,8 +2532,38 @@ if (existsSync(SRC)) {
       }
       if (read.visited.includes('b5')) fail('an unfilled bubble should not count as seen');
       if (read.generating) fail('a thread with no generation id is not running');
+      if (read.title !== 'A desktop chat') fail(`a named thread should keep its name, got ${read.title}`);
       if (!threads.threadExists(thread)) fail('threadExists should find a thread that is there');
       if (threads.threadExists('nope')) fail('threadExists should not invent threads');
+
+      // An unnamed thread has no title yet — "Desktop chat" is Auto's label,
+      // not a name the desktop chose, and must not be reported as one.
+      const blankId = '22222222-3333-4333-8444-666666666666';
+      const writeBlank = (name) =>
+        put.run(
+          `composerData:${blankId}`,
+          JSON.stringify({ name, fullConversationHeadersOnly: [] }),
+        );
+      writeBlank('');
+      if (threads.readThread(blankId).title) {
+        fail(`an unnamed thread should have no title, got ${threads.readThread(blankId).title}`);
+      }
+      writeBlank('Desktop chat');
+      if (threads.readThread(blankId).title) {
+        fail('the placeholder is not a name the desktop chose');
+      }
+
+      const namer = new threads.ThreadWatcher(blankId, { idleMs: 30, busyMs: 30 });
+      const titles = [];
+      namer.on('title', (t) => titles.push(t));
+      namer.start();
+      await new Promise((r) => setTimeout(r, 50));
+      writeBlank('Named by Cursor');
+      await new Promise((r) => setTimeout(r, 90));
+      namer.stop();
+      if (titles.join() !== 'Named by Cursor') {
+        fail(`the watcher should report the desktop's name, saw ${JSON.stringify(titles)}`);
+      }
 
       // Only what the caller has not seen comes back.
       const rest = threads.readThread(thread, { seen: new Set(['b1', 'b2', 'b3']) });

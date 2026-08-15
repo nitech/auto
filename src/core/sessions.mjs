@@ -29,7 +29,7 @@ import { TerminalRegistry } from './terminals.mjs';
 import { sendMessage } from './desktop-bridge.mjs';
 import { CursorCdp } from './cursor-cdp.mjs';
 import { DesktopOutbox } from './desktop-outbox.mjs';
-import { ThreadWatcher, readThread } from './desktop-threads.mjs';
+import { ThreadWatcher, readThread, realTitle, UNTITLED_THREAD } from './desktop-threads.mjs';
 import { labelsForAnswer } from './questions.mjs';
 import { classifyTool } from './desktop-tool-ui.mjs';
 
@@ -78,6 +78,21 @@ export function upstreamComplaint(prose) {
   }
   if (UPSTREAM_ERROR_RE.test(text)) return text.trim();
   return null;
+}
+
+/**
+ * Whether a desktop thread's new name should replace what Auto is showing.
+ *
+ * The IDE names a chat after the first exchange. A placeholder is not a name
+ * we chose, so it must not block that — even if an earlier attach locked it.
+ * An explicit rename here still wins.
+ */
+export function adoptDesktopTitle(current, incoming) {
+  const named = realTitle(incoming);
+  if (!named) return null;
+  if (current?.titleLocked && realTitle(current.title)) return null;
+  if (current?.title === named && current.titleLocked) return null;
+  return { title: named, titleLocked: true };
 }
 
 /**
@@ -1088,17 +1103,20 @@ export class SessionManager extends EventEmitter {
       }
     }
     if (!state && fresh) {
-      state = { title: title || 'Desktop chat', generating: false, messages: [], visited: [], total: 0 };
+      state = { title: realTitle(title), generating: false, messages: [], visited: [], total: 0 };
     }
     if (!state) throw new Error('That chat is not in the Cursor desktop database');
 
+    const named = realTitle(title) || realTitle(state.title);
     const id = randomUUID();
     const meta = {
       id,
       kind: 'desktop',
       desktopThreadId: threadId,
-      title: title || state.title || 'Desktop chat',
-      titleLocked: Boolean(title || state.title),
+      // "Desktop chat" is a label, not a name. Locking it stopped Auto from
+      // taking the title Cursor writes after the first exchange.
+      title: named || UNTITLED_THREAD,
+      titleLocked: Boolean(named),
       folder: folder || this.defaultFolder,
       mode: 'agent',
       policy: this.defaultPolicy,
@@ -1431,10 +1449,8 @@ export class SessionManager extends EventEmitter {
       if (running) this.#watchDesktopAsks(id);
     });
     watcher.on('title', (title) => {
-      const current = this.meta.get(id);
-      // The desktop names a thread after the first exchange; take that unless
-      // the name came from us.
-      if (current && !current.titleLocked) this.#update(id, { title, titleLocked: true });
+      const patch = adoptDesktopTitle(this.meta.get(id), title);
+      if (patch) this.#update(id, patch);
     });
     watcher.on('error', (err) => this.emit('log', `[${meta.title}] watching: ${err.message}`));
 
@@ -1597,6 +1613,10 @@ export class SessionManager extends EventEmitter {
       // here on are news. The watcher learns what it has seen on its first
       // pass, so seed it with everything currently in the thread.
       const state = readThread(meta.desktopThreadId, { tail: 0 });
+      // Cursor may have named the thread while we were down — or while we
+      // were showing the placeholder we locked at attach.
+      const patch = adoptDesktopTitle(meta, state?.title);
+      if (patch) this.#update(meta.id, patch);
       if (this.#watchDesktop(meta.id, state?.visited || [])) watched += 1;
     }
     return watched;
