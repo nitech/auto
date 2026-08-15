@@ -2653,7 +2653,7 @@ function meter(kind, label, pct, note) {
   const p = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
   return `<div class="usage-meter">
     <div class="usage-meter-head"><span>${esc(label)}</span><span>${Math.round(p)}% used</span></div>
-    <div class="usage-bar ${kind}" style="--pct:${p}"><i></i></div>
+    <div class="usage-bar" style="--pct:${p}"><i></i></div>
     ${note ? `<div class="usage-note">${esc(note)}</div>` : ''}
   </div>`;
 }
@@ -2696,7 +2696,7 @@ function renderUsageSheet(msg) {
     const plan = account.plan || {};
     const buckets = account.buckets || {};
     bits.push(
-      `<div class="usage-note"><strong>${esc(plan.name || 'Plan')}</strong>${plan.price ? ` · ${esc(plan.price)}` : ''}${plan.cycleEnd ? `<br>Resets ${esc(whenCycle(plan.cycleEnd))}` : ''}${account.account?.email ? `<br>${esc(account.account.email)}` : ''}</div>`,
+      `<div class="usage-plan"><strong>${esc(plan.name || 'Plan')}</strong>${plan.price ? ` · ${esc(plan.price)}` : ''}${plan.cycleEnd ? `<br>Resets ${esc(whenCycle(plan.cycleEnd))}` : ''}${account.account?.email ? `<br>${esc(account.account.email)}` : ''}</div>`,
     );
     bits.push(
       meter(
