@@ -98,8 +98,8 @@ const state = {
   dismissedChats: new Set(),
   /** unsent composer text (and images) kept per session across switches */
   drafts: new Map(),
-  /** a send drawn immediately, so the host's later user_message is not a second bubble */
-  pendingEcho: null,
+  /** a send drawn immediately: credits that swallow the host record (and a stray echo) */
+  pendingEchoes: [],
 };
 
 // ------------------------------------------------------------------ helpers
@@ -330,13 +330,41 @@ function renderUser(rec) {
   add(node);
 }
 
-/** Same words the host already put on screen, so a second copy is not drawn. */
+/** Same words already drawn for this send, so the host record is not a second bubble. */
+function sameSend(a, b) {
+  return (
+    String(a?.text || '').trim() === String(b?.text || '').trim() &&
+    (a?.images || 0) === (b?.images || 0)
+  );
+}
+
+/**
+ * An idle send is drawn at once; the host later writes the same user_message,
+ * and Cursor may echo it again. Each credit swallows one matching record.
+ */
+function rememberSend(rec) {
+  const now = Date.now();
+  state.pendingEchoes = state.pendingEchoes.filter((e) => now - e.at < 120_000);
+  state.pendingEchoes.push({
+    sessionId: state.sessionId,
+    text: String(rec.text || ''),
+    images: rec.images || 0,
+    left: 2,
+    at: now,
+  });
+}
+
 function takePendingEcho(rec) {
-  const pending = state.pendingEcho;
-  if (!pending || pending.sessionId !== state.sessionId) return false;
-  if (String(rec.text || '') !== pending.text) return false;
-  if ((rec.images || 0) !== (pending.images || 0)) return false;
-  state.pendingEcho = null;
+  const now = Date.now();
+  state.pendingEchoes = state.pendingEchoes.filter((e) => now - e.at < 120_000);
+  const hit = state.pendingEchoes.find(
+    (e) => e.sessionId === state.sessionId && e.left > 0 && sameSend(e, rec),
+  );
+  if (!hit) return false;
+  hit.left -= 1;
+  if (hit.left <= 0) {
+    state.pendingEchoes = state.pendingEchoes.filter((e) => e !== hit);
+  }
   return true;
 }
 
@@ -1628,7 +1656,7 @@ function attach(sessionId) {
   state.sessionId = sessionId;
   rememberSession(sessionId);
   state.lastSeq = 0;
-  state.pendingEcho = null;
+  state.pendingEchoes = [];
   els.transcript.innerHTML = '';
   state.toolCards.clear();
   state.bundle = null;
@@ -2025,11 +2053,7 @@ function submit(text) {
   // and the queue is where those belong until they go in.
   if (!state.busy) {
     renderUser({ text: body, images: images.length || undefined });
-    state.pendingEcho = {
-      sessionId: state.sessionId,
-      text: body,
-      images: images.length || 0,
-    };
+    rememberSend({ text: body, images: images.length || 0 });
   }
   sendOp({ op: 'prompt', sessionId: state.sessionId, text: body, images });
   state.attachments = [];

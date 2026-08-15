@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-15
+* **Update**: A submitted message no longer appears two or three times — the web keeps echo credits for the optimistic bubble, and the host expects Cursor's copy on queued and held sends too.
 * **Update**: Mirrored answers no longer stutter — stale shorter DB reads are ignored, and real rewrites replace the bubble instead of appending.
 * **Update**: Each web session keeps its own composer draft; idle sends appear in the stream immediately.
 * **Update**: Cursor harness notes (`system_notification` when a background command finishes) are not copied onto the phone — they are stored as user bubbles, but the IDE never paints them.

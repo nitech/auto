@@ -1593,9 +1593,11 @@ if (existsSync(SRC)) {
 }
 
 // Composer drafts stay with the chat you typed them in, and an idle send
-// appears in the stream before Cursor has finished taking it.
+// appears in the stream before Cursor has finished taking it — without
+// drawing the host's later copy as a second bubble.
 {
   const js = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  const sessionsJs = readFileSync(join(ROOT, 'src/core/sessions.mjs'), 'utf8');
   let failed = false;
   if (!js.includes('function saveDraft') || !js.includes('function loadDraft')) {
     fail('switching chats must park and restore the composer draft');
@@ -1605,8 +1607,22 @@ if (existsSync(SRC)) {
     fail('attach must save the old draft and load the new one');
     failed = true;
   }
-  if (!js.includes('pendingEcho') || !js.includes('!state.busy')) {
-    fail('an idle send must appear in the stream immediately');
+  if (!js.includes('pendingEchoes') || !js.includes('rememberSend') || !js.includes('!state.busy')) {
+    fail('an idle send must appear in the stream immediately without duplicating');
+    failed = true;
+  }
+  const desktopPrompt = sessionsJs.slice(
+    sessionsJs.indexOf('async #promptDesktop'),
+    sessionsJs.indexOf('resumeDesktopOutbox'),
+  );
+  if (!desktopPrompt.includes("result.status === 'queued'") || !desktopPrompt.includes('this.#expectEcho(id, text)')) {
+    fail('a queued desktop send must #expectEcho so Cursor’s bubble is not a second user message');
+    failed = true;
+  }
+  // The hold path must expect the echo too — otherwise a refused send that
+  // later goes in through the outbox appears twice.
+  if (!desktopPrompt.includes('outbox.hold') || desktopPrompt.indexOf('this.#expectEcho(id, text)') === desktopPrompt.lastIndexOf('this.#expectEcho(id, text)')) {
+    fail('a held desktop send must #expectEcho as well as a queued one');
     failed = true;
   }
   if (!failed) ok('v2 web: per-session drafts and immediate send');

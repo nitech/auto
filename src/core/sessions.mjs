@@ -1795,19 +1795,15 @@ export class SessionManager extends EventEmitter {
    * outbox and goes in the moment the desktop will take it.
    */
   async #promptDesktop(id, meta, text, images = []) {
-    // Put an idle send on the stream before talking to Cursor — finding the
-    // window and typing can take seconds. A busy turn may be queued instead,
-    // and those stay off the stream until Cursor takes them.
-    const showNow = meta.status !== STATUS.busy;
-    if (showNow) {
-      this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
-    }
-
     const result = await this.#deliverDesktop(id, text, images);
 
     if (result.status === 'queued') {
       // Cursor is holding it. The stream waits until the turn actually takes
       // it; the queue on screen is where it can be seen until then.
+      // Expect the eventual desktop bubble now: we do not write the message
+      // into the transcript while it is only queued, but Cursor will store it
+      // as a user bubble when it runs, and that must not appear as a second send.
+      this.#expectEcho(id, text);
       this.#update(id, { status: STATUS.busy });
       this.#watchDesktop(id);
       const seen = await this.queued(id);
@@ -1816,9 +1812,9 @@ export class SessionManager extends EventEmitter {
     }
 
     if (result.status === 'submitted') {
-      if (!showNow) {
-        this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
-      }
+      // deliverDesktop already #expectEcho'd; the web may have drawn the bubble
+      // optimistically, so this record is what pendingEcho swallows there.
+      this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
       // An image that did not make it has to be said out loud: a message asking
       // "what do you think of this?" with nothing attached reads as an agent
       // ignoring the question.
@@ -1836,9 +1832,9 @@ export class SessionManager extends EventEmitter {
     }
 
     const place = this.outbox.hold(id, text);
-    if (!showNow) {
-      this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
-    }
+    // Held for later: still our send, and the desktop will echo it when it goes in.
+    this.#expectEcho(id, text);
+    this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
     this.#record(id, KIND.notice, { text: this.#whyHeld(meta, result, place) });
     if (images.length) {
       // The outbox keeps words, not pictures: an image has to be pasted into a

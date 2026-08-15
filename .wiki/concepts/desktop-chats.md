@@ -23,7 +23,7 @@ sources:
   - id: outbox
     resource: /src/core/desktop-outbox.mjs
     title: Held messages
-generated: { by: agent, at: 2026-08-15T17:15:00Z }
+generated: { by: agent, at: 2026-08-15T17:25:00Z }
 ---
 
 # Continuing Cursor desktop chats
@@ -87,7 +87,10 @@ file-change row; a few internal tools stay off the stream.
 - The generation id clears before the last message lands — wait one more
   pass before calling a turn over.
 - Your own message is written to the transcript when sent *and* stored as a
-  bubble. Auto shows it once.
+  bubble. Auto shows it once — the web draws an idle send immediately and
+  swallows the host's later copy (and a stray Cursor echo); the host
+  `#expectEcho`s every path that will come back from the desktop, including
+  queued and outbox holds.
 - Cursor stores agent-harness notes (`system_notification` when a background
   command finishes) as user bubbles. The IDE does not paint them; Auto must
   not copy them onto the phone.
