@@ -1061,7 +1061,10 @@ details.think .body {
 
 /*
  * Mode and model sit under the text they govern, as Cursor's chat box has
- * them: quiet until hovered, since they are read far more often than changed.
+ * them. A chip background shows where each picker starts and stops. 16px is
+ * the floor: iOS zooms the page into any control smaller than that and never
+ * zooms back out — a more specific rule here used to beat the mobile 16px
+ * override, which is how tapping a picker left the chat magnified.
  */
 .composer-controls {
   display: flex;
@@ -1071,18 +1074,19 @@ details.think .body {
 }
 
 .composer-controls select {
-  background: none;
-  border-color: transparent;
+  background: var(--bg-3);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
   color: var(--muted);
-  font-size: 12px;
-  padding: 3px 6px;
+  font-size: 16px;
+  padding: 4px 10px;
   max-width: 40%;
   min-width: 0;
 }
 
 .composer-controls select:hover {
-  background: var(--bg-3);
-  border-color: var(--line-2);
+  background: var(--bg);
+  border-color: var(--line);
   color: var(--text);
 }
 
@@ -1164,14 +1168,6 @@ details.think .body {
 
 /* Attach lives on the lower-right of the box, not in the typing row. */
 .in-box.attach { margin-left: auto; }
-
-.binder-icon {
-  width: 18px;
-  height: 18px;
-  background: currentColor;
-  -webkit-mask: url('/binder.png') center / contain no-repeat;
-  mask: url('/binder.png') center / contain no-repeat;
-}
 
 /* ---------------------------------------------------- diffs and images */
 
@@ -1916,10 +1912,13 @@ pre:hover .copy,
   .in-box { width: 40px; height: 40px; }
 
   /* Same rule as the composer: iOS zooms into anything smaller than 16px and
-     leaves the page there, so every field a finger can reach is 16px. */
+     leaves the page there, so every field a finger can reach is 16px. The
+     composer pickers are named here so a later 12px desktop size cannot
+     out-specify this. */
   #browser-url,
   .sheet-panel input[type='text'],
-  select {
+  select,
+  .composer-controls select {
     font-size: 16px;
   }
   /* No hover on a phone, so copy is always showing — and worth hitting. */

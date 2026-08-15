@@ -1452,12 +1452,22 @@ if (existsSync(SRC)) {
     fail('attach must not sit in composer-main');
     failed = true;
   }
-  if (/id="attach"[^>]*>\s*\+/.test(html)) {
-    fail('attach must not be a bare +');
+  if (!/id="attach"[^>]*>\s*\+/.test(html)) {
+    fail('attach must be a plus sign');
     failed = true;
   }
-  if (!html.includes('binder-icon') || !css.includes('.binder-icon')) {
-    fail('attach must be a binder icon');
+  if (html.includes('binder-icon') || css.includes('.binder-icon')) {
+    fail('attach must not be a binder icon');
+    failed = true;
+  }
+  const pickerCss = css.slice(css.indexOf('.composer-controls select {'));
+  const pickerBlock = pickerCss.slice(0, pickerCss.indexOf('}') + 1);
+  if (!/font-size:\s*16px/.test(pickerBlock)) {
+    fail('composer pickers must be 16px so iOS does not zoom on tap');
+    failed = true;
+  }
+  if (!/background:\s*var\(--bg-3\)/.test(pickerBlock) || !/border-radius:\s*8px/.test(pickerBlock)) {
+    fail('composer pickers must read as chips (background and rounded edges)');
     failed = true;
   }
   if (!failed) ok('v2 web: composer mode colours');
