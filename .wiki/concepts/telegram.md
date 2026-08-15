@@ -8,7 +8,7 @@ sources:
   - id: telegram
     resource: /src/core/telegram.mjs
     title: Telegram bridge
-generated: { by: agent, at: 2026-08-15T09:36:00Z }
+generated: { by: agent, at: 2026-08-15T11:50:00Z }
 ---
 
 # Telegram
@@ -23,9 +23,12 @@ Command output goes to the web transcript. Telegram gets the command line
 and, for a failure, the exit code. A card folded up is still expected to
 show the last lines it printed and its exit code.
 
-A turn unfolds in one edited message. Approvals, question options, and
-Created Plan actions are buttons. Photos are downloaded and sent with the
-prompt (desktop: pasted into the window; ACP: image blocks).
+A turn unfolds in one edited message. When it finishes, the same message
+ends with how long it took — *Worked for 7m 3s* or *Thought for 1s* — so a
+phone is not left staring at a command that still says it is running.
+Approvals, question options, and Created Plan actions are buttons. Photos
+are downloaded and sent with the prompt (desktop: pasted into the window;
+ACP: image blocks).
 
 ## Commands
 

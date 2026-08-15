@@ -1800,6 +1800,10 @@ if (existsSync(SRC)) {
       fail('a turn that ends without a reply is an upstream failure');
       failed = true;
     }
+    if (typeof ended?.durationMs !== 'number') {
+      fail('a finished turn should record how long it took');
+      failed = true;
+    }
     // The complaint belongs inside the turn, before the divider that closes it.
     if (cutOff && ended && cutOff.seq > ended.seq) {
       fail('the complaint should be recorded before the turn ends');
@@ -2133,6 +2137,22 @@ if (existsSync(SRC)) {
       [1, 1],
     );
 
+    const { turnCopy, durationBits } = await import('../src/core/desktop-tool-ui.mjs');
+    check('8 seconds', durationBits(8000), [8, 's']);
+    check('a minute thirty', durationBits(90_000), [1, 'm ', 30, 's']);
+    check('exact minutes', durationBits(120_000), [2, 'm']);
+    check(
+      'worked',
+      turnCopy({ durationMs: 423_000, worked: true }).label,
+      'Worked for 7m 3s',
+    );
+    check(
+      'thought',
+      turnCopy({ durationMs: 1000, worked: false }).label,
+      'Thought for 1s',
+    );
+    check('no clock yet', turnCopy({ durationMs: 0, worked: true }).label, 'Done');
+
     const diff = diffFromPrecomputed(
       {
         lines: [
@@ -2281,6 +2301,14 @@ if (existsSync(SRC)) {
     }
     if (renderTurn({ tools: [{ label: 'npm test', status: 'in_progress' }] }).includes('exit')) {
       fail('a running command should show only what is running');
+      failed = true;
+    }
+    const done = renderTurn({
+      text: 'Queued messages stay in the queue.',
+      conclusion: 'Worked for 7m 3s',
+    });
+    if (!done.includes('<i>Worked for 7m 3s</i>')) {
+      fail(`a finished turn should say how long it took, got ${JSON.stringify(done.slice(-40))}`);
       failed = true;
     }
 

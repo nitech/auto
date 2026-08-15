@@ -241,6 +241,28 @@ export function editCopy(count, oneLabel) {
   return lineOf('Edited ', count, ` ${word(count, 'file')}`);
 }
 
+/**
+ * How long a spell of work lasted, the way Cursor writes it: "8s", "7m 3s".
+ * Counts stay separate from the units so a renderer can draw them louder.
+ */
+export function durationBits(ms) {
+  const s = Math.max(1, Math.round(Number(ms) / 1000) || 1);
+  if (s < 60) return [s, 's'];
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (!r) return [m, 'm'];
+  return [m, 'm ', r, 's'];
+}
+
+/**
+ * The line Cursor puts above a finished answer: "Worked for 7m 3s" when
+ * anything was run, "Thought for 1s" when the turn was only thinking.
+ */
+export function turnCopy({ durationMs = 0, worked = false } = {}) {
+  if (!(durationMs > 0)) return lineOf('Done');
+  return lineOf(worked ? 'Worked for ' : 'Thought for ', ...durationBits(durationMs));
+}
+
 /** How many reads vs searches sit in a group of tool calls. */
 export function groupTally(items = []) {
   let files = 0;

@@ -16,7 +16,7 @@ import { join, dirname } from 'node:path';
 import { listProjects, workspaceIdFor } from './projects.mjs';
 import { desktopChats } from './desktop-chats.mjs';
 import { optionLetter, parseQuestionReply } from './questions.mjs';
-import { classifyTool, displayLabel, foldTools, isCreatedPlan, planFields } from './desktop-tool-ui.mjs';
+import { classifyTool, displayLabel, foldTools, isCreatedPlan, planFields, turnCopy } from './desktop-tool-ui.mjs';
 
 const LIMIT = 4096;
 /** Telegram tolerates roughly one edit a second; stay well clear. */
@@ -113,7 +113,7 @@ export function failureNote(rec) {
  * top, what it is saying underneath. The tool list is reserved space, so a long
  * answer cannot push the status out of view.
  */
-export function renderTurn({ text = '', tools = [] } = {}) {
+export function renderTurn({ text = '', tools = [], conclusion = '' } = {}) {
   const head = foldTools(tools)
     .map((t) => {
       const said = t.parts?.length
@@ -125,8 +125,9 @@ export function renderTurn({ text = '', tools = [] } = {}) {
     })
     .join('\n');
   const body = esc(String(text).trim());
-  const room = LIMIT - head.length - 8;
-  return [head, clamp(body, Math.max(500, room))].filter(Boolean).join('\n\n') || '…';
+  const done = conclusion ? `<i>${esc(conclusion)}</i>` : '';
+  const room = LIMIT - head.length - done.length - 8;
+  return [head, clamp(body, Math.max(500, room)), done].filter(Boolean).join('\n\n') || '…';
 }
 
 /**
@@ -815,13 +816,19 @@ export class TelegramBridge extends EventEmitter {
         timer: null,
         sending: false,
         rendered: '',
+        started: 0,
+        conclusion: '',
       });
     }
     return this.turns.get(sessionId);
   }
 
   #compose(turn) {
-    return renderTurn({ text: turn.text, tools: [...turn.tools.values()] });
+    return renderTurn({
+      text: turn.text,
+      tools: [...turn.tools.values()],
+      conclusion: turn.conclusion,
+    });
   }
 
   #schedule(sessionId) {
@@ -859,6 +866,8 @@ export class TelegramBridge extends EventEmitter {
         turn.text = '';
         turn.rendered = '';
         turn.tools.clear();
+        turn.started = rec.ts || Date.now();
+        turn.conclusion = '';
         break;
 
       case 'agent_delta':
@@ -917,6 +926,18 @@ export class TelegramBridge extends EventEmitter {
         }
         // Let an in-flight edit land before the final one overwrites it.
         while (turn.sending) await new Promise((r) => setTimeout(r, 100));
+        {
+          const durationMs =
+            rec.durationMs > 0
+              ? rec.durationMs
+              : rec.ts && turn.started
+                ? rec.ts - turn.started
+                : 0;
+          turn.conclusion = turnCopy({
+            durationMs,
+            worked: turn.tools.size > 0,
+          }).label;
+        }
         await this.#flush(sessionId);
         break;
 

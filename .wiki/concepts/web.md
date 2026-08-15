@@ -14,7 +14,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-15T09:36:00Z }
+generated: { by: agent, at: 2026-08-15T11:50:00Z }
 ---
 
 # Web app
@@ -36,8 +36,14 @@ the sheet on a narrow screen).
   and searches, a file-change row for edits, cards for commands, questions,
   and Created Plan. The table lives in `desktop-tool-ui.js` so Telegram can
   share one copy.
-- Diffs, thinking (folded when the block ends), permission and question
-  cards, [terminals](terminals.md), [browser](browser.md).
+- Diffs, thinking (folded when the block ends, timed from the record so a
+  replay says "Thought for 8s" rather than staying "Thinking"), permission
+  and question cards, [terminals](terminals.md), [browser](browser.md).
+- A turn still going says **Working…** at the bottom of the stream. When it
+  ends, that line becomes **Worked for 7m 3s** or **Thought for 1s** above
+  the answer, the way Cursor labels a finished turn. Commands left
+  "running…" after the session goes idle settle to stopped — an idle chip
+  with live cards is a lie.
 
 ## Composer
 

@@ -26,6 +26,7 @@ import {
   groupTally,
   isCreatedPlan,
   planFields,
+  turnCopy,
 } from './desktop-tool-ui.js';
 
 const $ = (id) => document.getElementById(id);
@@ -76,6 +77,14 @@ const state = {
   streamKind: null,
   /** the thinking block being written to, so it can be folded when it ends */
   thinking: null,
+  /** timestamp of the record currently being drawn, so replayed thinking is timed */
+  now: 0,
+  /** the open turn: when it started, whether tools ran, the live status line */
+  turn: null,
+  /** "Working…" while a turn runs; becomes "Worked for 7m 3s" when it ends */
+  statusEl: null,
+  /** true while history is being painted, so finished turns do not flash Working */
+  replaying: false,
   lastPrompt: '',
   /** images waiting to go with the next prompt: {mimeType, data, url} */
   attachments: [],
@@ -172,11 +181,11 @@ function syncToBottom() {
 function closeThinking() {
   if (!state.thinking) return;
   const started = Number(state.thinking.dataset.started || 0);
-  const ms = started ? Date.now() - started : 0;
+  const at = state.now || Date.now();
+  const ms = started ? at - started : 0;
   if (ms >= 500) {
-    const sec = Math.max(1, Math.round(ms / 1000));
     const sum = state.thinking.querySelector('summary');
-    if (sum) sum.replaceChildren('Thought for ', nSpan(sec), 's');
+    if (sum) paintParts(sum, turnCopy({ durationMs: ms, worked: false }).parts);
   }
   state.thinking.open = false;
   state.thinking = null;
@@ -200,6 +209,78 @@ function paintParts(el, parts) {
   );
 }
 
+/**
+ * The line that says the turn is still going, or how long it took.
+ *
+ * Cursor writes "Worked for 7m 3s" / "Thought for 1s" above the answer. While
+ * the turn is live the same slot says "Working…" and stays at the bottom of
+ * the stream, so a finished-looking command cannot be mistaken for the end.
+ */
+function paintLiveStatus() {
+  if (state.replaying) return;
+  const el = state.statusEl && state.statusEl.isConnected ? state.statusEl : div('turn-status live');
+  el.className = 'turn-status live';
+  el.setAttribute('aria-live', 'polite');
+  el.textContent = 'Working…';
+  state.statusEl = el;
+  els.transcript.appendChild(el);
+  scrollDown();
+}
+
+function dropLiveStatus() {
+  if (!state.statusEl?.classList.contains('live')) return;
+  state.statusEl.remove();
+  state.statusEl = null;
+}
+
+function beginTurn(rec) {
+  state.turn = { started: rec.ts || state.now || Date.now(), worked: false, answer: null };
+  paintLiveStatus();
+}
+
+function endTurn(rec) {
+  settleRunningTools();
+  closeThinking();
+  const started = state.turn?.started || rec.ts;
+  const durationMs =
+    rec.durationMs > 0 ? rec.durationMs : rec.ts && started ? rec.ts - started : 0;
+  const worked = Boolean(state.turn?.worked);
+  const el = state.statusEl && state.statusEl.isConnected ? state.statusEl : div('turn-status');
+  el.className = 'turn-status';
+  el.removeAttribute('aria-live');
+  paintParts(el, turnCopy({ durationMs, worked }).parts);
+  const answer = state.turn?.answer;
+  if (answer?.isConnected) answer.before(el);
+  else if (!el.isConnected) add(el, { keepStream: true });
+  state.statusEl = null;
+  state.turn = null;
+  decorate(els.transcript);
+}
+
+/**
+ * Nothing can be running in an idle chat. Cards left "running…" after a
+ * restart or a missed tool_update contradicted the idle chip, which is how
+ * a finished turn looked unfinished.
+ */
+function settleRunningTools() {
+  for (const card of els.transcript.querySelectorAll('.tool.running')) {
+    card.classList.remove('running');
+    card.classList.add('done');
+    const word = card.querySelector('summary .state');
+    if (word) word.textContent = 'stopped';
+    if (!card.dataset.opened) card.open = false;
+  }
+  if (!state.bundle) return;
+  for (const it of state.bundle.items) {
+    const s = it.rec.status;
+    if (s === 'in_progress' || s === 'pending') {
+      it.rec.status = 'cancelled';
+      paintItemStatus(it.row, 'cancelled', false);
+    }
+  }
+  paintBundle(state.bundle);
+}
+
 function add(node, { keepStream = false } = {}) {
   if (!keepStream) {
     closeThinking();
@@ -208,6 +289,12 @@ function add(node, { keepStream = false } = {}) {
   }
   const stick = nearBottom();
   els.transcript.appendChild(node);
+  // A live "Working…" line belongs at the bottom of the stream, after
+  // whatever just arrived — otherwise the last thing you see is a finished
+  // command and there is no way to tell the turn is still going.
+  if (state.statusEl?.classList.contains('live')) {
+    els.transcript.appendChild(state.statusEl);
+  }
   decorate(node);
   scrollDown(stick);
   syncToBottom();
@@ -244,7 +331,7 @@ function renderStreaming(rec) {
       // Open while it runs: on a phone this is the only sign of life between a
       // prompt and the first words of an answer.
       d.open = true;
-      d.dataset.started = String(Date.now());
+      d.dataset.started = String(rec.ts || Date.now());
       add(d, { keepStream: true });
       state.thinking = d;
       state.stream = d.querySelector('.body');
@@ -253,6 +340,7 @@ function renderStreaming(rec) {
       const d = div('msg agent');
       closeThinking();
       add(d, { keepStream: true });
+      if (state.turn && !state.turn.answer) state.turn.answer = d;
       state.stream = d;
       state.stream.dataset.raw = '';
     }
@@ -493,6 +581,7 @@ function renderToolCall(rec) {
     if (rec.toolCallId) state.toolCards.set(rec.toolCallId, { hidden: true });
     return;
   }
+  if (state.turn) state.turn.worked = true;
   if (ui.lane === 'fileChange' || ui.lane === 'group') {
     addBundleItem(rec, ui);
     return;
@@ -957,6 +1046,7 @@ function renderError(rec) {
 
 function render(rec) {
   if (typeof rec.seq === 'number') state.lastSeq = Math.max(state.lastSeq, rec.seq);
+  state.now = rec.ts || Date.now();
   if (rec.kind !== 'tool_call' && rec.kind !== 'tool_update') flushBundle();
 
   switch (rec.kind) {
@@ -995,10 +1085,7 @@ function render(rec) {
       renderError(rec);
       break;
     case 'turn_end':
-      add(div('turn-divider'));
-      // Streamed replies rewrite their own markup as they arrive, so their
-      // code blocks only get a copy button once the turn stops moving.
-      decorate(els.transcript);
+      endTurn(rec);
       break;
     case 'notice': {
       const el = div('notice');
@@ -1006,10 +1093,12 @@ function render(rec) {
       add(el);
       break;
     }
+    case 'turn_start':
+      beginTurn(rec);
+      break;
     case 'session_start':
     case 'session_info':
     case 'commands':
-    case 'turn_start':
       break;
     default:
       break;
@@ -1327,7 +1416,7 @@ function applyMeta(meta) {
   // A session that has never run has no model yet; leave the picker as-is.
   if (meta.model && els.model.options.length) els.model.value = meta.model;
   setBusy(meta.status === 'busy');
-  els.status.textContent = meta.status || 'idle';
+  els.status.textContent = meta.status === 'busy' ? 'working' : meta.status || 'idle';
   els.status.className = `chip ${meta.status === 'busy' ? 'busy' : meta.status === 'error' ? 'error' : ''}`;
 }
 
@@ -1340,6 +1429,7 @@ function applyMeta(meta) {
  * the two it is doing.
  */
 function setBusy(busy) {
+  const was = state.busy;
   state.busy = busy;
   els.stop.hidden = !busy;
   els.send.title = busy ? 'Add to the queue' : 'Send';
@@ -1347,6 +1437,12 @@ function setBusy(busy) {
   els.send.classList.toggle('queueing', busy);
   els.box.placeholder = busy ? 'Add to the queue…' : 'Message the agent…';
   syncSend();
+  if (state.replaying) return;
+  if (busy && !was) paintLiveStatus();
+  if (!busy && was) {
+    settleRunningTools();
+    dropLiveStatus();
+  }
 }
 
 /** Send is only live when there is something to send. */
@@ -1374,6 +1470,8 @@ function attach(sessionId) {
   state.askCards.clear();
   state.stream = null;
   state.thinking = null;
+  state.statusEl = null;
+  state.turn = null;
   resetTerminals();
   setHistoryLoading(true);
   setRail(false);
@@ -1452,12 +1550,15 @@ function connect() {
         state.askCards.clear();
         state.stream = null;
         state.thinking = null;
+        state.statusEl = null;
+        state.turn = null;
         resetTerminals();
       }
       renderModels(msg.catalog?.models);
       renderModes(msg.catalog?.modes);
       if (msg.projects) state.projects = msg.projects;
       if (msg.chats) state.chats = msg.chats;
+      state.replaying = true;
       applyMeta(msg.meta);
       renderRail();
       // Panes first, so replayed terminal chunks have somewhere to land.
@@ -1470,6 +1571,10 @@ function connect() {
         add(note);
       }
       for (const rec of msg.records) render(rec);
+      state.replaying = false;
+      if (state.busy) paintLiveStatus();
+      else if (state.turn) endTurn({ ts: state.now || Date.now() });
+      else settleRunningTools();
       // An approval the agent is still waiting on outlives the replay window,
       // and a turn stuck behind an unanswered question is the worst thing to
       // come back to. Anything the records already drew is skipped.

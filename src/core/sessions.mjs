@@ -399,8 +399,51 @@ export class SessionManager extends EventEmitter {
     const t = this.transcripts.open.get(sessionId);
     if (!t) return null;
     const rec = t.append(kind, payload);
+    if (kind === KIND.toolCall && rec.toolCallId) {
+      this.#noteTool(sessionId, rec.toolCallId, rec.status || 'in_progress');
+    } else if (kind === KIND.toolUpdate && rec.toolCallId && rec.status) {
+      this.#noteTool(sessionId, rec.toolCallId, rec.status);
+    }
     this.emit('record', { sessionId, record: rec });
     return rec;
+  }
+
+  #noteTool(sessionId, toolCallId, status) {
+    const runtime = this.live.get(sessionId);
+    if (!runtime || !toolCallId) return;
+    runtime.openTools = runtime.openTools || new Set();
+    const open = status === 'in_progress' || status === 'pending';
+    if (open) runtime.openTools.add(toolCallId);
+    else runtime.openTools.delete(toolCallId);
+  }
+
+  #beginTurn(id) {
+    const runtime = this.live.get(id) || {};
+    runtime.turnStarted = Date.now();
+    runtime.openTools = runtime.openTools || new Set();
+    this.live.set(id, runtime);
+    return this.#record(id, KIND.turnStart, {});
+  }
+
+  #endTurn(id, extra = {}) {
+    const runtime = this.live.get(id);
+    const durationMs = runtime?.turnStarted ? Date.now() - runtime.turnStarted : undefined;
+    this.#settleOpenTools(id);
+    const rec = this.#record(id, KIND.turnEnd, {
+      ...extra,
+      ...(durationMs != null ? { durationMs } : {}),
+    });
+    if (runtime) runtime.turnStarted = 0;
+    return rec;
+  }
+
+  #settleOpenTools(id) {
+    const runtime = this.live.get(id);
+    const open = [...(runtime?.openTools || [])];
+    if (runtime) runtime.openTools = new Set();
+    for (const toolCallId of open) {
+      this.#record(id, KIND.toolUpdate, { toolCallId, status: 'cancelled' });
+    }
   }
 
   // ------------------------------------------------------------------- agent
@@ -587,7 +630,7 @@ export class SessionManager extends EventEmitter {
     if (content.length === 0) return null;
 
     if (!shown) this.#record(id, KIND.userMessage, { text, images: images.length });
-    this.#record(id, KIND.turnStart, {});
+    this.#beginTurn(id);
     this.#update(id, { status: STATUS.busy });
     runtime.streamBuffer = '';
     runtime.upstreamErrorFlagged = false;
@@ -614,7 +657,7 @@ export class SessionManager extends EventEmitter {
           retryable: true,
         });
       }
-      this.#record(id, KIND.turnEnd, {
+      this.#endTurn(id, {
         stopReason: res?.stopReason,
         upstreamError: Boolean(runtime.upstreamErrorFlagged) || silent,
       });
@@ -1432,9 +1475,9 @@ export class SessionManager extends EventEmitter {
     watcher.on('running', (running) => {
       // A turn can start because someone typed in the IDE, so the transcript
       // should show one either way.
-      if (running) this.#record(id, KIND.turnStart, {});
+      if (running) this.#beginTurn(id);
       else {
-        this.#record(id, KIND.turnEnd, { stopReason: 'end_turn' });
+        this.#endTurn(id, { stopReason: 'end_turn' });
         // Nothing written in a finished turn will grow again, so the record of
         // what was published can go rather than sit there for the session's life.
         this.live.get(id)?.textSaid?.clear();

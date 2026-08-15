@@ -148,6 +148,10 @@ goes into the transcript and the agent. The queue is memory only, and stopping
   so a chat that edited nothing looks idle while it works. Stopping is confirmed
   by both. Stopping also hands the message back into the chat box, which Auto
   clears and reports — left there it blocks the next message from a phone.
+- **A finished turn says so.** Cursor writes "Worked for 7m 3s" or "Thought for
+  1s" above the answer; Auto does the same, and a turn still going says
+  "Working…" at the bottom of the stream. A command left "running…" after the
+  session went idle is a lie — the cards settle when the turn ends.
 - **Live-only by exception.** Browser frames are the sole thing deliberately
   never recorded; a video stream is not worth replaying.
 - **The web and Telegram are projections.** Neither owns state. Anything one

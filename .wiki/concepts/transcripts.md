@@ -11,7 +11,7 @@ sources:
   - id: map
     resource: /src/core/map-updates.mjs
     title: ACP update mapping
-generated: { by: agent, at: 2026-08-15T09:36:00Z }
+generated: { by: agent, at: 2026-08-15T11:50:00Z }
 ---
 
 # Transcripts
@@ -34,7 +34,8 @@ worth replaying. See [Browser](browser.md).
 `permission_resolved`, `question`, `question_answered`, `plan`,
 `session_info`, `commands`, `turn_start`, `turn_end`, `error`, `notice`.
 
-Renderers ignore kinds they do not know.
+Renderers ignore kinds they do not know. `turn_end` carries `durationMs` when
+the host saw the turn start, so a replay can still say "Worked for 7m 3s".
 
 ## Replay
 
