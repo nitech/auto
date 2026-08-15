@@ -166,6 +166,11 @@ button, select, textarea { font: inherit; color: inherit; }
   height: 100dvh;
 }
 
+/* Chat stays whole; browser/terminals take a column beside it. */
+#app.workspace-open {
+  grid-template-columns: 264px 1fr minmax(360px, 44vw);
+}
+
 /* ------------------------------------------------------------------ rail */
 
 #rail {
@@ -1506,7 +1511,69 @@ details.think .body {
   background: var(--sunken);
 }
 
-/* ------------------------------------------------------------- browser */
+/* ----------------------------------------------------------- workspace */
+
+/**
+ * Browser and terminals share one place. Wide: a column to the right of the
+ * chat. Narrow: a full-screen sheet. Only one tool is visible at a time —
+ * stacking both on the chat column was the awkward split.
+ */
+#workspace[hidden] {
+  display: none;
+}
+
+#workspace {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.workspace-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-2);
+  flex: none;
+}
+
+.workspace-tabs {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.workspace-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 5px 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.workspace-tab:hover {
+  color: var(--text);
+  border-color: var(--line-2);
+}
+
+.workspace-tab.active {
+  background: var(--bg-3);
+  border-color: var(--line-2);
+  color: var(--text);
+}
+
+button.icon.active {
+  color: var(--accent);
+  border-color: var(--line-2);
+  background: var(--bg-3);
+}
 
 /* An id rule beats the UA `[hidden]` rule, so restate it for these panels. */
 #browser[hidden],
@@ -1514,11 +1581,12 @@ details.think .body {
   display: none;
 }
 
-#browser {
+#browser,
+#terminals {
   display: flex;
   flex-direction: column;
-  height: min(52vh, 560px);
-  border-top: 1px solid var(--line);
+  flex: 1;
+  min-height: 0;
   background: var(--bg);
 }
 
@@ -1622,14 +1690,6 @@ details.think .body {
 }
 
 /* ----------------------------------------------------------- terminals */
-
-#terminals {
-  display: flex;
-  flex-direction: column;
-  height: min(42vh, 380px);
-  border-top: 1px solid var(--line);
-  background: var(--bg);
-}
 
 .term-bar {
   display: flex;
@@ -2212,6 +2272,30 @@ pre:hover .copy,
 
   /* Panel toggles live in the sheet on a phone, where the bar has no room. */
   .desk-only { display: none; }
+
+  /* Phone: the workspace covers everything, like Settings — a split leaves
+     no room for a remote browser or a shell. */
+  #app.workspace-open {
+    grid-template-columns: 1fr;
+  }
+  #workspace {
+    position: fixed;
+    inset: 0;
+    z-index: 25;
+    border-left: 0;
+    animation: sheet-in 0.16s ease;
+  }
+  .workspace-tab {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+  #workspace-hide {
+    min-width: 40px;
+    min-height: 40px;
+    font-size: 20px;
+    color: var(--text);
+  }
 
   #topbar { padding: 8px 10px; gap: 6px; }
   .usage-panel {

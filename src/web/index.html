@@ -62,26 +62,9 @@
         </select>
       </span>
       <span id="status" class="chip">idle</span>
-      <button id="browser-toggle" class="icon desk-only" title="Browser" aria-label="Browser">◉</button>
-      <button id="term-toggle" class="icon desk-only" title="Terminals" aria-label="Terminals">▤</button>
+      <button id="browser-toggle" class="icon desk-only" title="Browser" aria-label="Browser" aria-pressed="false">◉</button>
+      <button id="term-toggle" class="icon desk-only" title="Terminals" aria-label="Terminals" aria-pressed="false">▤</button>
     </header>
-
-    <section id="browser" hidden>
-      <div class="browser-bar">
-        <button id="browser-back" class="icon" title="Back">‹</button>
-        <button id="browser-forward" class="icon" title="Forward">›</button>
-        <button id="browser-reload" class="icon" title="Reload">⟳</button>
-        <input id="browser-url" type="url" inputmode="url" autocomplete="off"
-               spellcheck="false" placeholder="Search or enter address" />
-        <span id="browser-spinner" class="spinner" hidden></span>
-        <button id="browser-hide" class="icon" title="Hide browser">▾</button>
-      </div>
-      <div class="browser-view">
-        <img id="browser-frame" alt="Browser view" draggable="false" />
-        <textarea id="browser-keys" aria-label="Browser keyboard"
-                  autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
-      </div>
-    </section>
 
     <div class="scroller">
       <!-- Visible before JS runs: a long transcript takes a few seconds to
@@ -93,15 +76,6 @@
       <div id="transcript" aria-busy="true"></div>
       <button id="to-bottom" title="Jump to newest" aria-label="Jump to newest" hidden>↓</button>
     </div>
-
-    <section id="terminals" hidden>
-      <div class="term-bar">
-        <div id="term-tabs"></div>
-        <button id="term-new" class="icon" title="New terminal">+</button>
-        <button id="term-hide" class="icon" title="Hide terminals">▾</button>
-      </div>
-      <div id="term-panes"></div>
-    </section>
 
     <footer id="composer">
       <!-- Messages waiting for the turn to end, as the IDE shows them. -->
@@ -138,6 +112,44 @@
       <input id="file" type="file" accept="image/*" multiple hidden />
     </footer>
   </main>
+
+  <!-- Browser and terminals share one place: a right dock on a wide screen,
+       a full-screen sheet on a phone. Only one tool is visible at a time. -->
+  <aside id="workspace" hidden>
+    <div class="workspace-bar">
+      <div class="workspace-tabs" role="tablist" aria-label="Workspace">
+        <button type="button" id="ws-tab-browser" class="workspace-tab" role="tab"
+                aria-selected="false" aria-controls="browser">Browser</button>
+        <button type="button" id="ws-tab-terminals" class="workspace-tab" role="tab"
+                aria-selected="false" aria-controls="terminals">Terminals</button>
+      </div>
+      <button id="workspace-hide" class="icon" title="Close workspace" aria-label="Close workspace">×</button>
+    </div>
+
+    <section id="browser" hidden role="tabpanel" aria-labelledby="ws-tab-browser">
+      <div class="browser-bar">
+        <button id="browser-back" class="icon" title="Back">‹</button>
+        <button id="browser-forward" class="icon" title="Forward">›</button>
+        <button id="browser-reload" class="icon" title="Reload">⟳</button>
+        <input id="browser-url" type="url" inputmode="url" autocomplete="off"
+               spellcheck="false" placeholder="Search or enter address" />
+        <span id="browser-spinner" class="spinner" hidden></span>
+      </div>
+      <div class="browser-view">
+        <img id="browser-frame" alt="Browser view" draggable="false" />
+        <textarea id="browser-keys" aria-label="Browser keyboard"
+                  autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+      </div>
+    </section>
+
+    <section id="terminals" hidden role="tabpanel" aria-labelledby="ws-tab-terminals">
+      <div class="term-bar">
+        <div id="term-tabs"></div>
+        <button id="term-new" class="icon" title="New terminal">+</button>
+      </div>
+      <div id="term-panes"></div>
+    </section>
+  </aside>
 </div>
 
 <!-- Everything that is not the conversation. Tapping the backdrop closes it. -->

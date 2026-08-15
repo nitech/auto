@@ -11,7 +11,10 @@ sources:
   - id: web
     resource: /src/web/browser.js
     title: Browser pane
-generated: { by: agent, at: 2026-08-15T09:36:00Z }
+  - id: workspace
+    resource: /src/web/workspace.js
+    title: Shared workspace
+generated: { by: agent, at: 2026-08-15T19:10:00Z }
 ---
 
 # Browser
@@ -21,6 +24,9 @@ package Auto already depends on. Frames stream out as JPEG screencast; taps
 and keystrokes come back as input. The profile is
 `state/browser-profile`, so logins stick — which is the point of running
 the browser on this machine instead of in a container.
+
+On the web it lives in the shared [workspace](web.md) (right dock / phone
+sheet), not a strip above the chat.
 
 Frames are **never** written to a transcript. Nobody watching means nothing
 to encode: screencast stops when the last client detaches.

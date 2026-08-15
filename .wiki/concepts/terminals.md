@@ -8,7 +8,13 @@ sources:
   - id: terminals
     resource: /src/core/terminals.mjs
     title: Terminal registry
-generated: { by: agent, at: 2026-08-15T09:36:00Z }
+  - id: web
+    resource: /src/web/terminals.js
+    title: Terminal panes
+  - id: workspace
+    resource: /src/web/workspace.js
+    title: Shared workspace
+generated: { by: agent, at: 2026-08-15T19:10:00Z }
 ---
 
 # Terminals
@@ -29,6 +35,9 @@ Chunks go to the [transcript](transcripts.md) as `terminal_chunk`.
 
 If `node-pty` failed to load, the web pane says so rather than pretending
 a terminal exists.
+
+On the web the panes live in the shared [workspace](web.md) (right dock /
+phone sheet), beside or over the chat — not stacked under it.
 
 ## Related
 

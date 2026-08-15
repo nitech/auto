@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-15
+* **Update**: Browser and terminals share one workspace — right dock on a wide screen, full-screen sheet on a phone — instead of stacking strips on the chat column.
 * **Update**: Usage sheet meters use the amber fill (same as the context dial), with a slightly clearer plan card and bar layout.
 * **Update**: Attached images show as thumbnails in the chat stream and above the composer; tap opens a zoomable lightbox (pinch / wheel / drag).
 * **Update**: Composer usage dial (this chat's context fill) plus a sheet for Cursor Models / Other Models / included / on-demand and per-model spend — same numbers as cursor.com, not shown in the IDE chat chrome.

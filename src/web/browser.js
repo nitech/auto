@@ -4,7 +4,18 @@
  * Shows the host's Chrome as a stream of JPEG frames and sends taps, scrolls
  * and keystrokes back. Coordinates are scaled from the displayed image to the
  * real viewport, so a tap on a phone lands where you aimed it.
+ *
+ * Lives in the shared workspace (right dock / full-screen sheet) — see
+ * workspace.js — rather than carving a strip out of the chat column.
  */
+
+import {
+  close as closeWorkspace,
+  isOpen as workspaceIsOpen,
+  onTool,
+  toggle as toggleWorkspace,
+  show as showWorkspace,
+} from './workspace.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -18,16 +29,20 @@ const els = {
 
 let sendOp = () => {};
 let status = { running: false, viewport: { width: 1280, height: 800 } };
-let open = false;
+let attached = false;
 
 export function initBrowser(send) {
   sendOp = send;
 
   $('browser-toggle').onclick = () => toggle();
-  $('browser-hide').onclick = () => toggle(false);
   $('browser-back').onclick = () => sendOp({ op: 'browser.nav', action: 'back' });
   $('browser-forward').onclick = () => sendOp({ op: 'browser.nav', action: 'forward' });
   $('browser-reload').onclick = () => sendOp({ op: 'browser.nav', action: 'reload' });
+
+  onTool('browser', {
+    onShow: () => attach(),
+    onHide: () => detach(),
+  });
 
   els.url.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
@@ -104,28 +119,34 @@ export function initBrowser(send) {
   const view = els.frame.parentElement;
   let debounce = null;
   new ResizeObserver(() => {
-    if (!open) return;
+    if (!attached) return;
     clearTimeout(debounce);
     debounce = setTimeout(requestViewport, 150);
   }).observe(view);
 }
 
 export function toggle(force) {
-  open = force ?? els.panel.hidden;
-  els.panel.hidden = !open;
-  document.getElementById('app').classList.toggle('browser-open', open);
-  if (open) {
-    requestAnimationFrame(() => {
-      const box = els.frame.parentElement.getBoundingClientRect();
-      sendOp({
-        op: 'browser.attach',
-        width: Math.round(box.width) || 1280,
-        height: Math.round(box.height) || 800,
-      });
+  if (force === false) closeWorkspace();
+  else if (force === true) showWorkspace('browser');
+  else toggleWorkspace('browser');
+}
+
+function attach() {
+  attached = true;
+  requestAnimationFrame(() => {
+    const box = els.frame.parentElement.getBoundingClientRect();
+    sendOp({
+      op: 'browser.attach',
+      width: Math.round(box.width) || 1280,
+      height: Math.round(box.height) || 800,
     });
-  } else {
-    sendOp({ op: 'browser.detach' });
-  }
+  });
+}
+
+function detach() {
+  if (!attached) return;
+  attached = false;
+  sendOp({ op: 'browser.detach' });
 }
 
 function requestViewport() {
@@ -159,5 +180,5 @@ export function onStatus(next) {
 }
 
 export function isOpen() {
-  return open;
+  return workspaceIsOpen('browser');
 }

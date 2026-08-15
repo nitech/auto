@@ -17,7 +17,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-15T18:25:00Z }
+generated: { by: agent, at: 2026-08-15T19:10:00Z }
 ---
 
 # Web app
@@ -54,6 +54,9 @@ touch swipe, not a pointer drag), or tap × in the header, or tap beside it.
 - Diffs, thinking (folded when the block ends, timed from the record so a
   replay says "Thought for 8s" rather than staying "Thinking"), permission
   and question cards, [terminals](terminals.md), [browser](browser.md).
+  Those two share one **workspace**: a column to the right of the chat on a
+  wide screen, a full-screen sheet on a phone — not strips stacked on the
+  transcript. Tabs switch between them; only one is visible at a time.
   A http(s) URL in the chat is a link — markdown `[text](url)` and a bare
   address both. User bubbles too. Images you attach show as thumbnails in
   the bubble (and above the box before send); tap one for a full-screen

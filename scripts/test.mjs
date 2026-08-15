@@ -1535,6 +1535,39 @@ if (existsSync(SRC)) {
   if (!failed) ok('v2 web: remembers the open session');
 }
 
+// Browser and terminals must not stack strips on the chat column — they share
+// one workspace (right dock / phone sheet).
+{
+  const html = readFileSync(join(ROOT, 'src/web/index.html'), 'utf8');
+  const css = readFileSync(join(ROOT, 'src/web/style.css'), 'utf8');
+  const app = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  let failed = false;
+  if (!html.includes('id="workspace"') || !html.includes('id="ws-tab-browser"')) {
+    fail('browser and terminals need a shared workspace shell with tabs');
+    failed = true;
+  }
+  const mainAt = html.indexOf('id="main"');
+  const mainEnd = html.indexOf('</main>', mainAt);
+  const main = mainAt >= 0 && mainEnd >= 0 ? html.slice(mainAt, mainEnd) : '';
+  if (main.includes('id="browser"') || main.includes('id="terminals"')) {
+    fail('browser and terminals must live outside #main, not stacked on the chat');
+    failed = true;
+  }
+  if (!css.includes('#app.workspace-open') || !css.includes('minmax(360px, 44vw)')) {
+    fail('a wide screen must dock the workspace beside the chat');
+    failed = true;
+  }
+  if (css.includes('height: min(52vh') || css.includes('height: min(42vh')) {
+    fail('fixed vh strips on the chat column are the awkward layout we left');
+    failed = true;
+  }
+  if (!app.includes("from './workspace.js'") || !app.includes('initWorkspace')) {
+    fail('app.js must own the workspace lifecycle');
+    failed = true;
+  }
+  if (!failed) ok('v2 web: browser/terminals workspace dock');
+}
+
 // Composer modes: Cursor's five, coloured the way the IDE colours them.
 {
   const html = readFileSync(join(ROOT, 'src/web/index.html'), 'utf8');

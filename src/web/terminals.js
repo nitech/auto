@@ -4,7 +4,18 @@
  * Each pane is an xterm attached to a PTY the host owns. Output arrives as
  * ordinary transcript records, so a terminal replays on reconnect exactly like
  * the rest of the session instead of starting blank.
+ *
+ * Lives in the shared workspace (right dock / full-screen sheet) — see
+ * workspace.js — rather than carving a strip out of the chat column.
  */
+
+import {
+  close as closeWorkspace,
+  isOpen,
+  onTool,
+  show as showWorkspace,
+  toggle as toggleWorkspace,
+} from './workspace.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -46,20 +57,22 @@ export function initTerminals(send) {
   sendOp = send;
 
   $('term-toggle').onclick = () => toggleDock();
-  $('term-hide').onclick = () => toggleDock(false);
   $('term-new').onclick = () => sendOp({ op: 'terminal.open', cols: 120, rows: 24 });
+
+  onTool('terminals', {
+    onShow: () => {
+      if (!panes.size) sendOp({ op: 'terminal.open', cols: 120, rows: 24 });
+      requestAnimationFrame(() => panes.get(activeId)?.fit());
+    },
+  });
 
   window.addEventListener('resize', () => panes.get(activeId)?.fit());
 }
 
 export function toggleDock(force) {
-  const show = force ?? els.dock.hidden;
-  els.dock.hidden = !show;
-  document.getElementById('app').classList.toggle('terms-open', show);
-  if (show) {
-    if (!panes.size) sendOp({ op: 'terminal.open', cols: 120, rows: 24 });
-    requestAnimationFrame(() => panes.get(activeId)?.fit());
-  }
+  if (force === false) closeWorkspace();
+  else if (force === true) showWorkspace('terminals');
+  else toggleWorkspace('terminals');
 }
 
 export function resetTerminals() {
@@ -69,8 +82,7 @@ export function resetTerminals() {
   activeId = null;
   els.tabs.innerHTML = '';
   els.panes.innerHTML = '';
-  els.dock.hidden = true;
-  document.getElementById('app').classList.remove('terms-open');
+  if (isOpen('terminals')) closeWorkspace();
 }
 
 export function openPane(desc) {
@@ -119,8 +131,7 @@ export function openPane(desc) {
   early.delete(id);
 
   activate(id);
-  els.dock.hidden = false;
-  document.getElementById('app').classList.add('terms-open');
+  showWorkspace('terminals');
   requestAnimationFrame(fit);
 }
 
@@ -135,7 +146,7 @@ export function closePane(terminalId) {
     activeId = null;
     const next = panes.keys().next();
     if (!next.done) activate(next.value);
-    else toggleDock(false);
+    else if (isOpen('terminals')) closeWorkspace();
   }
 }
 
