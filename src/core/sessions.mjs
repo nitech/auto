@@ -636,12 +636,13 @@ export class SessionManager extends EventEmitter {
    * working", which on a phone means keeping the thought in your head and
    * retyping it when the turn ends. A Cursor chat has never behaved that way —
    * type into it mid-turn and Cursor queues it — so our own agent now does the
-   * same: the message goes into the transcript straight away, where it is
-   * visible and recorded, and is sent as soon as the agent is free.
+   * same. The message sits in the queue, not the transcript, until the agent
+   * is free: seeing it in the stream before it has gone in reads as if it
+   * already had.
    *
    * The waiting list itself is held in memory only. A queued prompt is worth a
-   * minute of patience, not surviving a restart, and the transcript says plainly
-   * that it was added, so nothing goes missing without a trace.
+   * minute of patience, not surviving a restart, and the queue on screen is
+   * where it can be seen, changed, or taken back.
    */
   #addToTurn(id, { text, images = [] }) {
     if (!text?.trim() && !images.length) return null;
@@ -652,13 +653,6 @@ export class SessionManager extends EventEmitter {
     runtime.waiting.push({ id: randomUUID(), text, images });
     this.live.set(id, runtime);
 
-    this.#record(id, KIND.userMessage, { text, images: images.length, waiting: true });
-    this.#record(id, KIND.notice, {
-      text:
-        runtime.waiting.length === 1
-          ? 'Added to the queue — it goes in as soon as this turn finishes.'
-          : `Added to the queue — ${runtime.waiting.length} messages are waiting for this turn to finish.`,
-    });
     this.#update(id, { waiting: runtime.waiting.length });
     this.#sayAutoQueue(id);
     return { status: 'queued', waiting: runtime.waiting.length };
@@ -828,7 +822,7 @@ export class SessionManager extends EventEmitter {
     if (!next) return;
     // Deliberately not awaited: the turn that has just ended is not answerable
     // for the one that follows it, and its caller is owed its own result.
-    this.prompt(id, { ...next, shown: true }).catch((err) => {
+    this.prompt(id, { ...next }).catch((err) => {
       this.#record(id, KIND.notice, {
         text: `The message that was waiting could not be sent: ${err.message}`,
       });
@@ -1656,19 +1650,19 @@ export class SessionManager extends EventEmitter {
   async #deliverDesktop(id, text, images = []) {
     const meta = this.meta.get(id);
     if (!meta?.desktopThreadId) return { status: 'error', message: 'Not a desktop chat' };
-    // Claim the echo before sending: the watcher may see the bubble the
-    // moment the desktop writes it.
-    this.#expectEcho(id, text);
 
     const typed = await this.cursor
       // A chat in a background tab is still this chat: bring it forward rather
       // than making someone open it in Cursor before their message will go.
       .sendText({ threadId: meta.desktopThreadId, text, images, bringForward: true })
       .catch((err) => ({ status: 'error', reason: err.message }));
-    if (typed.status === 'submitted') {
+    if (typed.status === 'submitted' || typed.status === 'queued') {
+      // A submitted message will come back as a desktop bubble; a queued one
+      // must not, or it would show in the stream before Cursor has included it.
+      if (typed.status === 'submitted') this.#expectEcho(id, text);
       this.emit('log', `typed a message into Cursor's window for "${meta.title}"`);
       return {
-        status: 'submitted',
+        status: typed.status,
         via: 'cdp',
         attached: typed.attached || 0,
         ofImages: images.length,
@@ -1687,6 +1681,7 @@ export class SessionManager extends EventEmitter {
       status: 'error',
       message: err.message,
     }));
+    if (sent.status === 'submitted') this.#expectEcho(id, text);
     if (sent.status === 'submitted' || sent.status === 'queued') return { ...sent, via: 'bridge' };
     return { ...sent, cdp: typed.reason || typed.status };
   }
@@ -1701,16 +1696,20 @@ export class SessionManager extends EventEmitter {
    * outbox and goes in the moment the desktop will take it.
    */
   async #promptDesktop(id, meta, text, images = []) {
-    this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
-
     const result = await this.#deliverDesktop(id, text, images);
 
-    if (result.status === 'submitted' || result.status === 'queued') {
-      if (result.status === 'queued') {
-        this.#record(id, KIND.notice, {
-          text: 'The desktop agent is mid-turn; this will go in when it finishes.',
-        });
-      }
+    if (result.status === 'queued') {
+      // Cursor is holding it. The stream waits until the turn actually takes
+      // it; the queue on screen is where it can be seen until then.
+      this.#update(id, { status: STATUS.busy });
+      this.#watchDesktop(id);
+      const seen = await this.queued(id);
+      this.emit('queue', { sessionId: id, ...seen });
+      return { ...result, waiting: seen.waiting };
+    }
+
+    if (result.status === 'submitted') {
+      this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
       // An image that did not make it has to be said out loud: a message asking
       // "what do you think of this?" with nothing attached reads as an agent
       // ignoring the question.
@@ -1728,6 +1727,7 @@ export class SessionManager extends EventEmitter {
     }
 
     const place = this.outbox.hold(id, text);
+    this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
     this.#record(id, KIND.notice, { text: this.#whyHeld(meta, result, place) });
     if (images.length) {
       // The outbox keeps words, not pictures: an image has to be pasted into a

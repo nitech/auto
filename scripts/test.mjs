@@ -337,6 +337,8 @@ if (existsSync(SRC)) {
         if (!this.submits) return;
         this.sent = this.box;
         this.sentWith = this.pills;
+        // A turn in flight is queued by Cursor, not sent into the thread yet.
+        if (this.generating) this.queued.push(this.box);
         this.box = '';
       }
       /** Images sitting beside the box, as Cursor's context pills do. */
@@ -444,6 +446,13 @@ if (existsSync(SRC)) {
     if (mine.sent !== 'hello') fail(`cdp send typed "${mine.sent}" into the right window`);
     if (theirs.sent !== null) fail('cdp send must not touch another chat');
     if (!mine.closed || !theirs.closed) fail('cdp send should close every window it opened');
+
+    // Mid-turn, Cursor holds the message rather than putting it in the thread.
+    const working = new FakeWindow({ threadId: THREAD, hasComposer: true }, { generating: true });
+    result = await machine({ working }).sendText({ threadId: THREAD, text: 'later' });
+    if (result.status !== 'queued') fail(`a send during a turn should queue, got ${JSON.stringify(result)}`);
+    if (!working.queued.includes('later')) fail('Cursor should be holding the queued message');
+    if (working.box !== '') fail('the chat box should be empty after a queued send');
 
     // No window has the chat open: the caller must fall back, not be told yes.
     result = await machine({ theirs }).sendText({ threadId: THREAD, text: 'hello' });
@@ -1489,20 +1498,16 @@ if (existsSync(SRC)) {
       failed = true;
     }
 
-    // It shows in the transcript when it is added, not when it is sent, so
-    // whoever typed it can see it landed.
+    // It sits in the queue until it is sent, so the stream is not a second
+    // copy of something that has not gone in yet.
     const history = await sessions.history(id, 0);
     const asked = history.filter((r) => r.kind === 'user_message').map((r) => r.text);
-    if (asked.join('|') !== 'one|two|three') {
-      fail(`queued messages should be in the transcript in order: ${asked.join('|')}`);
-      failed = true;
-    }
-    if (!history.some((r) => r.kind === 'notice' && /goes in as soon as/.test(r.text || ''))) {
-      fail('a queued message should say when it will go in');
+    if (asked.join('|') !== 'one') {
+      fail(`a queued message must not appear in the transcript yet: ${asked.join('|')}`);
       failed = true;
     }
 
-    // The turn ends: the next one goes in by itself, and is not written twice.
+    // The turn ends: the next one goes in by itself, and is written once.
     release();
     await first;
     await new Promise((r) => setTimeout(r, 30));
@@ -1510,9 +1515,11 @@ if (existsSync(SRC)) {
       fail(`the queue should drain in order: ${JSON.stringify(turns)}`);
       failed = true;
     }
-    const again = (await sessions.history(id, 0)).filter((r) => r.kind === 'user_message');
-    if (again.length !== 3) {
-      fail(`a queued message must not be written to the transcript twice: ${again.length}`);
+    const afterTwo = (await sessions.history(id, 0))
+      .filter((r) => r.kind === 'user_message')
+      .map((r) => r.text);
+    if (afterTwo.join('|') !== 'one|two') {
+      fail(`a queued message appears when it is sent, got ${afterTwo.join('|')}`);
       failed = true;
     }
 

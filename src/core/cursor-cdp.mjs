@@ -785,9 +785,10 @@ export class CursorCdp {
    * @param {string} opts.text
    * @param {Array<{mimeType?: string, data: string|Buffer}>} [opts.images]
    * @param {boolean} [opts.bringForward]
-   * @returns {Promise<{ status: 'submitted'|'unknown-thread'|'not-sendable'|'no-cdp'|'error',
+   * @returns {Promise<{ status: 'submitted'|'queued'|'unknown-thread'|'not-sendable'|'no-cdp'|'error',
    *   reason?: string, title?: string, attached?: number, attachFailed?: string }>}
-   *   `submitted` and only `submitted` means Cursor has it
+   *   `submitted` means it is in the conversation; `queued` means Cursor is
+   *   holding it until the turn ends.
    */
   async sendText({ threadId, text, images = [], bringForward = false }) {
     if (!String(text || '').trim()) return { status: 'error', reason: 'nothing to send' };
@@ -1364,13 +1365,16 @@ export class CursorCdp {
 
     // Enter submits; an empty box is the window confirming it did. Cursor
     // queues the message by itself if the agent is mid-turn, exactly as it
-    // would for someone typing during a turn.
+    // would for someone typing during a turn — and a queued message is not
+    // in the conversation yet, so that is a different outcome than submitted.
     await window.pressEnter();
     for (let look = 0; look < SUBMIT_LOOKS; look += 1) {
       await wait(this.settleMs);
       if (!(await window.composerText())) {
+        const queue = await window.queue().catch(() => null);
+        const held = Boolean(queue?.items?.some((item) => same(item.text, text)));
         return {
-          status: 'submitted',
+          status: held ? 'queued' : 'submitted',
           title,
           ...(images.length ? { attached: attached.count, ofImages: images.length } : {}),
           ...(attached.reason ? { attachFailed: attached.reason } : {}),

@@ -88,8 +88,8 @@ value as setup documentation is fine.
   says its images have to be sent again.
 - **A busy session takes another task.** Prompts sent mid-turn used to be
  refused with "Session is already working" — fine at a keyboard, useless from a
- phone. They now queue: the message goes into the transcript when it is added
- and into the agent when the turn ends. The queue is memory only, and stopping
+phone. They now queue: the message sits in the queue until the turn ends, then
+goes into the transcript and the agent. The queue is memory only, and stopping
  a turn drops what was queued behind it, because stopping means stopping.
 - **What is waiting can be seen and changed.** The web shows the queue above the
  chat box the way the IDE does, with the same three actions per row: reword,

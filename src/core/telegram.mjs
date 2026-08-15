@@ -331,11 +331,24 @@ export class TelegramBridge extends EventEmitter {
 
     // Deliberately not awaited: a turn does not resolve until the agent is
     // done, and it can stop mid-way to ask for permission. Blocking here would
-    // stop us reading the very button press that unblocks it.
-    this.sessions.prompt(id, { text, images }).catch((err) => {
-      const busy = /already working/i.test(err.message);
-      this.send(busy ? 'Still working — /stop to interrupt.' : `⚠️ ${esc(err.message)}`);
-    });
+    // stop us reading the very button press that unblocks it. A queued send
+    // resolves at once, and that is the only word a phone gets that the
+    // message did not vanish — it must not also land in the transcript.
+    Promise.resolve()
+      .then(() => this.sessions.prompt(id, { text, images }))
+      .then((res) => {
+        if (res?.status !== 'queued') return;
+        const n = res.waiting;
+        this.send(
+          n > 1
+            ? `Queued — ${n} messages waiting for this turn to finish.`
+            : 'Queued — goes in when this turn finishes.',
+        );
+      })
+      .catch((err) => {
+        const busy = /already working/i.test(err.message);
+        this.send(busy ? 'Still working — /stop to interrupt.' : `⚠️ ${esc(err.message)}`);
+      });
     return undefined;
   }
 
@@ -937,8 +950,9 @@ export class TelegramBridge extends EventEmitter {
         break;
 
       case 'notice':
-        // Holds and queue adds are said out loud: they are the only word a
-        // phone gets that its message did not vanish.
+        // Holds are said out loud: they are the only word a phone gets that
+        // its message did not vanish. Queue adds are a separate reply from
+        // the prompt itself, so they do not also appear in the transcript.
         await this.send(`ℹ️ ${esc(rec.text || '')}`);
         break;
 

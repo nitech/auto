@@ -961,7 +961,7 @@ function render(rec) {
 
   switch (rec.kind) {
     case 'user_message':
-      if (!rec.echoed) renderUser(rec);
+      if (!rec.echoed && !rec.waiting) renderUser(rec);
       break;
     case 'agent_delta':
     case 'agent_thought':
