@@ -449,6 +449,7 @@ const CONTENT_TYPES = {
   '.json': 'application/json; charset=utf-8',
   '.webmanifest': 'application/manifest+json',
   '.svg': 'image/svg+xml',
+  '.png': 'image/png',
 };
 
 /** Third-party browser assets, served straight out of node_modules. */

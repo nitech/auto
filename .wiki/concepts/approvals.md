@@ -14,7 +14,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: How desktop tools are drawn
-generated: { by: agent, at: 2026-08-15T09:36:00Z }
+generated: { by: agent, at: 2026-08-15T12:35:00Z }
 ---
 
 # Approvals, questions, and plans
@@ -40,10 +40,11 @@ A session whose policy you change keeps that choice.
 While a desktop turn runs, Auto watches the window for controls whose words
 mean it is waiting for a person, parks them in the same broker, and presses
 whichever option comes back — withdrawing the question if it is answered in
-the IDE first. Never proven in the wild: with Cursor set to run everything
-automatically it never asks, so the vocabulary in `cursor-dom.mjs` has not
-met a real prompt. Treat the first sighting as a chance to learn the words
-Cursor actually uses.
+the IDE first. Skip and Continue **inside a chat message bubble** are not
+approvals: they belong to Cursor's `ask_question` card. Offering Skip from
+that card as "Permission needed" was the first wild miss — the card is
+drawn before its options are written, and those two words are otherwise
+indistinguishable from an approval.
 
 ## The file-review bar is not a question
 
@@ -57,10 +58,12 @@ deliberate action instead.
 `ask_question` is not an approval: it holds real options, often several
 questions. The phone letters them (`A`, or `1A` when there are several) so
 a tap or a typed `A` / `1B` presses that option in Cursor and Continue.
-`Skip` is still there. Anything that is not a lettered pick is a message,
-not an answer — a thought that happened to start with a letter must not
-vanish into the question. Answering in the IDE first still works; Auto
-notices and marks it answered.
+`Skip` is still there, on the question card, not as a permission. Cursor
+truncates long option rows; Auto matches a prefix of the stored label, and
+falls back to the Nth option on the card when the words are gone. Anything
+that is not a lettered pick is a message, not an answer — a thought that
+happened to start with a letter must not vanish into the question.
+Answering in the IDE first still works; Auto notices and marks it answered.
 
 ## Created Plan
 

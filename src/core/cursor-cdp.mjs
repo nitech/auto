@@ -826,7 +826,11 @@ export class CursorCdp {
         status: 'ok',
         generating: generating || this.#running(threadId),
         asking: controls.filter(
-          (c) => !c.disabled && isApproval(named(c)) && !/^stop\b/i.test(named(c)),
+          (c) =>
+            !c.disabled &&
+            !c.inMessage &&
+            isApproval(named(c)) &&
+            !/^stop\b/i.test(named(c)),
         ),
         controls,
         queue,
@@ -1013,7 +1017,7 @@ export class CursorCdp {
    * another chat cannot be the one that gets pressed. The chat is brought
    * forward first: a card in a background tab is not on screen to click.
    */
-  async answer({ threadId, askId, labels = [], texts = [], skip = false }) {
+  async answer({ threadId, askId, labels = [], indexes = [], texts = [], skip = false }) {
     if (!askId) return { status: 'error', reason: 'no question was named' };
     if (!skip && !(labels || []).length) {
       return { status: 'error', reason: 'nothing was chosen' };
@@ -1031,7 +1035,7 @@ export class CursorCdp {
     }
 
     return this.#withThread(threadId, async (window) => {
-      const done = await window.answer({ askId, labels, texts, skip });
+      const done = await window.answer({ askId, labels, indexes, texts, skip });
       if (done?.pressed) {
         return { status: 'pressed', selected: done.selected || [], submitted: done.submitted };
       }

@@ -351,6 +351,7 @@ const PRESSABLE = `
         label,
         text,
         where: rect.top >= boxTop ? 'composer' : 'transcript',
+        inMessage: Boolean(el.closest('[data-message-id]')),
         disabled: el.disabled === true || el.getAttribute('aria-disabled') === 'true',
       });
     }
@@ -372,7 +373,13 @@ ${PRESSABLE}
   const stopIcon = ${list(SELECTORS.stopIcon)}.some((s) => __pane().querySelector(s));
   return {
     generating: stopIcon || found.some((c) => /^stop\\b/i.test(__named(c))),
-    controls: found.map(({ label, text, where, disabled }) => ({ label, text, where, disabled })),
+    controls: found.map(({ label, text, where, disabled, inMessage }) => ({
+      label,
+      text,
+      where,
+      disabled,
+      inMessage,
+    })),
   };
 })()`;
 
@@ -681,12 +688,13 @@ ${HELPERS}
  * @param {string[]} [opts.texts]
  * @param {boolean} [opts.skip]
  */
-export const answerCard = ({ askId, labels = [], texts = [], skip = false }) => `(() => {
+export const answerCard = ({ askId, labels = [], indexes = [], texts = [], skip = false }) => `(() => {
 ${HELPERS}
   const pane = __pane();
   const clean = (s) => String(s ?? '').replace(/\\s+/g, ' ').trim();
   const wanted = ${JSON.stringify(String(askId || ''))};
   const labels = ${JSON.stringify((labels || []).map(String))};
+  const indexes = ${JSON.stringify((indexes || []).map((n) => Number(n)))};
   const texts = ${JSON.stringify((texts || []).map(String))};
   const skip = ${JSON.stringify(Boolean(skip))};
   const pause = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -694,6 +702,13 @@ ${HELPERS}
     const { x, y, width, height } = el.getBoundingClientRect();
     if (!width || !height) return null;
     return { x: Math.round(x + width / 2), y: Math.round(y + height / 2) };
+  };
+  const matchesOption = (needle, name) => {
+    const want = clean(needle).toLowerCase();
+    const have = clean(name).toLowerCase();
+    if (!want || !have) return false;
+    if (have === want || have.startsWith(want) || want.startsWith(have + ' ')) return true;
+    return have.length >= 12 && want.startsWith(have);
   };
 
   let card = null;
@@ -708,10 +723,11 @@ ${HELPERS}
   if (!card) {
     const needle = labels[0] || '';
     if (needle) {
-      const holders = [...pane.querySelectorAll('div,span,p,li,label,button')].filter(
-        (el) => clean(el.textContent).includes(clean(needle)) &&
-          ![...el.children].some((k) => clean(k.textContent).includes(clean(needle))),
-      );
+      const holders = [...pane.querySelectorAll('div,span,p,li,label,button')].filter((el) => {
+        const t = clean(el.textContent);
+        return matchesOption(needle, t) &&
+          ![...el.children].some((k) => matchesOption(needle, clean(k.textContent)));
+      });
       const holder = holders[holders.length - 1];
       card = holder?.closest(${JSON.stringify(SELECTORS.message[0])}) || holder;
     }
@@ -719,13 +735,23 @@ ${HELPERS}
   if (!card) return Promise.resolve({ pressed: false, reason: 'the question is not on screen' });
   card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 
+  const optionNodes = () =>
+    [...card.querySelectorAll('button, [role="button"], [role="radio"], [role="checkbox"], [role="option"]')].filter(
+      (el) => {
+        const name = clean(el.getAttribute('aria-label') || el.textContent);
+        if (!name || /^(skip|continue|submit)$/i.test(name)) return false;
+        if (el.disabled || el.getAttribute('aria-disabled') === 'true') return false;
+        return true;
+      },
+    );
+
   const pressWord = (scope, word) => {
     const want = clean(word).toLowerCase();
     if (!want) return null;
     const nodes = [...scope.querySelectorAll('button, [role="button"], [role="radio"], [role="checkbox"], [role="option"]')];
     const matches = nodes.filter((el) => {
-      const name = clean(el.getAttribute('aria-label') || el.textContent).toLowerCase();
-      return name === want || name.startsWith(want + ' ') || name.startsWith(want);
+      const name = clean(el.getAttribute('aria-label') || el.textContent);
+      return matchesOption(word, name);
     });
     const target = matches[matches.length - 1];
     if (!target || target.disabled || target.getAttribute('aria-disabled') === 'true') return null;
@@ -740,10 +766,9 @@ ${HELPERS}
     if (hit) return hit;
     // Options are often a row, not a button: the deepest element holding the
     // words, then the pressable thing around it.
-    const holders = [...card.querySelectorAll('div,span,p,li,label,button')].filter((el) => {
-      const t = clean(el.textContent);
-      return t === needle || t.startsWith(needle);
-    });
+    const holders = [...card.querySelectorAll('div,span,p,li,label,button')].filter((el) =>
+      matchesOption(needle, clean(el.textContent)),
+    );
     const exact = holders.filter((el) => clean(el.textContent) === needle);
     const pool = exact.length ? exact : holders;
     const leaf = pool.filter((el) => ![...el.children].some((k) => pool.includes(k))).pop();
@@ -752,6 +777,15 @@ ${HELPERS}
       leaf.closest('button, [role="button"], [role="radio"], [role="checkbox"], [role="option"]') || leaf;
     target.click();
     return { name: needle, at: spot(target) };
+  };
+
+  const pressNth = (n) => {
+    if (!Number.isInteger(n) || n < 0) return null;
+    const nodes = optionNodes();
+    const target = nodes[n];
+    if (!target) return null;
+    target.click();
+    return { name: clean(target.getAttribute('aria-label') || target.textContent), at: spot(target) };
   };
 
   const pressSubmit = async (word) => {
@@ -772,8 +806,8 @@ ${HELPERS}
     }
 
     const selected = [];
-    for (const label of labels) {
-      const hit = pressLabel(label);
+    for (const [i, label] of labels.entries()) {
+      const hit = pressLabel(label) || pressNth(indexes[i] ?? i);
       if (!hit) return { pressed: false, reason: 'no option says ' + JSON.stringify(label), selected };
       selected.push(label);
       await pause(40);

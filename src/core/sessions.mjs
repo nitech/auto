@@ -30,8 +30,18 @@ import { sendMessage } from './desktop-bridge.mjs';
 import { CursorCdp } from './cursor-cdp.mjs';
 import { DesktopOutbox } from './desktop-outbox.mjs';
 import { ThreadWatcher, readThread, realTitle, UNTITLED_THREAD } from './desktop-threads.mjs';
-import { labelsForAnswer } from './questions.mjs';
+import { labelsForAnswer, indexesForAnswer } from './questions.mjs';
 import { classifyTool } from './desktop-tool-ui.mjs';
+
+/** Same words, even when Cursor stores a different apostrophe or spacing. */
+export function echoKey(text) {
+  return String(text || '')
+    .normalize('NFC')
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 export const STATUS = {
   idle: 'idle',
@@ -1267,29 +1277,37 @@ export class SessionManager extends EventEmitter {
    */
   #recordQuestion(id, message) {
     const { question } = message;
-    // The card is drawn before Cursor writes what it asks. A question with no
-    // text is not worth putting on a phone; the next read will have it.
-    if (!question.asked) return;
+    if (!question) return;
 
     const runtime = this.live.get(id) || {};
     runtime.questions = runtime.questions || new Map();
     this.live.set(id, runtime);
     const said = runtime.questions.get(message.id) || null;
     const statusOf = (s) => (typeof s === 'string' ? s : s?.status);
+    const answered = /^(submitted|skipped|cancelled|accepted|rejected|error)$/i.test(
+      question.state || '',
+    );
 
-    if (question.waiting) {
-      if (statusOf(said) === 'waiting') return;
+    // The card is drawn before Cursor writes what it asks. Keep the approval
+    // watcher off from that moment, even with no options yet — Skip on the
+    // card is not a permission. Put it on the phone only once there is
+    // something to answer.
+    const stillOpen = question.waiting || (!question.asked && !answered);
+    if (stillOpen) {
+      const hadOptions = Boolean(said?.questions?.length);
       runtime.questions.set(message.id, {
         status: 'waiting',
-        title: question.title,
-        questions: question.questions,
+        title: question.title || said?.title || null,
+        questions: question.questions?.length ? question.questions : said?.questions || [],
       });
-      this.#record(id, KIND.question, {
-        askId: message.id,
-        title: question.title,
-        questions: question.questions,
-        state: question.state,
-      });
+      if (question.asked && !hadOptions) {
+        this.#record(id, KIND.question, {
+          askId: message.id,
+          title: question.title,
+          questions: question.questions,
+          state: question.state,
+        });
+      }
       return;
     }
 
@@ -1348,6 +1366,7 @@ export class SessionManager extends EventEmitter {
 
     const questions = held?.questions || [];
     const labels = skip ? [] : labelsForAnswer(questions, selections);
+    const indexes = skip ? [] : indexesForAnswer(questions, selections);
     const typed = Object.values(texts || {}).filter(Boolean);
 
     const pressed = await this.cursor
@@ -1355,6 +1374,7 @@ export class SessionManager extends EventEmitter {
         threadId: meta.desktopThreadId,
         askId,
         labels,
+        indexes,
         texts: typed,
         skip: Boolean(skip),
       })
@@ -1667,7 +1687,7 @@ export class SessionManager extends EventEmitter {
   #expectEcho(id, text) {
     const runtime = this.live.get(id) || {};
     const now = Date.now();
-    runtime.echoes = [...(runtime.echoes || []), { text: String(text).trim(), at: now }].filter(
+    runtime.echoes = [...(runtime.echoes || []), { text: echoKey(text), at: now }].filter(
       (e) => now - e.at < 120_000,
     );
     this.live.set(id, runtime);
@@ -1676,10 +1696,13 @@ export class SessionManager extends EventEmitter {
   #consumeEcho(id, text) {
     const runtime = this.live.get(id);
     if (!runtime?.echoes?.length) return false;
-    const at = runtime.echoes.findIndex((e) => e.text === String(text).trim());
-    if (at < 0) return false;
-    runtime.echoes.splice(at, 1);
-    return true;
+    const now = Date.now();
+    runtime.echoes = runtime.echoes.filter((e) => now - e.at < 120_000);
+    const key = echoKey(text);
+    // Leave a hit in the list: Cursor can write the same send as two bubbles
+    // (Plan restating the prompt), and a duplicate is worse than matching twice.
+    // Expiry is what forgets it, so two genuine sends still need two expectEchoes.
+    return runtime.echoes.some((e) => e.text === key);
   }
 
   /**

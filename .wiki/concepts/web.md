@@ -14,7 +14,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-15T10:10:00Z }
+generated: { by: agent, at: 2026-08-15T12:35:00Z }
 ---
 
 # Web app
@@ -47,9 +47,10 @@ the sheet on a narrow screen).
 
 ## Composer
 
-Enter sends. Images attach, paste, or drop and go with the next prompt.
-Stop interrupts. The busy session still accepts another message — it
-queues.
+Enter sends. Images attach from a binder on the lower-right of the box,
+or paste, or drop, and go with the next prompt. Stop interrupts. The busy
+session still accepts another message — it queues. `ask_question` is a
+Question card with real options, not an OTHER tool bar.
 
 Mode is Agent, Plan, Debug, Multitask, or Ask — the same five Cursor
 lists. The ring around the box, the send button, and the mode word all

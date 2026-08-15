@@ -1065,6 +1065,7 @@ details.think .body {
  */
 .composer-controls {
   display: flex;
+  align-items: center;
   gap: 4px;
   padding: 0 2px;
 }
@@ -1075,7 +1076,7 @@ details.think .body {
   color: var(--muted);
   font-size: 12px;
   padding: 3px 6px;
-  max-width: 46%;
+  max-width: 40%;
   min-width: 0;
 }
 
@@ -1160,6 +1161,17 @@ details.think .body {
 
 .in-box.stop { color: var(--red); border-color: var(--danger-border); font-size: 12px; }
 .in-box.stop:hover { background: var(--danger-bg); color: var(--red); }
+
+/* Attach lives on the lower-right of the box, not in the typing row. */
+.in-box.attach { margin-left: auto; }
+
+.binder-icon {
+  width: 18px;
+  height: 18px;
+  background: currentColor;
+  -webkit-mask: url('/binder.png') center / contain no-repeat;
+  mask: url('/binder.png') center / contain no-repeat;
+}
 
 /* ---------------------------------------------------- diffs and images */
 

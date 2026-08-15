@@ -375,9 +375,24 @@ if (existsSync(SRC)) {
         if (!this.deafToClicks) this.queued.splice(at, 1);
         return { pressed: true, at: { x: 10, y: 100 + at * 20 } };
       }
-      async answer({ askId, labels = [], texts = [], skip = false }) {
+      async answer({ askId, labels = [], indexes = [], texts = [], skip = false }) {
         if (this.missingAsk) return { pressed: false, reason: 'the question is not on screen' };
-        this.answered = { askId, labels: [...labels], texts: [...texts], skip: Boolean(skip) };
+        if (!skip && this.optionNames) {
+          const { optionMatches } = this.optionMatch || { optionMatches: () => false };
+          const selected = [];
+          for (const [i, label] of labels.entries()) {
+            const byName = this.optionNames.find((n) => optionMatches(label, n));
+            const byIndex = Number.isInteger(indexes[i]) ? this.optionNames[indexes[i]] : null;
+            if (!byName && !byIndex) {
+              return { pressed: false, reason: 'no option says ' + JSON.stringify(label), selected };
+            }
+            selected.push(label);
+          }
+          this.answered = { askId, labels: [...labels], indexes: [...indexes], texts: [...texts], skip: false };
+          this.pressed.push([...selected, 'Continue'].join('|'));
+          return { pressed: true, selected, submitted: 'Continue' };
+        }
+        this.answered = { askId, labels: [...labels], indexes: [...indexes], texts: [...texts], skip: Boolean(skip) };
         this.pressed.push(skip ? 'Skip' : [...labels, 'Continue'].join('|'));
         return { pressed: true, selected: labels, submitted: skip ? 'Skip' : 'Continue' };
       }
@@ -832,7 +847,7 @@ if (existsSync(SRC)) {
         controls: [
           { label: 'Copy message', where: 'transcript' },
           { label: 'Run', where: 'transcript' },
-          { label: 'Skip', where: 'transcript' },
+          { label: 'Skip', where: 'transcript', inMessage: true },
           { label: 'Stop', where: 'composer' },
           { label: 'Accept', where: 'transcript', disabled: true },
         ],
@@ -841,7 +856,7 @@ if (existsSync(SRC)) {
     const state = await machine({ asking }).waitingOn({ threadId: THREAD });
     if (!state.generating) fail('a running turn should be reported as running');
     const wants = (state.asking || []).map((c) => c.label).join(',');
-    if (wants !== 'Run,Skip') fail(`asking should be Run,Skip — got ${wants}`);
+    if (wants !== 'Run') fail(`asking should be Run, not Skip on a question card — got ${wants}`);
 
     // Pressing an answer, and refusing to press what is not there.
     const answered = await machine({ asking }).press({ threadId: THREAD, name: 'Run' });
@@ -888,6 +903,36 @@ if (existsSync(SRC)) {
     quiz.missingAsk = true;
     if ((await machine({ quiz }).answer({ threadId: THREAD, askId: 'b9', labels: ['This way'] })).status !== 'not-pressed') {
       fail('a question that is not on screen should be refused');
+    }
+
+    // Long options are truncated in the window; the stored label still finds them,
+    // and the Nth option is the fallback when the words are gone entirely.
+    const { optionMatches } = await import('../src/core/questions.mjs');
+    const long =
+      'Move the current + actions (attach files / extra composer actions) to a binder in the lower-right of the chat box';
+    const cut = long.slice(0, 24);
+    const truncated = new FakeWindow({ threadId: THREAD, hasComposer: true });
+    truncated.optionNames = [cut, 'Just swap the glyph'];
+    truncated.optionMatch = { optionMatches };
+    const longHit = await machine({ truncated }).answer({
+      threadId: THREAD,
+      askId: 'b9',
+      labels: [long],
+    });
+    if (longHit.status !== 'pressed') {
+      fail(`a truncated option should still press: ${JSON.stringify(longHit)}`);
+    }
+    const missingWords = new FakeWindow({ threadId: THREAD, hasComposer: true });
+    missingWords.optionNames = ['Red', 'Blue'];
+    missingWords.optionMatch = { optionMatches };
+    const nth = await machine({ missingWords }).answer({
+      threadId: THREAD,
+      askId: 'b9',
+      labels: [long],
+      indexes: [1],
+    });
+    if (nth.status !== 'pressed' || missingWords.pressed.at(-1) !== `${long}|Continue`) {
+      fail(`the Nth option is the fallback when the label is missing: ${JSON.stringify(nth)}`);
     }
 
     if (!isApproval('Run command') || !isApproval('Skip') || !isApproval('Allow once')) {
@@ -1385,7 +1430,45 @@ if (existsSync(SRC)) {
     fail('Telegram /mode must accept debug and multitask');
     failed = true;
   }
+  const attachAt = html.indexOf('id="attach"');
+  const controlsAt = html.indexOf('class="composer-controls"');
+  const mainAt = html.indexOf('class="composer-main"');
+  if (attachAt < 0 || controlsAt < 0 || attachAt < controlsAt) {
+    fail('attach must live in composer-controls, not the typing row');
+    failed = true;
+  }
+  if (mainAt >= 0 && attachAt > mainAt && attachAt < controlsAt) {
+    fail('attach must not sit in composer-main');
+    failed = true;
+  }
+  if (/id="attach"[^>]*>\s*\+/.test(html)) {
+    fail('attach must not be a bare +');
+    failed = true;
+  }
+  if (!html.includes('binder-icon') || !css.includes('.binder-icon')) {
+    fail('attach must be a binder icon');
+    failed = true;
+  }
   if (!failed) ok('v2 web: composer mode colours');
+}
+
+// A prompt Auto typed into Cursor must not come back as a second bubble.
+{
+  const { echoKey } = await import('../src/core/sessions.mjs');
+  let failed = false;
+  if (echoKey("auto's ability") !== echoKey('auto\u2019s ability')) {
+    fail('a curly apostrophe is the same prompt as a straight one');
+    failed = true;
+  }
+  if (echoKey('  hello   there  ') !== echoKey('hello there')) {
+    fail('collapsed whitespace is the same prompt');
+    failed = true;
+  }
+  if (echoKey('ok') === echoKey('okay')) {
+    fail('different prompts must stay different');
+    failed = true;
+  }
+  if (!failed) ok('v2 core: desktop echo matching');
 }
 
 // 1e. Browser address bar: URLs are opened, prose is searched.
@@ -2125,6 +2208,7 @@ if (existsSync(SRC)) {
     );
     check('apply_agent_diff', classifyTool({ title: 'apply_agent_diff' }).lane, 'hide');
     check('mcp placeholder', classifyTool({ title: 'mcp--' }).lane, 'hide');
+    check('ask_question is the Question card, not OTHER', classifyTool({ title: 'ask_question' }).lane, 'hide');
     check('ACP Edit File stays a card', classifyTool({ title: 'Edit File', toolKind: 'edit' }).lane, 'card');
     check('ls is grouped', isSimpleLs('ls src'), true);
     check('ls with a pipe is not grouped', isSimpleLs('ls | wc'), false);
@@ -2345,7 +2429,7 @@ if (existsSync(SRC)) {
     }
 
     const { questionText, planText } = await import('../src/core/telegram.mjs');
-    const { parseQuestionReply, labelsForAnswer, optionLetter } = await import('../src/core/questions.mjs');
+    const { parseQuestionReply, labelsForAnswer, indexesForAnswer, optionLetter, optionMatches } = await import('../src/core/questions.mjs');
     const card = {
       title: 'What should the plan change?',
       questions: [
@@ -2400,6 +2484,20 @@ if (existsSync(SRC)) {
     }
     if (labelsForAnswer(card.questions, { fix: ['b'] })[0] !== 'Keep and label') {
       fail('an answer should carry the label Cursor printed');
+      failed = true;
+    }
+    if (indexesForAnswer(card.questions, { fix: ['b'] })[0] !== 1) {
+      fail('an answer should know which option was picked');
+      failed = true;
+    }
+    const longOpt =
+      'Move the current + actions (attach files / extra composer actions) to a binder in the lower-right of the chat box';
+    if (!optionMatches(longOpt, longOpt.slice(0, 24))) {
+      fail('a truncated option still belongs to its label');
+      failed = true;
+    }
+    if (optionMatches(longOpt, 'the') || optionMatches(longOpt, 'Red')) {
+      fail('a short crumb is not an option match');
       failed = true;
     }
 

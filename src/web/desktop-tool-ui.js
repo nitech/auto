@@ -21,6 +21,8 @@ const HIDE = new Set([
   'report_bugfix_results',
   'mcp--',
   'tool',
+  // The Question card is the real UI; drawing this as OTHER Ask question is noise.
+  'ask_question',
 ]);
 
 const FILE_CHANGE = {
@@ -54,7 +56,6 @@ const GROUP = {
 const CARD = {
   run_terminal_command_v2: { label: 'Run command', short: 'Run', toolKind: 'execute' },
   todo_write: { label: 'Update todos', short: 'Todos', toolKind: 'other' },
-  ask_question: { label: 'Ask question', short: 'Question', toolKind: 'other' },
   task_v2: { label: 'Task', short: 'Task', toolKind: 'other' },
   create_plan: { label: 'Create plan', short: 'Plan', toolKind: 'plan' },
   switch_mode: { label: 'Switch mode', short: 'Mode', toolKind: 'other' },
