@@ -17,7 +17,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-15T16:30:00Z }
+generated: { by: agent, at: 2026-08-15T17:15:00Z }
 ---
 
 # Web app
@@ -68,6 +68,10 @@ Enter sends. Images attach from a + on the lower-right of the box,
 or paste, or drop, and go with the next prompt. Stop interrupts. The busy
 session still accepts another message — it queues. `ask_question` is a
 Question card with real options, not an OTHER tool bar.
+
+Each session keeps its own unsent draft: switching chats parks what you
+were typing and restores it when you come back. An idle send appears in
+the stream at once — it used to wait until Cursor's window had taken it.
 
 Mode and model are chips under the text: a slight background and rounded
 edges so a thumb can see where each picker starts. Their font is 16px

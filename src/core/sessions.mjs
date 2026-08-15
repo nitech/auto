@@ -1206,7 +1206,13 @@ export class SessionManager extends EventEmitter {
     }
     if (message.kind === 'thinking') {
       const words = this.#newWordsOf(id, message);
-      if (words) this.#record(id, KIND.agentThought, { text: words, desktopBubbleId: message.id });
+      if (words.text) {
+        this.#record(id, KIND.agentThought, {
+          text: words.text,
+          desktopBubbleId: message.id,
+          ...(words.replace ? { replace: true } : {}),
+        });
+      }
       return;
     }
     if (message.kind === 'tool') {
@@ -1264,7 +1270,13 @@ export class SessionManager extends EventEmitter {
       return;
     }
     const words = this.#newWordsOf(id, message);
-    if (words) this.#record(id, KIND.agentDelta, { text: words, desktopBubbleId: message.id });
+    if (words.text) {
+      this.#record(id, KIND.agentDelta, {
+        text: words.text,
+        desktopBubbleId: message.id,
+        ...(words.replace ? { replace: true } : {}),
+      });
+    }
   }
 
   /**
@@ -1460,9 +1472,8 @@ export class SessionManager extends EventEmitter {
    * goes into the transcript is the new tail — record the whole bubble each time
    * and the reply reads as the same paragraph over and over.
    *
-   * If the text is not an extension of what we published, Cursor rewrote the
-   * bubble rather than adding to it; the new version goes out in full, since a
-   * message repeated is recoverable and a message lost is not.
+   * A stale shorter snapshot must not move `textSaid` backwards. A real rewrite
+   * is marked `replace` so the client swaps the bubble rather than appending.
    */
   #newWordsOf(id, message) {
     const runtime = this.live.get(id) || {};
@@ -1471,11 +1482,14 @@ export class SessionManager extends EventEmitter {
 
     const said = runtime.textSaid.get(message.id) || '';
     const whole = String(message.text || '');
+    const delta = proseDelta(said, whole);
+    // Nothing new (including a stale shorter read): leave the high-water mark.
+    if (!delta.text && !delta.replace) return delta;
     // A bubble that is finished with needs no further bookkeeping.
     if (message.pending) runtime.textSaid.set(message.id, whole);
     else runtime.textSaid.delete(message.id);
 
-    return newWords(said, whole);
+    return delta;
   }
 
   /** Start following a desktop thread, if we are not already. */
@@ -1781,6 +1795,14 @@ export class SessionManager extends EventEmitter {
    * outbox and goes in the moment the desktop will take it.
    */
   async #promptDesktop(id, meta, text, images = []) {
+    // Put an idle send on the stream before talking to Cursor — finding the
+    // window and typing can take seconds. A busy turn may be queued instead,
+    // and those stay off the stream until Cursor takes them.
+    const showNow = meta.status !== STATUS.busy;
+    if (showNow) {
+      this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
+    }
+
     const result = await this.#deliverDesktop(id, text, images);
 
     if (result.status === 'queued') {
@@ -1794,7 +1816,9 @@ export class SessionManager extends EventEmitter {
     }
 
     if (result.status === 'submitted') {
-      this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
+      if (!showNow) {
+        this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
+      }
       // An image that did not make it has to be said out loud: a message asking
       // "what do you think of this?" with nothing attached reads as an agent
       // ignoring the question.
@@ -1812,7 +1836,9 @@ export class SessionManager extends EventEmitter {
     }
 
     const place = this.outbox.hold(id, text);
-    this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
+    if (!showNow) {
+      this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
+    }
     this.#record(id, KIND.notice, { text: this.#whyHeld(meta, result, place) });
     if (images.length) {
       // The outbox keeps words, not pictures: an image has to be pasted into a
@@ -1937,17 +1963,31 @@ function short(text, most = 60) {
  * The part of a mirrored message that has not been published yet.
  *
  * Clients append what the transcript gives them, so a bubble read again as it
- * grows must contribute only its new tail. Cursor rewriting a bubble instead of
- * extending it sends the new version whole: a paragraph shown twice can be read
- * past, a paragraph never shown cannot.
+ * grows must contribute only its new tail. A stale shorter snapshot (the DB
+ * caught mid-write) must be ignored — treating it as a rewrite used to reset
+ * what we had said, and the next full read then appended the whole answer
+ * again: "BuildBuildBuildBuild passes passes…".
+ *
+ * When Cursor really rewrites earlier tokens (speculative decoding), the new
+ * version goes out with `replace: true` so clients swap the bubble instead of
+ * stacking another copy underneath.
  *
  * @param {string} said  what has already gone into the transcript
  * @param {string} whole  what the bubble holds now
+ * @returns {{ text: string, replace?: boolean }}
  */
+export function proseDelta(said, whole) {
+  if (!said) return { text: whole };
+  if (whole === said) return { text: '' };
+  // Same growing bubble, caught shorter than last time — not news.
+  if (said.startsWith(whole)) return { text: '' };
+  if (whole.startsWith(said)) return { text: whole.slice(said.length) };
+  return { text: whole, replace: true };
+}
+
+/** @deprecated prefer proseDelta — kept for call sites that only need the tail string */
 export function newWords(said, whole) {
-  if (!said) return whole;
-  if (whole === said) return '';
-  return whole.startsWith(said) ? whole.slice(said.length) : whole;
+  return proseDelta(said, whole).text;
 }
 
 const TERMINAL_TOOL = new Set(['completed', 'failed', 'cancelled']);

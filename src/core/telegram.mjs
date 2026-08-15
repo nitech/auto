@@ -877,7 +877,8 @@ export class TelegramBridge extends EventEmitter {
         break;
 
       case 'agent_delta':
-        turn.text += rec.text || '';
+        if (rec.replace) turn.text = rec.text || '';
+        else turn.text += rec.text || '';
         this.#schedule(sessionId);
         break;
 

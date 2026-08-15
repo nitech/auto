@@ -96,6 +96,10 @@ const state = {
   editing: null,
   /** Cursor chats dismissed with × this visit, so they do not reappear as "in Cursor" */
   dismissedChats: new Set(),
+  /** unsent composer text (and images) kept per session across switches */
+  drafts: new Map(),
+  /** a send drawn immediately, so the host's later user_message is not a second bubble */
+  pendingEcho: null,
 };
 
 // ------------------------------------------------------------------ helpers
@@ -326,6 +330,45 @@ function renderUser(rec) {
   add(node);
 }
 
+/** Same words the host already put on screen, so a second copy is not drawn. */
+function takePendingEcho(rec) {
+  const pending = state.pendingEcho;
+  if (!pending || pending.sessionId !== state.sessionId) return false;
+  if (String(rec.text || '') !== pending.text) return false;
+  if ((rec.images || 0) !== (pending.images || 0)) return false;
+  state.pendingEcho = null;
+  return true;
+}
+
+/**
+ * Keep what you were typing with the chat it belongs to. Switching used to
+ * carry the same words into the next box.
+ */
+function saveDraft(sessionId = state.sessionId) {
+  if (!sessionId) return;
+  const text = els.box.value;
+  if (!text && !state.attachments.length) {
+    state.drafts.delete(sessionId);
+    return;
+  }
+  state.drafts.set(sessionId, {
+    text,
+    attachments: state.attachments.slice(),
+  });
+}
+
+function loadDraft(sessionId) {
+  const draft = sessionId ? state.drafts.get(sessionId) : null;
+  els.box.value = draft?.text || '';
+  state.attachments = draft?.attachments ? draft.attachments.slice() : [];
+  renderAttachments();
+  autosize();
+}
+
+function clearDraft(sessionId = state.sessionId) {
+  if (sessionId) state.drafts.delete(sessionId);
+}
+
 function renderStreaming(rec) {
   const isThought = rec.kind === 'agent_thought';
   if (!state.stream || state.streamKind !== rec.kind) {
@@ -352,7 +395,9 @@ function renderStreaming(rec) {
     }
   }
   const stick = nearBottom();
-  state.stream.dataset.raw += rec.text || '';
+  // A desktop rewrite replaces the bubble; appending would stutter the answer.
+  if (rec.replace) state.stream.dataset.raw = rec.text || '';
+  else state.stream.dataset.raw += rec.text || '';
   if (isThought) state.stream.textContent = state.stream.dataset.raw;
   else state.stream.innerHTML = markdown(state.stream.dataset.raw);
   scrollDown(stick);
@@ -1057,7 +1102,7 @@ function render(rec) {
 
   switch (rec.kind) {
     case 'user_message':
-      if (!rec.echoed && !rec.waiting) renderUser(rec);
+      if (!rec.echoed && !rec.waiting && !takePendingEcho(rec)) renderUser(rec);
       break;
     case 'agent_delta':
     case 'agent_thought':
@@ -1579,9 +1624,11 @@ function attach(sessionId) {
     setRail(false);
     return;
   }
+  saveDraft(state.sessionId);
   state.sessionId = sessionId;
   rememberSession(sessionId);
   state.lastSeq = 0;
+  state.pendingEcho = null;
   els.transcript.innerHTML = '';
   state.toolCards.clear();
   state.bundle = null;
@@ -1592,6 +1639,7 @@ function attach(sessionId) {
   state.statusEl = null;
   state.turn = null;
   resetTerminals();
+  loadDraft(sessionId);
   setHistoryLoading(true);
   setRail(false);
   sendOp({ op: 'attach', sessionId, fromSeq: 0 });
@@ -1972,6 +2020,17 @@ function submit(text) {
   // A turn already running is no reason to refuse: the host queues it.
   if (!body && !images.length) return;
   state.lastPrompt = body;
+  // Idle sends go on the stream at once — waiting for Cursor's window made
+  // the phone look like nothing had been sent. A busy turn queues instead,
+  // and the queue is where those belong until they go in.
+  if (!state.busy) {
+    renderUser({ text: body, images: images.length || undefined });
+    state.pendingEcho = {
+      sessionId: state.sessionId,
+      text: body,
+      images: images.length || 0,
+    };
+  }
   sendOp({ op: 'prompt', sessionId: state.sessionId, text: body, images });
   state.attachments = [];
   renderAttachments();
@@ -1979,6 +2038,7 @@ function submit(text) {
     els.box.value = '';
     autosize();
   }
+  clearDraft(state.sessionId);
   scrollDown(true);
 }
 

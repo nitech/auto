@@ -1592,6 +1592,26 @@ if (existsSync(SRC)) {
   if (!failed) ok('v2 web: session × archives on first tap, swipe closes rail');
 }
 
+// Composer drafts stay with the chat you typed them in, and an idle send
+// appears in the stream before Cursor has finished taking it.
+{
+  const js = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  let failed = false;
+  if (!js.includes('function saveDraft') || !js.includes('function loadDraft')) {
+    fail('switching chats must park and restore the composer draft');
+    failed = true;
+  }
+  if (!js.includes('saveDraft(state.sessionId)') || !js.includes('loadDraft(sessionId)')) {
+    fail('attach must save the old draft and load the new one');
+    failed = true;
+  }
+  if (!js.includes('pendingEcho') || !js.includes('!state.busy')) {
+    fail('an idle send must appear in the stream immediately');
+    failed = true;
+  }
+  if (!failed) ok('v2 web: per-session drafts and immediate send');
+}
+
 // A prompt Auto typed into Cursor must not come back as a second bubble.
 {
   const { echoKey } = await import('../src/core/sessions.mjs');
@@ -3023,7 +3043,7 @@ if (existsSync(SRC)) {
 
       // What reaches the transcript is the tail, since clients append: record
       // the whole bubble each pass and the answer reads as itself repeated.
-      const { newWords, desktopWatchSeed } = await import('../src/core/sessions.mjs');
+      const { newWords, proseDelta, desktopWatchSeed } = await import('../src/core/sessions.mjs');
       if (newWords('', 'The first half') !== 'The first half') {
         fail('a first sighting is all new');
       }
@@ -3031,8 +3051,18 @@ if (existsSync(SRC)) {
         fail(`only the new tail belongs in the transcript, got ${JSON.stringify(newWords('The first half', 'The first half and the rest'))}`);
       }
       if (newWords('same', 'same') !== '') fail('nothing new is nothing to say');
-      if (newWords('an early draft', 'a rewritten answer') !== 'a rewritten answer') {
-        fail('a rewritten bubble goes out whole rather than being lost');
+      // A stale shorter snapshot must not reset the high-water mark — that was
+      // the stutter: next full read appended the whole answer again.
+      if (newWords('Build passes cleanly', 'Build') !== '') {
+        fail('a shorter re-read of the same bubble is not news');
+      }
+      const rewritten = proseDelta('an early draft', 'a rewritten answer');
+      if (rewritten.text !== 'a rewritten answer' || !rewritten.replace) {
+        fail(`a rewritten bubble must replace, not append: ${JSON.stringify(rewritten)}`);
+      }
+      const appJs = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+      if (!appJs.includes('rec.replace') || !appJs.includes('dataset.raw = rec.text')) {
+        fail('the web must replace a rewritten bubble instead of appending');
       }
 
       const midTurn = desktopWatchSeed(
