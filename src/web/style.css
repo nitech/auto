@@ -432,14 +432,12 @@ button, select, textarea { font: inherit; color: inherit; }
 
 .rail-settings:hover { background: var(--bg-3); color: var(--text); }
 
-/* Icons8 settings gear (id 364), tinted with the label. */
+/* Settings gear: inline SVG, same colour as the label. */
 .rail-settings .gear {
   flex: none;
   width: 20px;
   height: 20px;
-  background: currentColor;
-  -webkit-mask: url('/settings.png') center / contain no-repeat;
-  mask: url('/settings.png') center / contain no-repeat;
+  display: block;
 }
 
 /* ------------------------------------------------------------------ main */

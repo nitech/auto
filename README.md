@@ -1,17 +1,28 @@
-# auto
+# Auto
 
-Remote control for Cursor's agent. Auto runs on this machine, drives the
-Cursor agent CLI, and gives you the Agents window from anywhere — a web app
-and a Telegram bot, both showing the same live session.
+Remote control for Cursor's agent. Auto runs on your machine, drives Cursor
+(desktop chat or `cursor-agent` ACP), and gives you the same live session from
+a web app and a Telegram bot.
 
 You get the agent's full output, not a summary: streamed prose, thinking,
 every tool call with its input and result, diffs, terminal output, browser
 screenshots, and approval prompts you can answer from your phone.
 
+**Unofficial.** Auto is not affiliated with Anysphere or Cursor. It talks to
+Cursor through the agent CLI, the IDE's debug port, and local state Cursor
+already keeps on disk. Cursor updates can break that. Use at your own risk and
+check Cursor's terms for your account.
+
+## License
+
+[MIT](LICENSE). Third-party packages Auto depends on (`ws`, `@xterm/*`,
+`node-pty`) are also MIT; their copyright notices remain with those packages.
+
 ## Run it
 
 ```powershell
-cd D:\Sevenfold\auto
+cd path\to\auto
+npm install
 npm run supervise          # restarts on crash and health failure
 ```
 
@@ -59,6 +70,9 @@ agent login       # if not
 Telegram credentials come from `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`, or
 the `auth.json` the telegram-notify skill writes. Copy `.env.example` to
 `.env` for the rest; every setting there is optional.
+
+Desktop chat control is Windows-oriented today (debug port, clipboard paste,
+scheduled-task supervise). ACP sessions work wherever `cursor-agent` does.
 
 ## Layout
 

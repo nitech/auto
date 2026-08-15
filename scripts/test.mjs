@@ -1666,7 +1666,8 @@ if (existsSync(SRC)) {
     fail('settings must not sit in the top bar');
     failed = true;
   }
-  if (!html.includes('class="rail-settings"') || !/>\s*Settings\s*</.test(html.slice(openAt, openAt + 400))) {
+  const settingsChunk = html.slice(openAt, openAt + 1200);
+  if (!html.includes('class="rail-settings"') || !/>\s*Settings\s*</.test(settingsChunk)) {
     fail('the rail settings row must say Settings');
     failed = true;
   }
@@ -1674,8 +1675,12 @@ if (existsSync(SRC)) {
     fail('settings must not be a ⋯ glyph');
     failed = true;
   }
-  if (!css.includes('.rail-settings .gear') || !existsSync(join(ROOT, 'src/web/settings.png'))) {
-    fail('settings must use the gear icon');
+  if (!css.includes('.rail-settings .gear') || !html.includes('class="gear"') || !html.includes('<svg')) {
+    fail('settings must use an inline SVG gear');
+    failed = true;
+  }
+  if (existsSync(join(ROOT, 'src/web/settings.png')) || /icons8/i.test(css) || /icons8/i.test(html)) {
+    fail('settings must not use Icons8 assets');
     failed = true;
   }
   if (!css.includes('#sheet .sheet-panel') || !/height:\s*100%/.test(css.slice(css.indexOf('#sheet .sheet-panel')))) {

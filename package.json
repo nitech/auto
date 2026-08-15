@@ -2,6 +2,7 @@
   "name": "auto",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Auto — remote control for Cursor's agent, over web and Telegram",
   "scripts": {
