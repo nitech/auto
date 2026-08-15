@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-15
+* **Update**: Attached images show as thumbnails in the chat stream and above the composer; tap opens a zoomable lightbox (pinch / wheel / drag).
 * **Update**: Composer usage dial (this chat's context fill) plus a sheet for Cursor Models / Other Models / included / on-demand and per-model spend — same numbers as cursor.com, not shown in the IDE chat chrome.
 * **Update**: Changing a desktop chat's model keeps the web picker on that model — it used to store Cursor's label as the value and go blank.
 * **Update**: Changing a desktop chat's model no longer lets Cursor auto-send the next queued message when the switch ends a paused turn (e.g. high demand) — the queue is held first.

@@ -1721,6 +1721,20 @@ if (existsSync(SRC)) {
     fail('a held desktop send must #expectEcho as well as a queued one');
     failed = true;
   }
+  const html = readFileSync(join(ROOT, 'src/web/index.html'), 'utf8');
+  const css = readFileSync(join(ROOT, 'src/web/style.css'), 'utf8');
+  if (!html.includes('id="lightbox"') || !js.includes('function openLightbox') || !css.includes('#lightbox')) {
+    fail('images need a zoomable lightbox, not a new tab');
+    failed = true;
+  }
+  if (!js.includes('imageParts') || !js.includes("div('thumbs')")) {
+    fail('user messages must show image thumbnails in the stream');
+    failed = true;
+  }
+  if (!sessionsJs.includes('#userMessageFields') || !sessionsJs.includes('imageParts:')) {
+    fail('transcripts must keep imageParts so a reload still shows the pictures');
+    failed = true;
+  }
   if (!failed) ok('v2 web: per-session drafts and immediate send');
 }
 

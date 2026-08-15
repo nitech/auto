@@ -653,7 +653,7 @@ export class SessionManager extends EventEmitter {
     }
 
     if (meta.kind === 'desktop') {
-      if (!text?.trim()) return null;
+      if (!text?.trim() && !images.length) return null;
       return this.#promptDesktop(id, meta, text, images);
     }
 
@@ -665,7 +665,7 @@ export class SessionManager extends EventEmitter {
     }
     if (content.length === 0) return null;
 
-    if (!shown) this.#record(id, KIND.userMessage, { text, images: images.length });
+    if (!shown) this.#record(id, KIND.userMessage, this.#userMessageFields(text, images));
     this.#beginTurn(id);
     this.#update(id, { status: STATUS.busy });
     runtime.streamBuffer = '';
@@ -1795,6 +1795,20 @@ export class SessionManager extends EventEmitter {
     this.live.set(id, runtime);
   }
 
+  /**
+   * What a user_message record carries so the web can draw the pictures again.
+   * Count stays for older clients and echo matching; imageParts is the pixels.
+   */
+  #userMessageFields(text, images = []) {
+    return {
+      text,
+      images: images.length || undefined,
+      imageParts: images.length
+        ? images.map((img) => ({ mimeType: img.mimeType, data: img.data }))
+        : undefined,
+    };
+  }
+
   #consumeEcho(id, text) {
     const runtime = this.live.get(id);
     if (!runtime?.echoes?.length) return false;
@@ -1883,7 +1897,7 @@ export class SessionManager extends EventEmitter {
     if (result.status === 'submitted') {
       // deliverDesktop already #expectEcho'd; the web may have drawn the bubble
       // optimistically, so this record is what pendingEcho swallows there.
-      this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
+      this.#record(id, KIND.userMessage, this.#userMessageFields(text, images));
       // An image that did not make it has to be said out loud: a message asking
       // "what do you think of this?" with nothing attached reads as an agent
       // ignoring the question.
@@ -1903,7 +1917,7 @@ export class SessionManager extends EventEmitter {
     const place = this.outbox.hold(id, text);
     // Held for later: still our send, and the desktop will echo it when it goes in.
     this.#expectEcho(id, text);
-    this.#record(id, KIND.userMessage, { text, images: images.length || undefined });
+    this.#record(id, KIND.userMessage, this.#userMessageFields(text, images));
     this.#record(id, KIND.notice, { text: this.#whyHeld(meta, result, place) });
     if (images.length) {
       // The outbox keeps words, not pictures: an image has to be pasted into a

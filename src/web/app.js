@@ -327,21 +327,64 @@ function div(cls, html) {
 // ----------------------------------------------------------------- renderers
 
 function renderUser(rec) {
-  const node = div('msg user', linkify(esc(rec.text)));
-  if (rec.images) {
+  const node = div('msg user');
+  if (rec.text) {
+    const text = document.createElement('div');
+    text.className = 'user-text';
+    text.innerHTML = linkify(esc(rec.text));
+    node.append(text);
+  }
+  const parts = imagePartsOf(rec);
+  if (parts.length) {
+    const thumbs = div('thumbs');
+    for (const part of parts) {
+      const src = srcOfPart(part);
+      if (!src) continue;
+      const img = document.createElement('img');
+      img.src = src;
+      img.alt = 'Attached image';
+      img.loading = 'lazy';
+      img.onclick = () => openLightbox(src);
+      thumbs.append(img);
+    }
+    node.append(thumbs);
+  } else if (imageCount(rec)) {
     const cap = div('cap');
-    cap.textContent = `${rec.images} image${rec.images === 1 ? '' : 's'} attached`;
+    const n = imageCount(rec);
+    cap.textContent = `${n} image${n === 1 ? '' : 's'} attached`;
     node.append(cap);
   }
   add(node);
+}
+
+/** Parts carried on the record, or a bare count for older transcripts. */
+function imagePartsOf(rec) {
+  if (Array.isArray(rec?.imageParts) && rec.imageParts.length) return rec.imageParts;
+  if (Array.isArray(rec?.images) && rec.images.length && typeof rec.images[0] === 'object') {
+    return rec.images;
+  }
+  return [];
+}
+
+function srcOfPart(part) {
+  if (part?.url) return part.url;
+  if (part?.data) return `data:${part.mimeType || 'image/png'};base64,${part.data}`;
+  return '';
 }
 
 /** Same words already drawn for this send, so the host record is not a second bubble. */
 function sameSend(a, b) {
   return (
     String(a?.text || '').trim() === String(b?.text || '').trim() &&
-    (a?.images || 0) === (b?.images || 0)
+    imageCount(a) === imageCount(b)
   );
+}
+
+function imageCount(rec) {
+  if (typeof rec?.images === 'number') return rec.images;
+  if (Array.isArray(rec?.imageParts)) return rec.imageParts.length;
+  if (Array.isArray(rec?.images)) return rec.images.length;
+  return 0;
 }
 
 /**
@@ -354,7 +397,7 @@ function rememberSend(rec) {
   state.pendingEchoes.push({
     sessionId: state.sessionId,
     text: String(rec.text || ''),
-    images: rec.images || 0,
+    images: imageCount(rec),
     left: 2,
     at: now,
   });
@@ -475,8 +518,7 @@ function renderContent(body, blocks, card) {
       img.src = `data:${inner.mimeType || 'image/png'};base64,${inner.data}`;
       img.alt = 'screenshot';
       img.loading = 'lazy';
-      // Full size in a new tab: phone screens crop a desktop screenshot hard.
-      img.onclick = () => window.open(img.src, '_blank');
+      img.onclick = () => openLightbox(img.src);
       fig.appendChild(img);
       body.appendChild(fig);
     } else if (inner.type === 'text' && inner.text) {
@@ -1960,12 +2002,15 @@ function renderAttachments() {
     const img = document.createElement('img');
     img.src = att.url;
     img.alt = att.name || 'attached image';
+    img.title = 'View image';
+    img.onclick = () => openLightbox(att.url);
     const drop = document.createElement('button');
     drop.type = 'button';
     drop.textContent = '×';
     drop.title = 'Remove';
     drop.setAttribute('aria-label', 'Remove image');
-    drop.onclick = () => {
+    drop.onclick = (e) => {
+      e.stopPropagation();
       state.attachments.splice(i, 1);
       renderAttachments();
     };
@@ -2088,7 +2133,7 @@ function addImage(file) {
 
 function submit(text) {
   const body = (text ?? els.box.value).trim();
-  const images = state.attachments.map(({ mimeType, data }) => ({ mimeType, data }));
+  const images = state.attachments.map(({ mimeType, data, url }) => ({ mimeType, data, url }));
   // A turn already running is no reason to refuse: the host queues it.
   if (!body && !images.length) return;
   state.lastPrompt = body;
@@ -2096,10 +2141,21 @@ function submit(text) {
   // the phone look like nothing had been sent. A busy turn queues instead,
   // and the queue is where those belong until they go in.
   if (!state.busy) {
-    renderUser({ text: body, images: images.length || undefined });
+    renderUser({
+      text: body,
+      images: images.length || undefined,
+      imageParts: images.length
+        ? images.map(({ mimeType, data, url }) => ({ mimeType, data, url }))
+        : undefined,
+    });
     rememberSend({ text: body, images: images.length || 0 });
   }
-  sendOp({ op: 'prompt', sessionId: state.sessionId, text: body, images });
+  sendOp({
+    op: 'prompt',
+    sessionId: state.sessionId,
+    text: body,
+    images: images.map(({ mimeType, data }) => ({ mimeType, data })),
+  });
   state.attachments = [];
   renderAttachments();
   if (text === undefined) {
@@ -2492,7 +2548,8 @@ $('sheet-terminals').onclick = () => {
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   // Innermost first: the dialogs sit over the sheet, which sits over the rail.
-  if (!els.usageSheet.hidden) setUsageSheet(false);
+  if (!$('lightbox').hidden) closeLightbox();
+  else if (!els.usageSheet.hidden) setUsageSheet(false);
   else if (!$('newbie').hidden) setNewbie(false);
   else if (!els.sheet.hidden) setSheet(false);
   else if (els.app.classList.contains('rail-open')) setRail(false);
@@ -2690,4 +2747,171 @@ function renderUsageSheet(msg) {
   bits.push(`</section>`);
 
   els.usageBody.innerHTML = bits.join('');
+}
+
+// ------------------------------------------------------------------ lightbox
+
+const lightbox = {
+  scale: 1,
+  x: 0,
+  y: 0,
+  /** @type {{ x: number, y: number } | null} */
+  drag: null,
+  /** @type {{ dist: number, scale: number } | null} */
+  pinch: null,
+};
+
+function lightboxEls() {
+  return {
+    root: $('lightbox'),
+    stage: $('lightbox-stage'),
+    img: $('lightbox-img'),
+    close: $('lightbox-close'),
+  };
+}
+
+function openLightbox(src) {
+  if (!src) return;
+  const { root, img, stage } = lightboxEls();
+  img.src = src;
+  lightbox.scale = 1;
+  lightbox.x = 0;
+  lightbox.y = 0;
+  lightbox.drag = null;
+  lightbox.pinch = null;
+  paintLightboxTransform();
+  root.hidden = false;
+  stage.classList.remove('dragging');
+}
+
+function closeLightbox() {
+  const { root, img, stage } = lightboxEls();
+  root.hidden = true;
+  img.removeAttribute('src');
+  lightbox.drag = null;
+  lightbox.pinch = null;
+  stage.classList.remove('dragging');
+}
+
+function paintLightboxTransform() {
+  const { img } = lightboxEls();
+  img.style.transform = `translate(${lightbox.x}px, ${lightbox.y}px) scale(${lightbox.scale})`;
+}
+
+function zoomLightbox(factor, cx, cy) {
+  const { stage, img } = lightboxEls();
+  const next = Math.min(5, Math.max(1, lightbox.scale * factor));
+  if (next === lightbox.scale) return;
+  const rect = stage.getBoundingClientRect();
+  const px = (cx ?? rect.left + rect.width / 2) - rect.left - rect.width / 2;
+  const py = (cy ?? rect.top + rect.height / 2) - rect.top - rect.height / 2;
+  const ratio = next / lightbox.scale;
+  lightbox.x = px - (px - lightbox.x) * ratio;
+  lightbox.y = py - (py - lightbox.y) * ratio;
+  lightbox.scale = next;
+  if (lightbox.scale === 1) {
+    lightbox.x = 0;
+    lightbox.y = 0;
+  }
+  paintLightboxTransform();
+  img.style.cursor = lightbox.scale > 1 ? 'grab' : 'zoom-in';
+}
+
+{
+  const { root, stage, close } = lightboxEls();
+  close.onclick = (e) => {
+    e.stopPropagation();
+    closeLightbox();
+  };
+  root.onclick = (e) => {
+    if (e.target === root || e.target === stage) closeLightbox();
+  };
+  stage.addEventListener(
+    'wheel',
+    (e) => {
+      if (root.hidden) return;
+      e.preventDefault();
+      zoomLightbox(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY);
+    },
+    { passive: false },
+  );
+  stage.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    if (lightbox.scale > 1) {
+      lightbox.scale = 1;
+      lightbox.x = 0;
+      lightbox.y = 0;
+      paintLightboxTransform();
+    } else {
+      zoomLightbox(2.5, e.clientX, e.clientY);
+    }
+  });
+
+  const point = (t) => ({ x: t.clientX, y: t.clientY });
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  stage.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (root.hidden || e.button) return;
+      if (e.target.closest('#lightbox-close')) return;
+      stage.setPointerCapture(e.pointerId);
+      lightbox.drag = { x: e.clientX - lightbox.x, y: e.clientY - lightbox.y };
+      stage.classList.add('dragging');
+    },
+    { passive: true },
+  );
+  stage.addEventListener(
+    'pointermove',
+    (e) => {
+      if (!lightbox.drag || lightbox.pinch) return;
+      if (lightbox.scale <= 1) return;
+      lightbox.x = e.clientX - lightbox.drag.x;
+      lightbox.y = e.clientY - lightbox.drag.y;
+      paintLightboxTransform();
+    },
+    { passive: true },
+  );
+  const endDrag = () => {
+    lightbox.drag = null;
+    stage.classList.remove('dragging');
+  };
+  stage.addEventListener('pointerup', endDrag);
+  stage.addEventListener('pointercancel', endDrag);
+
+  stage.addEventListener(
+    'touchstart',
+    (e) => {
+      if (root.hidden || e.touches.length !== 2) return;
+      lightbox.pinch = {
+        dist: dist(point(e.touches[0]), point(e.touches[1])),
+        scale: lightbox.scale,
+      };
+      lightbox.drag = null;
+    },
+    { passive: true },
+  );
+  stage.addEventListener(
+    'touchmove',
+    (e) => {
+      if (!lightbox.pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      const d = dist(point(e.touches[0]), point(e.touches[1]));
+      const mid = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      };
+      const target = Math.min(5, Math.max(1, lightbox.pinch.scale * (d / lightbox.pinch.dist)));
+      const factor = target / lightbox.scale;
+      zoomLightbox(factor, mid.x, mid.y);
+    },
+    { passive: false },
+  );
+  stage.addEventListener(
+    'touchend',
+    () => {
+      lightbox.pinch = null;
+    },
+    { passive: true },
+  );
 }
