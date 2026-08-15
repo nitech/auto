@@ -1560,8 +1560,9 @@ if (existsSync(SRC)) {
     fail('the session × must archive');
     failed = true;
   }
-  if (!js.includes('function bindRailSwipe') || !js.includes("dx < -72")) {
-    fail('the session rail must close on a swipe left');
+  const swipe = js.slice(js.indexOf('function bindRailSwipe'), js.indexOf("$('rail-toggle')"));
+  if (!swipe.includes('touchmove') || !swipe.includes('passive: false')) {
+    fail('a left swipe on iOS must use touchmove, not only pointer events');
     failed = true;
   }
   if (!css.includes('(hover: hover)') || !css.includes('.session:hover .close')) {

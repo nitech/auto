@@ -1912,7 +1912,6 @@ pre:hover .copy,
     transform: translateX(-100%);
     transition: transform 0.18s ease;
     box-shadow: var(--shadow);
-    touch-action: pan-y;
   }
   #app.rail-open #rail { transform: none; }
   #app.rail-dragging #rail { transition: none; }

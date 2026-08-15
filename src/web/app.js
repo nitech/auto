@@ -2127,7 +2127,6 @@ function setRail(open) {
   els.app.classList.toggle('rail-open', open);
   $('rail-scrim').hidden = !open;
   $('rail').style.transform = '';
-  $('rail').style.touchAction = '';
   els.app.classList.remove('rail-dragging');
   // Cursor may have moved on since you last looked.
   if (open) sendOp({ op: 'desktop.recent' });
@@ -2136,9 +2135,15 @@ function setRail(open) {
 /**
  * The rail is a drawer on a narrow screen. Swiping it left closes it the
  * same way the × and the scrim do — following the finger, then settling.
+ *
+ * Pointer events never see the swipe on iOS: the session list is a scroller,
+ * so Safari eats the gesture as a pan and `pointermove` never fires. A
+ * non-passive `touchmove` has to be on the rail before the finger goes down,
+ * or iOS will not let it cancel the scroll.
  */
 function bindRailSwipe() {
   const rail = $('rail');
+  const list = $('session-list');
   const overlay = () => window.matchMedia('(max-width: 760px)').matches;
   let startX = 0;
   let startY = 0;
@@ -2147,22 +2152,28 @@ function bindRailSwipe() {
   let vx = 0;
   let mode = 'idle';
 
+  const finger = (e) => {
+    const t = e.changedTouches?.[0] || e.touches?.[0];
+    return t
+      ? { x: t.clientX, y: t.clientY, t: e.timeStamp }
+      : { x: e.clientX, y: e.clientY, t: e.timeStamp };
+  };
+
   const settle = (close) => {
     const dragged = mode === 'drag';
     mode = 'idle';
     els.app.classList.remove('rail-dragging');
+    list.style.overflow = '';
     if (close) {
       // Keep the finger's offset until rail-open drops, or the drawer
       // would jump fully open and then animate closed.
       els.app.classList.remove('rail-open');
       $('rail-scrim').hidden = true;
-      rail.style.touchAction = '';
       requestAnimationFrame(() => {
         rail.style.transform = '';
       });
     } else {
       rail.style.transform = '';
-      rail.style.touchAction = '';
     }
     if (!dragged) return;
     // A swipe that ends on a row must not attach or archive it.
@@ -2173,54 +2184,68 @@ function bindRailSwipe() {
     rail.addEventListener('click', eat, { capture: true, once: true });
   };
 
-  rail.addEventListener('pointerdown', (e) => {
-    if (!overlay() || !els.app.classList.contains('rail-open')) return;
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    startX = lastX = e.clientX;
-    startY = e.clientY;
-    lastT = e.timeStamp;
-    vx = 0;
-    mode = 'maybe';
-  });
-
-  rail.addEventListener('pointermove', (e) => {
+  const onMove = (e) => {
+    if (e.pointerType === 'touch') return;
     if (mode === 'idle') return;
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    const dt = e.timeStamp - lastT || 1;
-    vx = (e.clientX - lastX) / dt;
-    lastX = e.clientX;
-    lastT = e.timeStamp;
+    const p = finger(e);
+    const dx = p.x - startX;
+    const dy = p.y - startY;
+    const dt = p.t - lastT || 1;
+    vx = (p.x - lastX) / dt;
+    lastX = p.x;
+    lastT = p.t;
 
     if (mode === 'maybe') {
-      if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return;
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
       // Vertical scroll of the list wins; swiping right has nowhere to go.
-      if (dx > 0 || Math.abs(dy) >= Math.abs(dx)) {
+      if (dx > -6 || Math.abs(dy) >= Math.abs(dx)) {
         mode = 'idle';
         return;
       }
       mode = 'drag';
       els.app.classList.add('rail-dragging');
-      rail.style.touchAction = 'none';
-      try {
-        rail.setPointerCapture(e.pointerId);
-      } catch {
-        /* capture is a nicety; move events still arrive while the pointer is in the rail */
-      }
+      list.style.overflow = 'hidden';
     }
 
+    if (e.cancelable) e.preventDefault();
     rail.style.transform = `translateX(${Math.min(0, dx)}px)`;
-  });
+  };
 
-  rail.addEventListener('pointerup', (e) => {
+  const onEnd = (e) => {
+    if (e.pointerType === 'touch') return;
     if (mode === 'idle') return;
-    const dx = e.clientX - startX;
-    settle(mode === 'drag' && (dx < -72 || (dx < -24 && vx < -0.35)));
-  });
-  rail.addEventListener('pointercancel', () => {
+    const dx = finger(e).x - startX;
+    const width = rail.getBoundingClientRect().width || 280;
+    settle(mode === 'drag' && (dx < -width * 0.18 || (dx < -24 && vx < -0.25)));
+  };
+
+  const onCancel = (e) => {
+    if (e.pointerType === 'touch') return;
     if (mode === 'idle') return;
     settle(false);
-  });
+  };
+
+  const onStart = (e) => {
+    if (!overlay() || !els.app.classList.contains('rail-open')) return;
+    if (e.type === 'pointerdown' && e.pointerType === 'touch') return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.target.closest?.('button, input, select, textarea, a')) return;
+    const p = finger(e);
+    startX = lastX = p.x;
+    startY = p.y;
+    lastT = p.t;
+    vx = 0;
+    mode = 'maybe';
+  };
+
+  rail.addEventListener('touchstart', onStart, { capture: true, passive: true });
+  rail.addEventListener('touchmove', onMove, { capture: true, passive: false });
+  rail.addEventListener('touchend', onEnd, { capture: true });
+  rail.addEventListener('touchcancel', onCancel, { capture: true });
+  rail.addEventListener('pointerdown', onStart);
+  rail.addEventListener('pointermove', onMove);
+  rail.addEventListener('pointerup', onEnd);
+  rail.addEventListener('pointercancel', onCancel);
 }
 
 $('rail-toggle').onclick = () => setRail(!els.app.classList.contains('rail-open'));

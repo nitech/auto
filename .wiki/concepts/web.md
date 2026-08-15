@@ -17,7 +17,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-15T16:00:00Z }
+generated: { by: agent, at: 2026-08-15T16:20:00Z }
 ---
 
 # Web app
@@ -39,7 +39,8 @@ page.
 
 On a phone the session rail is a drawer. × on a row archives that session
 on the first tap (the row used to eat it, so it felt like it needed two).
-Swipe the rail left to close it, or tap × in the header, or tap beside it.
+Swipe the rail left to close it (the list is a scroller, so this is a
+touch swipe, not a pointer drag), or tap × in the header, or tap beside it.
 
 ## What it draws
 
