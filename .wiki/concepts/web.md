@@ -17,7 +17,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-15T15:50:00Z }
+generated: { by: agent, at: 2026-08-15T16:00:00Z }
 ---
 
 # Web app
@@ -36,6 +36,10 @@ the composer, as in Cursor; approval policy lives in the top bar (and in
 Settings on a narrow screen). Settings is a row at the bottom of the
 session rail — a gear and the word Settings — and opens a full-screen
 page.
+
+On a phone the session rail is a drawer. × on a row archives that session
+on the first tap (the row used to eat it, so it felt like it needed two).
+Swipe the rail left to close it, or tap × in the header, or tap beside it.
 
 ## What it draws
 

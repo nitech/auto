@@ -1545,6 +1545,36 @@ if (existsSync(SRC)) {
   if (!failed) ok('v2 web: settings in the rail, full screen');
 }
 
+// × on a session row must archive on the first tap, and the rail must close
+// when swiped left — a phone has no hover, and the row used to eat the tap.
+{
+  const js = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  const css = readFileSync(join(ROOT, 'src/web/style.css'), 'utf8');
+  let failed = false;
+  const row = js.slice(js.indexOf('function sessionRow'), js.indexOf('function dateBucket'));
+  if (!row.includes('insideControl') || !js.includes('pointerdown')) {
+    fail('the session × must stop the row from seeing the tap');
+    failed = true;
+  }
+  if (!js.includes('dismissSession') || !js.includes('session.archive')) {
+    fail('the session × must archive');
+    failed = true;
+  }
+  if (!js.includes('function bindRailSwipe') || !js.includes("dx < -72")) {
+    fail('the session rail must close on a swipe left');
+    failed = true;
+  }
+  if (!css.includes('(hover: hover)') || !css.includes('.session:hover .close')) {
+    fail('session hover styles must not apply on a phone');
+    failed = true;
+  }
+  if (!css.includes('rail-dragging')) {
+    fail('a swipe must be able to drag the rail with the finger');
+    failed = true;
+  }
+  if (!failed) ok('v2 web: session × archives on first tap, swipe closes rail');
+}
+
 // A prompt Auto typed into Cursor must not come back as a second bubble.
 {
   const { echoKey } = await import('../src/core/sessions.mjs');

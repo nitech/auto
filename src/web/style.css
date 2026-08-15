@@ -229,9 +229,7 @@ button, select, textarea { font: inherit; color: inherit; }
 
 /* Always visible: there is no hover on a phone, and this is the way in. */
 .project .close { opacity: 0.45; font-size: 16px; }
-.project:hover .close { opacity: 0.9; }
 .project { cursor: pointer; border-radius: 8px; }
-.project:hover { background: var(--bg-3); }
 
 /* Chats from the desktop app, offered for continuing here. */
 .desktop-chats { margin: 0 0 4px 8px; }
@@ -327,8 +325,6 @@ button, select, textarea { font: inherit; color: inherit; }
 
 .session.busy { opacity: 0.55; }
 
-.session:hover { background: var(--bg-3); }
-
 .session.active {
   background: var(--bg-3);
   border-color: var(--line-2);
@@ -364,8 +360,16 @@ button, select, textarea { font: inherit; color: inherit; }
   border-radius: 4px;
 }
 
-.session:hover .close { opacity: 1; }
-.session .close:hover { color: var(--red); background: var(--bg-2); }
+/* Hover must not apply on a phone: the first tap would be hover, the second
+   the click, so × needed pressing twice to archive. */
+@media (hover: hover) {
+  .project:hover { background: var(--bg-3); }
+  .project:hover .close { opacity: 0.9; }
+  .session:hover { background: var(--bg-3); }
+  .session:hover .close { opacity: 1; }
+  .session .close:hover { color: var(--red); background: var(--bg-2); }
+  button.icon:hover { background: var(--bg-3); color: var(--text); }
+}
 
 .dot {
   width: 7px;
@@ -507,8 +511,6 @@ button.icon {
   font-size: 15px;
   line-height: 1.2;
 }
-
-button.icon:hover { background: var(--bg-3); color: var(--text); }
 
 /* Both only exist on a narrow screen, where the rail slides over everything. */
 #rail-toggle,
@@ -1910,8 +1912,10 @@ pre:hover .copy,
     transform: translateX(-100%);
     transition: transform 0.18s ease;
     box-shadow: var(--shadow);
+    touch-action: pan-y;
   }
   #app.rail-open #rail { transform: none; }
+  #app.rail-dragging #rail { transition: none; }
   #rail-toggle {
     display: block;
     /* ☰ sits small in the em square; 22px reads even with the 20px close. */
@@ -1919,7 +1923,7 @@ pre:hover .copy,
     line-height: 1;
   }
   /* The rail covers the topbar's toggle when open, so it carries its own way
-     out: this button, the scrim beside it, or Escape. */
+     out: this button, a swipe left, the scrim beside it, or Escape. */
   /* The way out of a rail covering the whole screen should be obvious, so
      this one is brighter than the icon buttons it sits beside. */
   #rail-close {

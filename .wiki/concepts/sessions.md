@@ -8,7 +8,7 @@ sources:
   - id: sessions
     resource: /src/core/sessions.mjs
     title: Session manager
-generated: { by: agent, at: 2026-08-15T15:50:00Z }
+generated: { by: agent, at: 2026-08-15T16:00:00Z }
 ---
 
 # Sessions
@@ -52,7 +52,9 @@ refresh of the phone browser to a different conversation.
 
 `state/sessions.json` is the registry. Transcripts are
 `state/transcripts/<id>.jsonl`. Sessions started outside Auto are adopted at
-boot. Archiving drops the live process, not the log.
+boot. Archiving drops the live process, not the log. A watcher tick that
+lands afterwards cannot set the session back to idle — that used to
+bring it back into the list, so × looked like it needed two taps.
 
 ## Failures caught by shape
 

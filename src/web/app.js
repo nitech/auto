@@ -94,6 +94,8 @@ const state = {
   queue: { owner: 'auto', waiting: 0, items: [] },
   /** the queued message being reworded, so the row stays an editor while typing */
   editing: null,
+  /** Cursor chats dismissed with × this visit, so they do not reappear as "in Cursor" */
+  dismissedChats: new Set(),
 };
 
 // ------------------------------------------------------------------ helpers
@@ -1124,6 +1126,45 @@ function actsAsButton(node, run) {
   };
 }
 
+/**
+ * A control inside a clickable row. The first tap on a phone used to belong
+ * to the row — on the open session that just closed the rail, so × looked
+ * like it needed a second press to archive.
+ */
+function insideControl(node, run) {
+  let x = 0;
+  let y = 0;
+  let last = 0;
+  node.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    x = e.clientX;
+    y = e.clientY;
+  });
+  node.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+  const go = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const pt = e.changedTouches?.[0] || e;
+    const cx = pt.clientX ?? x;
+    const cy = pt.clientY ?? y;
+    if (Math.hypot(cx - x, cy - y) > 16) return;
+    const now = Date.now();
+    if (now - last < 400) return;
+    last = now;
+    run();
+  };
+  node.addEventListener('click', go);
+  // iOS can apply :hover on the first tap and skip click; touchend still fires.
+  node.addEventListener('touchend', go, { passive: false });
+}
+
+function dismissSession(item) {
+  if (item.chatId) state.dismissedChats.add(item.chatId);
+  state.sessions = state.sessions.filter((s) => s.id !== item.id);
+  renderRail();
+  sendOp({ op: 'session.archive', sessionId: item.id });
+}
+
 const sameFolder = (a, b) =>
   String(a || '').replace(/[\\/]+$/, '').toLowerCase() ===
   String(b || '').replace(/[\\/]+$/, '').toLowerCase();
@@ -1155,13 +1196,11 @@ function sessionRow(item) {
   // Only Auto's own list can be tidied; a chat belongs to the IDE.
   if (item.session) {
     const close = document.createElement('button');
+    close.type = 'button';
     close.className = 'close';
     close.textContent = '×';
     close.title = 'Archive session';
-    close.onclick = (e) => {
-      e.stopPropagation();
-      sendOp({ op: 'session.archive', sessionId: item.id });
-    };
+    insideControl(close, () => dismissSession(item));
     row.append(close);
   }
 
@@ -1209,7 +1248,7 @@ function conversations() {
 
   const open = new Set(rows.map((r) => r.chatId).filter(Boolean));
   for (const c of state.chats) {
-    if (open.has(c.id)) continue;
+    if (open.has(c.id) || state.dismissedChats.has(c.id)) continue;
     rows.push({
       session: false,
       id: null,
@@ -2082,18 +2121,112 @@ $('restart').onclick = () => {
 /**
  * Open or close the session rail. On a narrow screen it slides over the page,
  * covering the button that opened it — so closing has to be possible from the
- * rail itself, from the page beside it, and from the keyboard.
+ * rail itself (× or a swipe left), from the page beside it, and from the keyboard.
  */
 function setRail(open) {
   els.app.classList.toggle('rail-open', open);
   $('rail-scrim').hidden = !open;
+  $('rail').style.transform = '';
+  $('rail').style.touchAction = '';
+  els.app.classList.remove('rail-dragging');
   // Cursor may have moved on since you last looked.
   if (open) sendOp({ op: 'desktop.recent' });
+}
+
+/**
+ * The rail is a drawer on a narrow screen. Swiping it left closes it the
+ * same way the × and the scrim do — following the finger, then settling.
+ */
+function bindRailSwipe() {
+  const rail = $('rail');
+  const overlay = () => window.matchMedia('(max-width: 760px)').matches;
+  let startX = 0;
+  let startY = 0;
+  let lastX = 0;
+  let lastT = 0;
+  let vx = 0;
+  let mode = 'idle';
+
+  const settle = (close) => {
+    const dragged = mode === 'drag';
+    mode = 'idle';
+    els.app.classList.remove('rail-dragging');
+    if (close) {
+      // Keep the finger's offset until rail-open drops, or the drawer
+      // would jump fully open and then animate closed.
+      els.app.classList.remove('rail-open');
+      $('rail-scrim').hidden = true;
+      rail.style.touchAction = '';
+      requestAnimationFrame(() => {
+        rail.style.transform = '';
+      });
+    } else {
+      rail.style.transform = '';
+      rail.style.touchAction = '';
+    }
+    if (!dragged) return;
+    // A swipe that ends on a row must not attach or archive it.
+    const eat = (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+    };
+    rail.addEventListener('click', eat, { capture: true, once: true });
+  };
+
+  rail.addEventListener('pointerdown', (e) => {
+    if (!overlay() || !els.app.classList.contains('rail-open')) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    startX = lastX = e.clientX;
+    startY = e.clientY;
+    lastT = e.timeStamp;
+    vx = 0;
+    mode = 'maybe';
+  });
+
+  rail.addEventListener('pointermove', (e) => {
+    if (mode === 'idle') return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    const dt = e.timeStamp - lastT || 1;
+    vx = (e.clientX - lastX) / dt;
+    lastX = e.clientX;
+    lastT = e.timeStamp;
+
+    if (mode === 'maybe') {
+      if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return;
+      // Vertical scroll of the list wins; swiping right has nowhere to go.
+      if (dx > 0 || Math.abs(dy) >= Math.abs(dx)) {
+        mode = 'idle';
+        return;
+      }
+      mode = 'drag';
+      els.app.classList.add('rail-dragging');
+      rail.style.touchAction = 'none';
+      try {
+        rail.setPointerCapture(e.pointerId);
+      } catch {
+        /* capture is a nicety; move events still arrive while the pointer is in the rail */
+      }
+    }
+
+    rail.style.transform = `translateX(${Math.min(0, dx)}px)`;
+  });
+
+  rail.addEventListener('pointerup', (e) => {
+    if (mode === 'idle') return;
+    const dx = e.clientX - startX;
+    settle(mode === 'drag' && (dx < -72 || (dx < -24 && vx < -0.35)));
+  });
+  rail.addEventListener('pointercancel', () => {
+    if (mode === 'idle') return;
+    settle(false);
+  });
 }
 
 $('rail-toggle').onclick = () => setRail(!els.app.classList.contains('rail-open'));
 $('rail-close').onclick = () => setRail(false);
 $('rail-scrim').onclick = () => setRail(false);
+bindRailSwipe();
 
 // --------------------------------------------------------------- appearance
 

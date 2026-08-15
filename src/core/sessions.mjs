@@ -368,6 +368,9 @@ export class SessionManager extends EventEmitter {
   #update(id, patch) {
     const meta = this.meta.get(id);
     if (!meta) return null;
+    // A watcher tick can land after archive() and would otherwise set the
+    // session back to idle, so it reappeared and × looked like it needed two taps.
+    if (meta.status === STATUS.archived) return meta;
     Object.assign(meta, patch, { updatedAt: new Date().toISOString() });
     this.#persist();
     return meta;
