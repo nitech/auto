@@ -107,7 +107,7 @@
       <div id="attachments" hidden></div>
       <!-- One field, with its buttons inside it and its pickers beneath, the
           way Cursor's own chat box carries them. -->
-      <div class="composer-box">
+      <div class="composer-box" data-mode="agent">
         <div class="composer-main">
           <button id="attach" class="in-box" title="Attach image" aria-label="Attach image">+</button>
           <textarea id="box" rows="1" placeholder="Message the agent…"></textarea>
@@ -118,6 +118,8 @@
           <select id="mode" title="Agent mode" aria-label="Agent mode">
             <option value="agent">Agent</option>
             <option value="plan">Plan</option>
+            <option value="debug">Debug</option>
+            <option value="multitask">Multitask</option>
             <option value="ask">Ask</option>
           </select>
           <select id="model" title="Model" aria-label="Model"></select>

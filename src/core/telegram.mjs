@@ -21,6 +21,8 @@ import { classifyTool, displayLabel, foldTools, isCreatedPlan, planFields, turnC
 const LIMIT = 4096;
 /** Telegram tolerates roughly one edit a second; stay well clear. */
 const EDIT_MS = 1800;
+/** Cursor's current modes, in the order the IDE lists them. */
+const SESSION_MODES = ['agent', 'plan', 'debug', 'multitask', 'ask'];
 
 export function loadTelegramAuth() {
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
@@ -385,7 +387,7 @@ export class TelegramBridge extends EventEmitter {
             '/sessions — list and switch',
             '/new [folder] — start a session',
             '/stop — interrupt the current turn',
-            '/mode agent|plan|ask',
+            '/mode agent|plan|debug|multitask|ask',
             '/projects — projects on this machine',
             '/chats — continue a chat from the desktop app',
             '/model — pick a model',
@@ -501,11 +503,14 @@ export class TelegramBridge extends EventEmitter {
         // A Cursor chat has Cursor's own modes, which are more than three and
         // not ours to name. Ask the window what it offers.
         if (active.kind === 'desktop') return this.#pickInCursor(active, 'mode', arg);
-        if (!['agent', 'plan', 'ask'].includes(arg)) {
-          return this.send(`Mode is <b>${esc(active.mode)}</b>. Use /mode agent|plan|ask.`);
+        const wanted = arg.toLowerCase();
+        if (!SESSION_MODES.includes(wanted)) {
+          return this.send(
+            `Mode is <b>${esc(active.mode)}</b>. Use /mode ${SESSION_MODES.join('|')}.`,
+          );
         }
-        await this.sessions.setMode(active.id, arg);
-        return this.send(`Mode → <b>${esc(arg)}</b>`);
+        await this.sessions.setMode(active.id, wanted);
+        return this.send(`Mode → <b>${esc(wanted)}</b>`);
       }
 
       case '/model': {

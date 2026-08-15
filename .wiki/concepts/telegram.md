@@ -8,7 +8,7 @@ sources:
   - id: telegram
     resource: /src/core/telegram.mjs
     title: Telegram bridge
-generated: { by: agent, at: 2026-08-15T11:50:00Z }
+generated: { by: agent, at: 2026-08-15T10:10:00Z }
 ---
 
 # Telegram
@@ -36,8 +36,9 @@ ACP: image blocks).
 `/chats`, `/model`, `/policy`, `/status`, `/restart`, `/web`.
 
 `/mode` and `/model` on a desktop chat press Cursor's own pickers. On ACP
-they use the catalog from `session/new`. `/chats` continues a desktop
-thread. `/restart` is `POST /api/restart`.
+they use the catalog from `session/new`. `/mode` accepts Agent, Plan,
+Debug, Multitask, and Ask. `/chats` continues a desktop thread. `/restart`
+is `POST /api/restart`.
 
 Plain text is a prompt to the active session. A lettered reply to a
 question card is an answer, not a new prompt. See [approvals](approvals.md).

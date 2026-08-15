@@ -43,6 +43,7 @@ const els = {
   folder: $('session-folder'),
   status: $('status'),
   mode: $('mode'),
+  composerBox: document.querySelector('.composer-box'),
   model: $('model'),
   policy: $('policy'),
   conn: $('conn'),
@@ -1389,14 +1390,56 @@ function renderModels(models) {
 }
 
 /**
- * Modes travel with the same catalog. The three in the markup are the ones
- * every Cursor build has; whatever the agent actually offers replaces them.
+ * Cursor's current modes, in the order the IDE lists them. The catalog from
+ * an ACP session may only name three of these; Debug and Multitask still
+ * belong in the picker, because a desktop chat has them.
+ */
+const CURSOR_MODES = [
+  { id: 'agent', name: 'Agent' },
+  { id: 'plan', name: 'Plan' },
+  { id: 'debug', name: 'Debug' },
+  { id: 'multitask', name: 'Multitask' },
+  { id: 'ask', name: 'Ask' },
+];
+
+function canonicalModeId(raw) {
+  const id = String(raw || 'agent').toLowerCase();
+  return id === 'chat' ? 'ask' : id;
+}
+
+function mergeModes(modes) {
+  const byId = new Map(CURSOR_MODES.map((m) => [m.id, { ...m }]));
+  for (const m of modes || []) {
+    const id = canonicalModeId(m.id || m);
+    if (!id) continue;
+    byId.set(id, { id, name: m.name || byId.get(id)?.name || id });
+  }
+  const known = CURSOR_MODES.map((m) => byId.get(m.id)).filter(Boolean);
+  const extra = [...byId.values()].filter((m) => !CURSOR_MODES.some((k) => k.id === m.id));
+  return [...known, ...extra];
+}
+
+/**
+ * The ring, the send button, and the mode word all take the hue for the
+ * mode in force — Agent blue, Plan amber, Ask green, Debug red, Multitask
+ * purple — the same map Cursor uses on its own chat box.
+ */
+function paintMode(mode = els.mode.value) {
+  if (!els.composerBox) return;
+  els.composerBox.dataset.mode = canonicalModeId(mode);
+}
+
+/**
+ * Modes travel with the same catalog. The five in the markup are the ones
+ * Cursor currently offers; whatever else the agent names is appended.
  */
 function renderModes(modes) {
-  if (!modes?.length || els.mode.dataset.filled === String(modes.length)) return;
+  const list = mergeModes(modes);
+  const ids = list.map((m) => m.id).join(',');
+  if (els.mode.dataset.filled === ids) return;
   const was = els.mode.value;
   els.mode.innerHTML = '';
-  for (const m of modes) {
+  for (const m of list) {
     const opt = document.createElement('option');
     opt.value = m.id;
     opt.textContent = m.name || m.id;
@@ -1404,15 +1447,17 @@ function renderModes(modes) {
   }
   // Keep the session's choice selected if the new list still contains it.
   if ([...els.mode.options].some((o) => o.value === was)) els.mode.value = was;
-  els.mode.dataset.filled = String(modes.length);
+  els.mode.dataset.filled = ids;
+  paintMode();
 }
 
 function applyMeta(meta) {
   if (!meta) return;
   els.title.textContent = meta.title || 'session';
   els.folder.textContent = meta.folder || '';
-  els.mode.value = meta.mode || 'agent';
+  els.mode.value = canonicalModeId(meta.mode);
   els.policy.value = meta.policy || 'ask';
+  paintMode(meta.mode);
   // A session that has never run has no model yet; leave the picker as-is.
   if (meta.model && els.model.options.length) els.model.value = meta.model;
   setBusy(meta.status === 'busy');
@@ -2124,8 +2169,10 @@ document.addEventListener('keydown', (e) => {
   else if (els.app.classList.contains('rail-open')) setRail(false);
 });
 
-els.mode.onchange = () =>
+els.mode.onchange = () => {
+  paintMode();
   sendOp({ op: 'session.mode', sessionId: state.sessionId, modeId: els.mode.value });
+};
 els.model.onchange = () =>
   sendOp({ op: 'session.model', sessionId: state.sessionId, modelId: els.model.value });
 els.policy.onchange = () =>
@@ -2136,6 +2183,7 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden && state.ws?.readyState !== 1) connect();
 });
 
+paintMode();
 syncSend();
 initTerminals(sendOp);
 initBrowser(sendOp);

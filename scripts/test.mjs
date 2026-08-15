@@ -1356,6 +1356,38 @@ if (existsSync(SRC)) {
   if (!failed) ok('v2 web: transcript loading marker');
 }
 
+// Composer modes: Cursor's five, coloured the way the IDE colours them.
+{
+  const html = readFileSync(join(ROOT, 'src/web/index.html'), 'utf8');
+  const css = readFileSync(join(ROOT, 'src/web/style.css'), 'utf8');
+  const js = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  const tg = readFileSync(join(ROOT, 'src/core/telegram.mjs'), 'utf8');
+  let failed = false;
+  for (const mode of ['agent', 'plan', 'debug', 'multitask', 'ask']) {
+    if (!new RegExp(`<option value="${mode}"`).test(html)) {
+      fail(`the mode picker must include ${mode}`);
+      failed = true;
+    }
+    if (!css.includes(`--mode-${mode}`)) {
+      fail(`style.css must name a --mode-${mode} token`);
+      failed = true;
+    }
+  }
+  if (!html.includes('data-mode="agent"')) {
+    fail('the chat box must start in agent so the ring has a hue before JS');
+    failed = true;
+  }
+  if (!js.includes('function paintMode') || !js.includes('dataset.mode')) {
+    fail('app.js must paint the composer from the selected mode');
+    failed = true;
+  }
+  if (!tg.includes('debug|multitask|ask') && !tg.includes("'debug', 'multitask', 'ask'")) {
+    fail('Telegram /mode must accept debug and multitask');
+    failed = true;
+  }
+  if (!failed) ok('v2 web: composer mode colours');
+}
+
 // 1e. Browser address bar: URLs are opened, prose is searched.
 {
   try {

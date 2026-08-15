@@ -14,7 +14,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-15T11:50:00Z }
+generated: { by: agent, at: 2026-08-15T10:10:00Z }
 ---
 
 # Web app
@@ -50,6 +50,12 @@ the sheet on a narrow screen).
 Enter sends. Images attach, paste, or drop and go with the next prompt.
 Stop interrupts. The busy session still accepts another message — it
 queues.
+
+Mode is Agent, Plan, Debug, Multitask, or Ask — the same five Cursor
+lists. The ring around the box, the send button, and the mode word all
+take that mode's colour (blue, amber, red, purple, green), so a glance
+says which one is in force. An ACP catalog that only names three does
+not drop Debug or Multitask from the picker.
 
 ## Related
 

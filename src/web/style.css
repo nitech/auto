@@ -36,6 +36,14 @@
   --red: #ff6b6b;
   --violet: #a78bfa;
 
+  /* Cursor's composer modes — same hues the IDE uses on the picker,
+     the ring around the box, and the send button. */
+  --mode-agent: var(--accent);
+  --mode-plan: var(--amber);
+  --mode-ask: var(--green);
+  --mode-debug: var(--red);
+  --mode-multitask: var(--violet);
+
   /* the one saturated action */
   --primary: #2b5bd7;
   --primary-hover: #3768e8;
@@ -1027,17 +1035,23 @@ details.think .body {
  * whole thing, so it reads as a single place to type.
  */
 .composer-box {
+  --mode-color: var(--mode-agent);
   display: flex;
   flex-direction: column;
   gap: 2px;
   background: var(--bg-2);
-  border: 1px solid var(--line-2);
+  border: 1px solid var(--mode-color);
   border-radius: 18px;
   padding: 5px;
   transition: border-color 0.12s ease;
 }
 
-.composer-box:focus-within { border-color: var(--focus); }
+.composer-box[data-mode='plan'] { --mode-color: var(--mode-plan); }
+.composer-box[data-mode='ask'] { --mode-color: var(--mode-ask); }
+.composer-box[data-mode='debug'] { --mode-color: var(--mode-debug); }
+.composer-box[data-mode='multitask'] { --mode-color: var(--mode-multitask); }
+
+.composer-box:focus-within { border-color: var(--mode-color); }
 
 .composer-main {
   display: flex;
@@ -1070,6 +1084,18 @@ details.think .body {
   border-color: var(--line-2);
   color: var(--text);
 }
+
+/* The mode word is the hue, not the model word beside it. Hover keeps it. */
+#mode,
+#mode:hover {
+  color: var(--mode-color);
+}
+
+#mode option[value='agent'] { color: var(--mode-agent); }
+#mode option[value='plan'] { color: var(--mode-plan); }
+#mode option[value='ask'] { color: var(--mode-ask); }
+#mode option[value='debug'] { color: var(--mode-debug); }
+#mode option[value='multitask'] { color: var(--mode-multitask); }
 
 #box {
   flex: 1;
@@ -1105,12 +1131,15 @@ details.think .body {
 .in-box:hover { background: var(--bg-3); color: var(--text); }
 
 .in-box.send {
-  background: var(--primary);
-  border-color: var(--primary-hover);
+  background: var(--mode-color);
+  border-color: var(--mode-color);
   color: var(--primary-fg);
 }
 
-.in-box.send:hover { background: var(--primary-hover); color: var(--primary-fg); }
+.in-box.send:hover {
+  background: color-mix(in srgb, var(--mode-color) 82%, #fff);
+  color: var(--primary-fg);
+}
 
 /* Nothing to send is a state worth showing, not a click worth taking. */
 .in-box.send:disabled {
@@ -1123,11 +1152,11 @@ details.think .body {
 /* Sending onto a running turn adds to a queue; it should not look like sending. */
 .in-box.send.queueing {
   background: var(--bg-3);
-  border-color: var(--primary);
-  color: var(--primary);
+  border-color: var(--mode-color);
+  color: var(--mode-color);
 }
 
-.in-box.send.queueing:hover { background: var(--primary); color: var(--primary-fg); }
+.in-box.send.queueing:hover { background: var(--mode-color); color: var(--primary-fg); }
 
 .in-box.stop { color: var(--red); border-color: var(--danger-border); font-size: 12px; }
 .in-box.stop:hover { background: var(--danger-bg); color: var(--red); }
