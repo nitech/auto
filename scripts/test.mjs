@@ -2877,7 +2877,7 @@ if (existsSync(SRC)) {
 
       // What reaches the transcript is the tail, since clients append: record
       // the whole bubble each pass and the answer reads as itself repeated.
-      const { newWords } = await import('../src/core/sessions.mjs');
+      const { newWords, desktopWatchSeed } = await import('../src/core/sessions.mjs');
       if (newWords('', 'The first half') !== 'The first half') {
         fail('a first sighting is all new');
       }
@@ -2887,6 +2887,48 @@ if (existsSync(SRC)) {
       if (newWords('same', 'same') !== '') fail('nothing new is nothing to say');
       if (newWords('an early draft', 'a rewritten answer') !== 'a rewritten answer') {
         fail('a rewritten bubble goes out whole rather than being lost');
+      }
+
+      const midTurn = desktopWatchSeed(
+        [
+          { kind: 'turn_start', ts: 1 },
+          { kind: 'user_message', text: 'fix the padding' },
+          { kind: 'tool_call', toolCallId: 'git-commit', status: 'in_progress' },
+          { kind: 'agent_delta', text: 'Working on it.' },
+        ],
+        {
+          visited: ['user1', 'git-commit', 'git-push', 'said', 'final'],
+          messages: [
+            { id: 'user1', role: 'user', text: 'fix the padding' },
+            { id: 'git-commit', kind: 'tool', status: 'completed' },
+            { id: 'git-push', kind: 'tool', status: 'completed' },
+            { id: 'said', kind: 'text', text: 'Working on it.' },
+            { id: 'final', kind: 'text', text: 'The chips are inset now.' },
+          ],
+        },
+      );
+      if (!midTurn.openTurn) fail('a turn with no turn_end is still open after a restart');
+      if (midTurn.seen.includes('final')) {
+        fail('a final answer that landed while we were down must not be marked seen');
+      }
+      if (midTurn.seen.includes('git-push')) {
+        fail('a tool that finished while we were down must be read again');
+      }
+      if (!midTurn.seen.includes('said') || !midTurn.seen.includes('user1')) {
+        fail('bubbles already in the transcript should stay seen');
+      }
+      if (!midTurn.drawn.has('git-commit') || !midTurn.openTools.has('git-commit')) {
+        fail('an in-progress tool should still be the card we already drew');
+      }
+      const idle = desktopWatchSeed(
+        [
+          { kind: 'turn_start', ts: 1 },
+          { kind: 'turn_end', ts: 2 },
+        ],
+        { visited: ['a', 'b'] },
+      );
+      if (idle.openTurn || idle.seen.join() !== 'a,b') {
+        fail('an idle chat after restart should keep Cursor’s visited set');
       }
 
       // A running command: the command line is worth showing while it runs,

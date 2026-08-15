@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-15
+* **Update**: A host restart mid-turn no longer marks Cursor's finished bubbles as already in the transcript, so the closing answer still reaches the phone.
 * **Update**: Composer mode/model chips stay 16px for iOS but `zoom: 0.75` so they look like 12px.
 * **Update**: The web composer's attach control is a + on the lower-right. Mode and model are chips (background, rounded edges) at 16px so iOS does not zoom on tap.
 * **Update**: Question answers press Cursor's questionnaire toolbar (sibling of the tool bubble). Option text is often glued as "ARed"; Continue is located even while disabled.

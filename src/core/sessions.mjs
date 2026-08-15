@@ -29,7 +29,7 @@ import { TerminalRegistry } from './terminals.mjs';
 import { sendMessage } from './desktop-bridge.mjs';
 import { CursorCdp } from './cursor-cdp.mjs';
 import { DesktopOutbox } from './desktop-outbox.mjs';
-import { ThreadWatcher, readThread, realTitle, UNTITLED_THREAD } from './desktop-threads.mjs';
+import { ThreadWatcher, readThread, realTitle, UNTITLED_THREAD, SETTLE_LOOKS } from './desktop-threads.mjs';
 import { labelsForAnswer, indexesForAnswer } from './questions.mjs';
 import { classifyTool } from './desktop-tool-ui.mjs';
 
@@ -1197,12 +1197,12 @@ export class SessionManager extends EventEmitter {
   /** Turn one desktop bubble into transcript records. */
   #recordDesktopMessage(id, message) {
     if (message.role === 'user') {
-      this.#record(id, KIND.userMessage, { text: message.text });
+      this.#record(id, KIND.userMessage, { text: message.text, desktopBubbleId: message.id });
       return;
     }
     if (message.kind === 'thinking') {
       const words = this.#newWordsOf(id, message);
-      if (words) this.#record(id, KIND.agentThought, { text: words });
+      if (words) this.#record(id, KIND.agentThought, { text: words, desktopBubbleId: message.id });
       return;
     }
     if (message.kind === 'tool') {
@@ -1260,7 +1260,7 @@ export class SessionManager extends EventEmitter {
       return;
     }
     const words = this.#newWordsOf(id, message);
-    if (words) this.#record(id, KIND.agentDelta, { text: words });
+    if (words) this.#record(id, KIND.agentDelta, { text: words, desktopBubbleId: message.id });
   }
 
   /**
@@ -1475,7 +1475,7 @@ export class SessionManager extends EventEmitter {
   }
 
   /** Start following a desktop thread, if we are not already. */
-  #watchDesktop(id, alreadySeen = []) {
+  #watchDesktop(id, alreadySeen = [], { resumeTurn = false } = {}) {
     const meta = this.meta.get(id);
     if (!meta?.desktopThreadId || meta.status === STATUS.archived) return null;
 
@@ -1484,6 +1484,13 @@ export class SessionManager extends EventEmitter {
 
     const watcher = new ThreadWatcher(meta.desktopThreadId).markSeen(alreadySeen);
     this.live.set(id, { ...(existing || {}), watcher });
+    if (resumeTurn) {
+      // The previous host died mid-turn. Pretend we are still in it so the
+      // settle looks can pick up the answer, then end the turn once Cursor has.
+      watcher.running = true;
+      watcher.settleLooks = SETTLE_LOOKS;
+      this.#update(id, { status: STATUS.busy });
+    }
 
     watcher.on('message', (message) => {
       // Our own message comes back to us: it was written into the transcript
@@ -1662,19 +1669,27 @@ export class SessionManager extends EventEmitter {
   }
 
   /** Follow every desktop thread we hold, so the IDE's activity shows up. */
-  watchDesktopThreads() {
+  async watchDesktopThreads() {
     let watched = 0;
     for (const meta of this.meta.values()) {
       if (meta.kind !== 'desktop' || meta.status === STATUS.archived) continue;
       // Anything already in the transcript is history; only new bubbles from
-      // here on are news. The watcher learns what it has seen on its first
-      // pass, so seed it with everything currently in the thread.
+      // here on are news. Seeding the watcher with Cursor's current visited
+      // set used to drop whatever landed while we were down — a restart in
+      // the middle of a turn marked the final answer seen and never said it.
+      const t = await this.transcripts.get(meta.id);
       const state = readThread(meta.desktopThreadId, { tail: 0 });
+      const seed = desktopWatchSeed(t.readFrom(0), state || {});
+      const existing = this.live.get(meta.id) || {};
+      existing.toolsDrawn = seed.drawn;
+      existing.openTools = seed.openTools;
+      if (seed.turnStarted) existing.turnStarted = seed.turnStarted;
+      this.live.set(meta.id, existing);
       // Cursor may have named the thread while we were down — or while we
       // were showing the placeholder we locked at attach.
       const patch = adoptDesktopTitle(meta, state?.title);
       if (patch) this.#update(meta.id, patch);
-      if (this.#watchDesktop(meta.id, state?.visited || [])) watched += 1;
+      if (this.#watchDesktop(meta.id, seed.seen, { resumeTurn: seed.openTurn })) watched += 1;
     }
     return watched;
   }
@@ -1929,6 +1944,81 @@ export function newWords(said, whole) {
   if (!said) return whole;
   if (whole === said) return '';
   return whole.startsWith(said) ? whole.slice(said.length) : whole;
+}
+
+const TERMINAL_TOOL = new Set(['completed', 'failed', 'cancelled']);
+
+/**
+ * What a desktop watcher should treat as already published after a host
+ * restart, and which tool cards it has already drawn.
+ *
+ * Cursor's current `visited` set is the wrong seed: anything that landed
+ * while we were down is visited in the IDE and missing from our transcript.
+ * A turn that never got `turn_end` is the signal that we died mid-reply, so
+ * only skip bubbles we actually wrote down.
+ *
+ * @param {object[]} records  transcript records, oldest first
+ * @param {{ messages?: object[], visited?: string[] }} cursor
+ */
+export function desktopWatchSeed(records = [], cursor = {}) {
+  const drawn = new Set();
+  const completed = new Set();
+  const openTools = new Set();
+  const prose = [];
+  const thoughts = [];
+  const users = new Set();
+  let openTurn = false;
+  let turnStarted = 0;
+  for (const rec of records) {
+    if (rec.kind === KIND.turnStart) {
+      openTurn = true;
+      turnStarted = rec.ts || 0;
+    } else if (rec.kind === KIND.turnEnd) {
+      openTurn = false;
+      turnStarted = 0;
+    }
+    if (rec.toolCallId) {
+      if (rec.kind === KIND.toolCall) drawn.add(rec.toolCallId);
+      if (TERMINAL_TOOL.has(rec.status)) {
+        completed.add(rec.toolCallId);
+        openTools.delete(rec.toolCallId);
+      } else if (rec.status === 'in_progress' || rec.status === 'pending') {
+        openTools.add(rec.toolCallId);
+      }
+    }
+    if (rec.kind === KIND.agentDelta && rec.text) prose.push(rec.text);
+    if (rec.kind === KIND.agentThought && rec.text) thoughts.push(rec.text);
+    if (rec.kind === KIND.userMessage && rec.text) users.add(echoKey(rec.text));
+  }
+
+  const visited = cursor.visited || [];
+  const messages = cursor.messages || [];
+  if (!openTurn) {
+    return { seen: visited, drawn, openTools: new Set(), openTurn: false, turnStarted: 0 };
+  }
+
+  const publishedProse = prose.join('');
+  const publishedThoughts = thoughts.join('');
+  const unpublished = new Set();
+  for (const msg of messages) {
+    if (msg.kind === 'tool') {
+      if (!completed.has(msg.id)) unpublished.add(msg.id);
+    } else if (msg.kind === 'text' && msg.text && !publishedProse.includes(msg.text)) {
+      unpublished.add(msg.id);
+    } else if (msg.kind === 'thinking' && msg.text && !publishedThoughts.includes(msg.text)) {
+      unpublished.add(msg.id);
+    } else if (msg.role === 'user' && msg.text && !users.has(echoKey(msg.text))) {
+      unpublished.add(msg.id);
+    }
+  }
+
+  return {
+    seen: visited.filter((id) => !unpublished.has(id)),
+    drawn,
+    openTools,
+    openTurn: true,
+    turnStarted,
+  };
 }
 
 export { POLICY };

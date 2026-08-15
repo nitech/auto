@@ -33,7 +33,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * practice: long enough for the desktop to finish writing its last message,
  * short enough that nobody notices the turn ending late.
  */
-const SETTLE_LOOKS = 4;
+export const SETTLE_LOOKS = 4;
 
 /** What Auto calls a desktop thread before the IDE has named it. */
 export const UNTITLED_THREAD = 'Desktop chat';

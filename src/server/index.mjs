@@ -780,8 +780,10 @@ server.listen(PORT, HOST, () => {
   keepBridgeEnabled();
   // Threads in the IDE keep moving whether or not Auto is watching, so pick
   // them back up: a reply typed into Cursor should still reach the phone.
-  const watching = sessions.watchDesktopThreads();
-  if (watching) console.log(`[auto] following ${watching} desktop thread(s)`);
+  const watching = sessions.watchDesktopThreads().then((n) => {
+    if (n) console.log(`[auto] following ${n} desktop thread(s)`);
+  });
+  watching.catch((err) => console.error(`[auto] watching desktop threads: ${err.message}`));
   const waiting = sessions.resumeDesktopOutbox();
   if (waiting) console.log(`[auto] ${waiting} message(s) still waiting for the desktop`);
   // Pick up sessions started outside Auto. Costs one short-lived agent

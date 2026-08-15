@@ -11,7 +11,7 @@ sources:
   - id: map
     resource: /src/core/map-updates.mjs
     title: ACP update mapping
-generated: { by: agent, at: 2026-08-15T11:50:00Z }
+generated: { by: agent, at: 2026-08-15T14:43:00Z }
 ---
 
 # Transcripts
@@ -52,6 +52,12 @@ what is in the database mid-turn is a prefix. Prose is unfinished business
 while the chat is generating: re-read as it grows, announce again only when
 it changed, and put only the new tail into the transcript (clients append).
 A bubble Cursor rewrites rather than extends goes out whole.
+
+A host restart used to seed the watcher with every bubble Cursor had
+already finished. That dropped the closing prose of a turn that ended
+while Auto was down — the IDE had the summary, the phone stopped at the
+last command. After a restart, an open turn only skips bubbles the
+transcript actually holds.
 
 ## Related
 

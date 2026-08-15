@@ -17,10 +17,13 @@ sources:
   - id: threads
     resource: /src/core/desktop-threads.mjs
     title: Following a thread
+  - id: sessions
+    resource: /src/core/sessions.mjs
+    title: Catch-up after restart
   - id: outbox
     resource: /src/core/desktop-outbox.mjs
     title: Held messages
-generated: { by: agent, at: 2026-08-15T09:36:00Z }
+generated: { by: agent, at: 2026-08-15T14:43:00Z }
 ---
 
 # Continuing Cursor desktop chats
@@ -87,6 +90,11 @@ file-change row; a few internal tools stay off the stream.
   bubble. Auto shows it once.
 - Empty bubbles are created before they are filled; leave them unread.
 - `cursorDiskKV` values come back as bytes or as text; read `typeof(value)`.
+- A host restart in the middle of a turn must not treat Cursor's current
+  `visited` set as already in the transcript. Whatever landed while Auto
+  was down — the last tool results, the closing prose — is visited in the
+  IDE and missing here. An open `turn_start` with no `turn_end` is the
+  signal; only skip bubbles we actually wrote down.
 
 ## What the desktop keeps
 
