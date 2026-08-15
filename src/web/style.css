@@ -387,12 +387,47 @@ button, select, textarea { font: inherit; color: inherit; }
 
 .rail-foot {
   display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 10px 16px;
+  flex-direction: column;
   border-top: 1px solid var(--line);
   font-size: 12px;
   color: var(--faint);
+}
+
+.rail-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+}
+
+.rail-settings {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 12px 16px;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.2;
+  cursor: pointer;
+  text-align: left;
+}
+
+.rail-settings:hover { background: var(--bg-3); color: var(--text); }
+
+/* Icons8 settings gear (id 364), tinted with the label. */
+.rail-settings .gear {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  background: currentColor;
+  -webkit-mask: url('/settings.png') center / contain no-repeat;
+  mask: url('/settings.png') center / contain no-repeat;
 }
 
 /* ------------------------------------------------------------------ main */
@@ -1452,20 +1487,18 @@ details.think .body {
 /* --------------------------------------------------------------- sheet */
 
 /**
- * One panel for everything that is not the conversation: session controls,
- * theme, panels, host. It is the only home for the mode/model/policy pickers
- * on a narrow screen — app.js moves those very elements in and out rather
- * than duplicating them, so there is never a second copy to keep in step.
+ * Settings is a full-screen page. New-session still uses .sheet-panel as a
+ * floating card. On a narrow screen the policy picker moves into this page.
  */
 #sheet {
   position: fixed;
   inset: 0;
   z-index: 30;
-  background: var(--scrim);
+  background: var(--bg);
   display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  padding: 56px 16px 16px;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
 }
 
 #sheet[hidden] { display: none; }
@@ -1479,6 +1512,22 @@ details.think .body {
   border-radius: 14px;
   box-shadow: var(--shadow);
   animation: sheet-in 0.16s ease;
+}
+
+#sheet .sheet-panel {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--bg);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+#sheet .sheet-head {
+  padding-top: max(12px, env(safe-area-inset-top));
 }
 
 @keyframes sheet-in {
@@ -1896,9 +1945,8 @@ pre:hover .copy,
   .desk-only { display: none; }
 
   #topbar { padding: 8px 10px; gap: 6px; }
-  #sheet,
   #newbie { padding: 0; align-items: flex-end; justify-content: center; }
-  .sheet-panel {
+  #newbie .sheet-panel {
     width: 100%;
     max-height: 88vh;
     border-radius: 16px 16px 0 0;
@@ -1928,6 +1976,7 @@ pre:hover .copy,
     font-size: 17px;
   }
   .sheet-panel button:not(.icon) { min-height: 40px; }
+  .rail-settings { min-height: 44px; }
 
   /* Same rule as the composer: iOS zooms into anything smaller than 16px and
      leaves the page there, so every field a finger can reach is 16px. The

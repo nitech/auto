@@ -30,7 +30,13 @@
     </div>
     <div id="session-list"></div>
     <div class="rail-foot">
-      <span id="conn" class="dot"></span><span id="conn-label">connecting</span>
+      <div class="rail-status">
+        <span id="conn" class="dot"></span><span id="conn-label">connecting</span>
+      </div>
+      <button type="button" id="sheet-open" class="rail-settings" title="Settings" aria-label="Settings">
+        <span class="gear" aria-hidden="true"></span>
+        Settings
+      </button>
     </div>
   </aside>
 
@@ -58,7 +64,6 @@
       <span id="status" class="chip">idle</span>
       <button id="browser-toggle" class="icon desk-only" title="Browser" aria-label="Browser">◉</button>
       <button id="term-toggle" class="icon desk-only" title="Terminals" aria-label="Terminals">▤</button>
-      <button id="sheet-open" class="icon" title="Settings" aria-label="Settings">⋯</button>
     </header>
 
     <section id="browser" hidden>

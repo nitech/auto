@@ -2137,7 +2137,10 @@ compact.addEventListener('change', placeControls);
 placeControls();
 applyTheme();
 
-$('sheet-open').onclick = () => setSheet(true);
+$('sheet-open').onclick = () => {
+  setRail(false);
+  setSheet(true);
+};
 $('sheet-close').onclick = () => setSheet(false);
 els.sheet.onclick = (e) => {
   if (e.target === els.sheet) setSheet(false);

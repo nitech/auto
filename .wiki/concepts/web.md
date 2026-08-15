@@ -17,7 +17,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-15T14:22:00Z }
+generated: { by: agent, at: 2026-08-15T15:40:00Z }
 ---
 
 # Web app
@@ -28,7 +28,9 @@ stream. A reload or a dropped connection costs nothing.
 
 Open `http://<tailscale-ip>:4331/`. It is a PWA. Mode and model live beside
 the composer, as in Cursor; approval policy lives in the top bar (and in
-the sheet on a narrow screen).
+Settings on a narrow screen). Settings is a row at the bottom of the
+session rail — a gear and the word Settings — and opens a full-screen
+page.
 
 ## What it draws
 

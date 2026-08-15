@@ -1477,6 +1477,47 @@ if (existsSync(SRC)) {
   if (!failed) ok('v2 web: composer mode colours');
 }
 
+// Settings lives at the bottom of the session rail, not as ⋯ in the top bar.
+{
+  const html = readFileSync(join(ROOT, 'src/web/index.html'), 'utf8');
+  const css = readFileSync(join(ROOT, 'src/web/style.css'), 'utf8');
+  const js = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  let failed = false;
+  const openAt = html.indexOf('id="sheet-open"');
+  const railEnd = html.indexOf('</aside>');
+  const topbarAt = html.indexOf('id="topbar"');
+  if (openAt < 0 || railEnd < 0 || openAt > railEnd) {
+    fail('settings must live in the session rail');
+    failed = true;
+  }
+  if (topbarAt >= 0 && openAt > topbarAt) {
+    fail('settings must not sit in the top bar');
+    failed = true;
+  }
+  if (!html.includes('class="rail-settings"') || !/>\s*Settings\s*</.test(html.slice(openAt, openAt + 400))) {
+    fail('the rail settings row must say Settings');
+    failed = true;
+  }
+  if (html.includes('⋯')) {
+    fail('settings must not be a ⋯ glyph');
+    failed = true;
+  }
+  if (!css.includes('.rail-settings .gear') || !existsSync(join(ROOT, 'src/web/settings.png'))) {
+    fail('settings must use the gear icon');
+    failed = true;
+  }
+  if (!css.includes('#sheet .sheet-panel') || !/height:\s*100%/.test(css.slice(css.indexOf('#sheet .sheet-panel')))) {
+    fail('the settings panel must fill the screen');
+    failed = true;
+  }
+  const openJs = js.slice(js.indexOf("$('sheet-open')"), js.indexOf("$('sheet-close')"));
+  if (!openJs.includes('setRail(false)') || !openJs.includes('setSheet(true)')) {
+    fail('opening settings must close the rail');
+    failed = true;
+  }
+  if (!failed) ok('v2 web: settings in the rail, full screen');
+}
+
 // A prompt Auto typed into Cursor must not come back as a second bubble.
 {
   const { echoKey } = await import('../src/core/sessions.mjs');
