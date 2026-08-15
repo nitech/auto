@@ -29,7 +29,8 @@ import { TerminalRegistry } from './terminals.mjs';
 import { sendMessage } from './desktop-bridge.mjs';
 import { CursorCdp } from './cursor-cdp.mjs';
 import { DesktopOutbox } from './desktop-outbox.mjs';
-import { ThreadWatcher, readThread, realTitle, UNTITLED_THREAD, SETTLE_LOOKS, isHarnessPrompt } from './desktop-threads.mjs';
+import { ThreadWatcher, readThread, readContextUsage, realTitle, UNTITLED_THREAD, SETTLE_LOOKS, isHarnessPrompt } from './desktop-threads.mjs';
+import { accountUsage } from './cursor-usage.mjs';
 import { labelsForAnswer, indexesForAnswer } from './questions.mjs';
 import { classifyTool } from './desktop-tool-ui.mjs';
 
@@ -1107,6 +1108,30 @@ export class SessionManager extends EventEmitter {
     const meta = this.meta.get(id);
     if (meta?.kind !== 'desktop') return null;
     return this.cursor.settings({ threadId: meta.desktopThreadId });
+  }
+
+  /**
+   * Context fill for this chat, plus account-wide Cursor usage.
+   *
+   * The dial is the session's `contextUsagePercent`. The dialog also shows
+   * Cursor Models / Other Models / included / on-demand — numbers the IDE
+   * keeps off the chat chrome but Auto can read the same way the settings
+   * page does.
+   */
+  async usage(id, { force = false } = {}) {
+    const meta = this.meta.get(id);
+    const session =
+      meta?.kind === 'desktop' && meta.desktopThreadId
+        ? readContextUsage(meta.desktopThreadId)
+        : meta
+          ? { contextUsagePercent: null, note: 'Context fill is only tracked for Cursor desktop chats.' }
+          : null;
+    const account = await accountUsage({ force });
+    return {
+      sessionId: id || null,
+      session,
+      account,
+    };
   }
 
   /**

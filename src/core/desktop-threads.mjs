@@ -496,7 +496,8 @@ export function readThread(threadId, { seen, tail } = {}) {
  * @param {string} threadId
  * @returns {{ mode: string|null, customMode: string|null, model: string|null,
  *   maxMode: boolean, effort: string|null, thinking: boolean|null,
- *   context: string|null } | null}
+ *   context: string|null, contextUsagePercent: number|null,
+ *   costCents: number|null } | null}
  */
 export function readSettings(threadId) {
   return withDb((db) => {
@@ -516,6 +517,8 @@ export function readSettings(threadId) {
     const chosen = config.selectedModels?.[0] || {};
     const knobs = new Map((chosen.parameters || []).map((p) => [p.id, p.value]));
     const said = (key) => (knobs.has(key) ? String(knobs.get(key)) : null);
+    const pct = Number(data.contextUsagePercent);
+    const cost = Number(data.usageData?.default?.costInCents);
 
     return {
       mode: data.unifiedMode || null,
@@ -525,6 +528,85 @@ export function readSettings(threadId) {
       effort: said('effort'),
       thinking: knobs.has('thinking') ? said('thinking') === 'true' : null,
       context: said('context'),
+      contextUsagePercent: Number.isFinite(pct) ? pct : null,
+      costCents: Number.isFinite(cost) ? cost : null,
+    };
+  });
+}
+
+/**
+ * How full this chat's context window is, plus a light token tally.
+ *
+ * `contextUsagePercent` on the composer is the dial. Bubble `tokenCount`s are
+ * a coarser check — often zero on older messages — summed only when present.
+ */
+export function readContextUsage(threadId) {
+  return withDb((db) => {
+    const row = db
+      .prepare('SELECT value, typeof(value) value_t FROM cursorDiskKV WHERE key = ?')
+      .get(`composerData:${threadId}`);
+    if (!row) return null;
+
+    let data;
+    try {
+      data = JSON.parse(textOf(row));
+    } catch {
+      return null;
+    }
+
+    const settings = (() => {
+      const config = data.modelConfig || {};
+      const chosen = config.selectedModels?.[0] || {};
+      const knobs = new Map((chosen.parameters || []).map((p) => [p.id, p.value]));
+      const pct = Number(data.contextUsagePercent);
+      const cost = Number(data.usageData?.default?.costInCents);
+      return {
+        model: config.modelName || chosen.modelId || null,
+        maxMode: Boolean(config.maxMode),
+        context: knobs.has('context') ? String(knobs.get('context')) : null,
+        contextUsagePercent: Number.isFinite(pct) ? pct : null,
+        costCents: Number.isFinite(cost) ? cost : null,
+      };
+    })();
+
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let counted = 0;
+    const headers = data.fullConversationHeadersOnly || data.conversationHeadersOnly || [];
+    const getBubble = db.prepare(
+      'SELECT value, typeof(value) value_t FROM cursorDiskKV WHERE key = ?',
+    );
+    for (const h of headers) {
+      const id = h?.bubbleId;
+      if (!id) continue;
+      const bub = getBubble.get(`bubbleId:${threadId}:${id}`);
+      if (!bub) continue;
+      let message;
+      try {
+        message = JSON.parse(textOf(bub));
+      } catch {
+        continue;
+      }
+      const tc = message?.tokenCount;
+      const inn = Number(tc?.inputTokens);
+      const out = Number(tc?.outputTokens);
+      if (!inn && !out) continue;
+      inputTokens += inn || 0;
+      outputTokens += out || 0;
+      counted += 1;
+      // Fallback when the composer has no percent yet: last bubble's remaining.
+      if (settings.contextUsagePercent == null) {
+        const rem = Number(message?.contextWindowStatusAtCreation?.percentageRemainingFloat
+          ?? message?.contextWindowStatusAtCreation?.percentageRemaining);
+        if (Number.isFinite(rem)) settings.contextUsagePercent = Math.max(0, 100 - rem);
+      }
+    }
+
+    return {
+      ...settings,
+      tokens: counted
+        ? { input: inputTokens, output: outputTokens, bubbles: counted }
+        : null,
     };
   });
 }

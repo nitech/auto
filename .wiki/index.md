@@ -14,6 +14,7 @@ Remote control for Cursor's agent. Start at [overview](overview.md).
 * [Queue](concepts/queue.md) - Messages waiting behind a turn, in Auto or in Cursor
 * [Telegram](concepts/telegram.md) - Bot as a projection of the same host
 * [Web](concepts/web.md) - PWA that replays the transcript and remembers the open chat across a refresh
+* [Usage](concepts/usage.md) - Context dial for this chat, plus Cursor Models / Other Models account quotas
 * [Browser](concepts/browser.md) - Headed Chrome, screencast, not recorded
 * [Terminals](concepts/terminals.md) - node-pty shells for the user and the agent
 * [Projects](concepts/projects.md) - Folders as Cursor itself sees them

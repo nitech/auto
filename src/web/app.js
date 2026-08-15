@@ -56,6 +56,9 @@ const els = {
   queue: $('queue'),
   queueCount: $('queue-count'),
   queueList: $('queue-list'),
+  usage: $('usage'),
+  usageSheet: $('usage-sheet'),
+  usageBody: $('usage-body'),
 };
 
 const state = {
@@ -100,6 +103,9 @@ const state = {
   drafts: new Map(),
   /** a send drawn immediately: credits that swallow the host record (and a stray echo) */
   pendingEchoes: [],
+  /** latest usage snapshot for the dial / dialog */
+  usage: null,
+  usageTimer: null,
 };
 
 // ------------------------------------------------------------------ helpers
@@ -1802,6 +1808,8 @@ function connect() {
       if (state.busy) paintLiveStatus();
       else if (state.turn) endTurn({ ts: state.now || Date.now() });
       else settleRunningTools();
+      refreshUsage();
+      startUsagePoll();
       // An approval the agent is still waiting on outlives the replay window,
       // and a turn stuck behind an unanswered question is the worst thing to
       // come back to. Anything the records already drew is skipped.
@@ -1850,6 +1858,14 @@ function connect() {
       renderModes(msg.catalog?.modes);
       const mine = state.sessions.find((s) => s.id === state.sessionId);
       if (mine?.model) selectModel(mine.model, mine.modelName);
+      return;
+    }
+
+    if (msg.type === 'usage') {
+      if (msg.sessionId && msg.sessionId !== state.sessionId) return;
+      state.usage = msg;
+      paintUsageDial(msg.session);
+      if (!els.usageSheet.hidden) renderUsageSheet(msg);
       return;
     }
 
@@ -2476,7 +2492,8 @@ $('sheet-terminals').onclick = () => {
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   // Innermost first: the dialogs sit over the sheet, which sits over the rail.
-  if (!$('newbie').hidden) setNewbie(false);
+  if (!els.usageSheet.hidden) setUsageSheet(false);
+  else if (!$('newbie').hidden) setNewbie(false);
   else if (!els.sheet.hidden) setSheet(false);
   else if (els.app.classList.contains('rail-open')) setRail(false);
 });
@@ -2490,9 +2507,19 @@ els.model.onchange = () =>
 els.policy.onchange = () =>
   sendOp({ op: 'session.policy', sessionId: state.sessionId, policy: els.policy.value });
 
+els.usage.onclick = () => {
+  setUsageSheet(true);
+  refreshUsage(true);
+};
+$('usage-close').onclick = () => setUsageSheet(false);
+els.usageSheet.onclick = (e) => {
+  if (e.target === els.usageSheet) setUsageSheet(false);
+};
+
 // Mobile browsers suspend sockets in the background; resync when we come back.
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && state.ws?.readyState !== 1) connect();
+  if (!document.hidden && state.sessionId) refreshUsage();
 });
 
 paintMode();
@@ -2500,3 +2527,167 @@ syncSend();
 initTerminals(sendOp);
 initBrowser(sendOp);
 connect();
+
+// ------------------------------------------------------------------ usage
+
+function usageLevel(pct) {
+  if (pct == null || !Number.isFinite(pct)) return '';
+  if (pct >= 85) return 'hot';
+  if (pct >= 65) return 'warn';
+  return '';
+}
+
+function paintUsageDial(session) {
+  const btn = els.usage;
+  if (!state.sessionId) {
+    btn.hidden = true;
+    return;
+  }
+  btn.hidden = false;
+  const pct = Number(session?.contextUsagePercent);
+  const fill = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
+  btn.style.setProperty('--usage-pct', String(fill));
+  btn.dataset.level = usageLevel(fill);
+  btn.title = Number.isFinite(pct)
+    ? `Context ${Math.round(pct)}% full — tap for usage`
+    : 'Usage — tap for details';
+}
+
+function refreshUsage(force = false) {
+  if (!state.sessionId) return;
+  sendOp({ op: 'usage.get', sessionId: state.sessionId, force: Boolean(force) });
+}
+
+function startUsagePoll() {
+  if (state.usageTimer) clearInterval(state.usageTimer);
+  state.usageTimer = setInterval(() => {
+    if (!state.sessionId || document.hidden) return;
+    refreshUsage(false);
+  }, 20_000);
+  state.usageTimer.unref?.();
+}
+
+function setUsageSheet(open) {
+  els.usageSheet.hidden = !open;
+  if (open && state.usage) renderUsageSheet(state.usage);
+  else if (open) els.usageBody.innerHTML = '<div class="sheet-note">Loading…</div>';
+}
+
+function money(n) {
+  if (n == null || !Number.isFinite(n)) return '—';
+  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+}
+
+function tokens(n) {
+  if (n == null || !Number.isFinite(n)) return '—';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(Math.round(n));
+}
+
+function whenCycle(ms) {
+  if (!ms) return '';
+  const d = new Date(ms);
+  const left = Math.max(0, Math.ceil((ms - Date.now()) / 86_400_000));
+  return `${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} (${left} day${left === 1 ? '' : 's'} left)`;
+}
+
+function meter(kind, label, pct, note) {
+  const p = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
+  return `<div class="usage-meter">
+    <div class="usage-meter-head"><span>${esc(label)}</span><span>${Math.round(p)}% used</span></div>
+    <div class="usage-bar ${kind}" style="--pct:${p}"><i></i></div>
+    ${note ? `<div class="usage-note">${esc(note)}</div>` : ''}
+  </div>`;
+}
+
+function renderUsageSheet(msg) {
+  const session = msg.session || {};
+  const account = msg.account || {};
+  const pct = Number(session.contextUsagePercent);
+  const fill = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
+  const level = usageLevel(fill);
+  const bits = [];
+
+  bits.push(`<section class="sheet-block"><h2>This chat</h2>`);
+  bits.push(`<div class="usage-hero">
+    <div class="usage-hero-dial" data-level="${esc(level)}" style="--usage-pct:${fill}"></div>
+    <div class="usage-hero-copy">
+      <strong>${Number.isFinite(pct) ? `${Math.round(pct)}%` : '—'}</strong>
+      <span>of context used${session.context ? ` · ${esc(session.context)} window` : ''}${session.maxMode ? ' · Max Mode' : ''}</span>
+    </div>
+  </div>`);
+  if (session.model) bits.push(`<div class="usage-note">Model: ${esc(session.model)}</div>`);
+  if (session.costCents != null) {
+    bits.push(`<div class="usage-note">This chat ≈ ${money(session.costCents / 100)} (Cursor’s own tally)</div>`);
+  }
+  if (session.tokens) {
+    bits.push(
+      `<div class="usage-note">Recorded tokens: ${tokens(session.tokens.input)} in · ${tokens(session.tokens.output)} out across ${session.tokens.bubbles} message${session.tokens.bubbles === 1 ? '' : 's'}</div>`,
+    );
+  }
+  if (session.note) bits.push(`<div class="usage-note">${esc(session.note)}</div>`);
+  if (!Number.isFinite(pct) && !session.note) {
+    bits.push(`<div class="usage-note">Cursor has not written a context fill for this chat yet.</div>`);
+  }
+  bits.push(`</section>`);
+
+  bits.push(`<section class="sheet-block"><h2>Account</h2>`);
+  if (account.status !== 'ok') {
+    bits.push(`<div class="sheet-note">${esc(account.reason || 'Account usage is unavailable.')}</div>`);
+  } else {
+    const plan = account.plan || {};
+    const buckets = account.buckets || {};
+    bits.push(
+      `<div class="usage-note"><strong>${esc(plan.name || 'Plan')}</strong>${plan.price ? ` · ${esc(plan.price)}` : ''}${plan.cycleEnd ? `<br>Resets ${esc(whenCycle(plan.cycleEnd))}` : ''}${account.account?.email ? `<br>${esc(account.account.email)}` : ''}</div>`,
+    );
+    bits.push(
+      meter(
+        'cursor',
+        buckets.cursorModels?.label || 'Cursor Models',
+        buckets.cursorModels?.percent,
+        buckets.cursorModels?.note || buckets.cursorModels?.message,
+      ),
+    );
+    bits.push(
+      meter(
+        'other',
+        buckets.otherModels?.label || 'Other Models',
+        buckets.otherModels?.percent,
+        buckets.otherModels?.note || buckets.otherModels?.message,
+      ),
+    );
+    const included = buckets.included || {};
+    bits.push(
+      meter(
+        'included',
+        included.label || 'Included usage',
+        included.percent,
+        included.message ||
+          (included.usedUsd != null
+            ? `${money(included.usedUsd)} of ${money(included.limitUsd)} · ${money(included.remainingUsd)} left`
+            : null),
+      ),
+    );
+    const od = account.onDemand || {};
+    bits.push(`<div class="usage-note">${esc(od.note || '')}${od.enabled && od.limitUsd != null ? ` · ${money(od.usedUsd)} of ${money(od.limitUsd)}` : ''}</div>`);
+
+    if (account.totals) {
+      bits.push(
+        `<div class="usage-note">This cycle: ${tokens(account.totals.inputTokens)} in · ${tokens(account.totals.outputTokens)} out · ${money(account.totals.costUsd)}</div>`,
+      );
+    }
+    if (account.models?.length) {
+      bits.push(`<h2 style="margin-top:14px">By model</h2><ul class="usage-models">`);
+      for (const row of account.models.slice(0, 8)) {
+        bits.push(
+          `<li><span>${esc(row.model)}</span><span class="mono">${money(row.costUsd)} · ${tokens(row.inputTokens + row.outputTokens)}</span></li>`,
+        );
+      }
+      bits.push(`</ul>`);
+    }
+  }
+  bits.push(`</section>`);
+
+  els.usageBody.innerHTML = bits.join('');
+}

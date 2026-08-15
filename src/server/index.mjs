@@ -360,6 +360,12 @@ const OPS = {
     sessions.setPolicy(msg.sessionId || state.sessionId, msg.policy);
   },
 
+  async 'usage.get'(ws, state, msg) {
+    const id = msg.sessionId || state.sessionId;
+    const usage = await sessions.usage(id, { force: Boolean(msg.force) });
+    send(ws, { type: 'usage', sessionId: id, ...usage });
+  },
+
   'terminal.open'(ws, state, msg) {
     const id = msg.sessionId || state.sessionId;
     const meta = sessions.get(id);

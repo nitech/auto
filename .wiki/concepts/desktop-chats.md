@@ -23,7 +23,7 @@ sources:
   - id: outbox
     resource: /src/core/desktop-outbox.mjs
     title: Held messages
-generated: { by: agent, at: 2026-08-15T17:45:00Z }
+generated: { by: agent, at: 2026-08-15T18:10:00Z }
 ---
 
 # Continuing Cursor desktop chats
@@ -112,6 +112,9 @@ hides. `create_plan` stays a card. See [approvals](approvals.md).
   waiting message on its own. Auto takes the queue out first; if the turn
   is still running afterwards the messages go back in, otherwise a notice
   lists what was held so it is not fired as a new turn.
+- `composerData.contextUsagePercent` is how full this chat's context window
+  is. Auto shows it as a dial beside attach; account quotas come from
+  Cursor's dashboard API, not from the IDE chrome. See [usage](usage.md).
 
 ## What the desktop keeps
 

@@ -127,7 +127,12 @@
             <option value="ask">Ask</option>
           </select>
           <select id="model" title="Model" aria-label="Model"></select>
-          <button id="attach" class="in-box attach" title="Attach image" aria-label="Attach image">+</button>
+          <div class="composer-actions">
+            <button id="usage" class="in-box usage" type="button" title="Usage" aria-label="Usage" hidden>
+              <span class="usage-dial" aria-hidden="true"></span>
+            </button>
+            <button id="attach" class="in-box attach" title="Attach image" aria-label="Attach image">+</button>
+          </div>
         </div>
       </div>
       <input id="file" type="file" accept="image/*" multiple hidden />
@@ -201,6 +206,19 @@
       </div>
       <div class="sheet-note" id="newbie-note"></div>
     </section>
+  </div>
+</div>
+
+<!-- Context fill for this chat, plus account-wide Cursor usage. -->
+<div id="usage-sheet" hidden>
+  <div class="sheet-panel usage-panel" role="dialog" aria-modal="true" aria-label="Usage">
+    <div class="sheet-head">
+      <span>Usage</span>
+      <button id="usage-close" class="icon" title="Close" aria-label="Close usage">×</button>
+    </div>
+    <div id="usage-body" class="usage-body">
+      <div class="sheet-note">Loading…</div>
+    </div>
   </div>
 </div>
 <script src="/vendor/xterm.js"></script>

@@ -1587,6 +1587,18 @@ if (existsSync(SRC)) {
     fail('attach must not be a binder icon');
     failed = true;
   }
+  if (!html.includes('id="usage"') || !html.includes('id="usage-sheet"') || !html.includes('composer-actions')) {
+    fail('usage dial and dialog must sit beside the attach control');
+    failed = true;
+  }
+  if (!css.includes('.usage-dial') || !css.includes('conic-gradient')) {
+    fail('usage dial must be a fillable ring');
+    failed = true;
+  }
+  if (!js.includes("op: 'usage.get'") || !js.includes('function paintUsageDial') || !js.includes('Cursor Models')) {
+    fail('web client must fetch and render session + account usage');
+    failed = true;
+  }
   const pickerCss = css.slice(css.indexOf('.composer-controls select {'));
   const pickerBlock = pickerCss.slice(0, pickerCss.indexOf('}') + 1);
   if (!/font-size:\s*16px/.test(pickerBlock)) {
@@ -1745,6 +1757,42 @@ if (existsSync(SRC)) {
     failed = true;
   }
   if (!failed) ok('v2 core: desktop echo matching');
+}
+
+// Account usage shaping: Cursor Models / Other Models match the dashboard.
+{
+  const { clearAccountUsageCache, accountUsage } = await import('../src/core/cursor-usage.mjs');
+  const { cursorAccount } = await import('../src/core/cursor-auth.mjs');
+  let failed = false;
+  clearAccountUsageCache();
+  const account = cursorAccount();
+  if (account && typeof account !== 'object') {
+    fail('cursorAccount should return an object');
+    failed = true;
+  }
+  // Live call when Cursor is signed in on this machine; otherwise the no-auth path.
+  const usage = await accountUsage({ force: true });
+  if (!usage?.status) {
+    fail('accountUsage must always return a status');
+    failed = true;
+  } else if (usage.status === 'ok') {
+    if (usage.buckets?.cursorModels?.label !== 'Cursor Models') {
+      fail('account usage must name the Cursor Models bucket');
+      failed = true;
+    }
+    if (usage.buckets?.otherModels?.label !== 'Other Models') {
+      fail('account usage must name the Other Models bucket');
+      failed = true;
+    }
+    if (usage.plan?.name == null) {
+      fail('account usage should include the plan name when signed in');
+      failed = true;
+    }
+  } else if (usage.status !== 'no-auth' && usage.status !== 'error') {
+    fail(`unexpected account usage status ${usage.status}`);
+    failed = true;
+  }
+  if (!failed) ok('v2 core: Cursor account usage');
 }
 
 // 1e. Browser address bar: URLs are opened, prose is searched.
