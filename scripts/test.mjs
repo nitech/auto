@@ -1466,6 +1466,10 @@ if (existsSync(SRC)) {
     fail('composer pickers must be 16px so iOS does not zoom on tap');
     failed = true;
   }
+  if (!/zoom:\s*0\.75/.test(pickerBlock)) {
+    fail('composer pickers must zoom to 12px visually without dropping below 16px');
+    failed = true;
+  }
   if (!/background:\s*var\(--bg-3\)/.test(pickerBlock) || !/border-radius:\s*8px/.test(pickerBlock)) {
     fail('composer pickers must read as chips (background and rounded edges)');
     failed = true;

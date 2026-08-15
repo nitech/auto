@@ -1063,8 +1063,8 @@ details.think .body {
  * Mode and model sit under the text they govern, as Cursor's chat box has
  * them. A chip background shows where each picker starts and stops. 16px is
  * the floor: iOS zooms the page into any control smaller than that and never
- * zooms back out — a more specific rule here used to beat the mobile 16px
- * override, which is how tapping a picker left the chat magnified.
+ * zooms back out. zoom: 0.75 draws them at 12px without changing the
+ * computed font-size iOS checks — transform would leave a 16px-tall hole.
  */
 .composer-controls {
   display: flex;
@@ -1079,6 +1079,7 @@ details.think .body {
   border-radius: 8px;
   color: var(--muted);
   font-size: 16px;
+  zoom: 0.75;
   padding: 4px 10px;
   max-width: 40%;
   min-width: 0;

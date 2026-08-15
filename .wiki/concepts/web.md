@@ -17,7 +17,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-15T13:14:00Z }
+generated: { by: agent, at: 2026-08-15T14:22:00Z }
 ---
 
 # Web app
@@ -56,9 +56,9 @@ session still accepts another message — it queues. `ask_question` is a
 Question card with real options, not an OTHER tool bar.
 
 Mode and model are chips under the text: a slight background and rounded
-edges so a thumb can see where each picker starts. They are 16px, because
-iOS zooms the page into any control smaller than that and never zooms back
-out.
+edges so a thumb can see where each picker starts. Their font is 16px
+(iOS zooms the page into anything smaller and never zooms back out) and
+`zoom: 0.75` draws them at 12px so they still look like quiet chips.
 
 Mode is Agent, Plan, Debug, Multitask, or Ask — the same five Cursor
 lists. The ring around the box, the send button, and the mode word all
