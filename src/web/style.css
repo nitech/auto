@@ -1042,7 +1042,8 @@ details.think .body {
   background: var(--bg-2);
   border: 1px solid var(--mode-color);
   border-radius: 18px;
-  padding: 8px 10px 10px;
+  /* 6px is enough for the 18px radius; tighter than that clips into the curve. */
+  padding: 4px 6px 6px;
   transition: border-color 0.12s ease;
 }
 
@@ -1068,11 +1069,10 @@ details.think .body {
  */
 .composer-controls {
   display: flex;
-  align-items: center;
+  /* Chips and + share the bottom edge so a 40px attach does not float them. */
+  align-items: flex-end;
   gap: 6px;
-  /* Extra left inset: the 40px attach makes this row taller than the chips,
-     so centering them leaves more space below than a 2px pad leaves on the left. */
-  padding: 0 2px 0 10px;
+  padding: 0 2px;
 }
 
 .composer-controls select {
@@ -1113,7 +1113,7 @@ details.think .body {
   outline: none;
   resize: none;
   max-height: 40vh;
-  padding: 8px 6px;
+  padding: 8px;
   line-height: 1.45;
   /* iOS zooms the page into any field under 16px, and never zooms back out. */
   font-size: 16px;
