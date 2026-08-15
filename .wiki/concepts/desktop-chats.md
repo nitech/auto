@@ -23,7 +23,7 @@ sources:
   - id: outbox
     resource: /src/core/desktop-outbox.mjs
     title: Held messages
-generated: { by: agent, at: 2026-08-15T17:25:00Z }
+generated: { by: agent, at: 2026-08-15T17:30:00Z }
 ---
 
 # Continuing Cursor desktop chats
@@ -77,8 +77,9 @@ you; type 2 is the agent (`text`, thinking, or `toolFormerData`).
 
 Every tool bubble is recorded. Projections then follow Cursor's lanes:
 reads and searches fold into a quiet activity line; edits sit on a
-file-change row; a few internal tools stay off the stream.
-`create_plan` stays a card. See [approvals](approvals.md).
+file-change row; a few internal tools stay off the stream — including
+unnamed MCP placeholders (`mcp--`, `tool`, `MCP: tool`) that the IDE also
+hides. `create_plan` stays a card. See [approvals](approvals.md).
 
 ## Things learned the hard way
 

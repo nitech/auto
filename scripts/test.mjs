@@ -2384,7 +2384,11 @@ if (existsSync(SRC)) {
     );
     check('apply_agent_diff', classifyTool({ title: 'apply_agent_diff' }).lane, 'hide');
     check('mcp placeholder', classifyTool({ title: 'mcp--' }).lane, 'hide');
+    check('nameless mcp tool', classifyTool({ title: 'tool' }).lane, 'hide');
+    check('formatted mcp placeholder', classifyTool({ title: 'MCP: tool' }).lane, 'hide');
+    check('server with nameless tool', classifyTool({ title: 'cursor-ide-browser: tool' }).lane, 'hide');
     check('ask_question is the Question card, not OTHER', classifyTool({ title: 'ask_question' }).lane, 'hide');
+    check('a real mcp call stays a card', classifyTool({ title: 'cursor-ide-browser: browser_cdp' }).lane, 'card');
     check('ACP Edit File stays a card', classifyTool({ title: 'Edit File', toolKind: 'edit' }).lane, 'card');
     check('ls is grouped', isSimpleLs('ls src'), true);
     check('ls with a pipe is not grouped', isSimpleLs('ls | wc'), false);

@@ -25,6 +25,15 @@ const HIDE = new Set([
   'ask_question',
 ]);
 
+/**
+ * Cursor writes an MCP bubble before it knows the server or tool. Those land
+ * as `mcp--` / `tool`, or as `MCP: tool` once toolName has joined the halves.
+ * The IDE draws nothing for them; Auto used to show an OTHER card.
+ */
+function isNamelessMcp(key) {
+  return Boolean(key) && /(?:^|: )tool$/.test(key);
+}
+
 const FILE_CHANGE = {
   edit_file_v2: { label: 'Edit file', short: 'Edited', toolKind: 'edit' },
   edit_file: { label: 'Edit file', short: 'Edited', toolKind: 'edit' },
@@ -98,7 +107,9 @@ function recOf(item) {
  */
 export function classifyTool(rec = {}) {
   const key = keyOf(rec);
-  if (HIDE.has(key)) return { lane: 'hide', toolKind: 'other', label: 'tool', short: 'tool' };
+  if (isNamelessMcp(key) || HIDE.has(key)) {
+    return { lane: 'hide', toolKind: 'other', label: 'tool', short: 'tool' };
+  }
 
   const command = rec.rawInput?.command;
   if (command && isSimpleLs(command)) {
