@@ -11,7 +11,7 @@ sources:
   - id: supervise
     resource: /scripts/supervise.mjs
     title: Supervisor
-generated: { by: agent, at: 2026-08-15T09:36:00Z }
+generated: { by: agent, at: 2026-08-15T15:50:00Z }
 ---
 
 # Host
@@ -42,8 +42,10 @@ Everything else is the static web app.
 
 Clients send `{ op, … }`. The host replies with JSON of a stable shape
 (deflate above 2 KB — a phone replay depends on it). Hello includes
-sessions, recent desktop chats, and approval policies. Attach replays the
-transcript from `fromSeq`.
+sessions, recent desktop chats, and approval policies. The handshake URL
+may carry `session` and `fromSeq`; a named live session is attached even
+with no `fromSeq` (a refresh). An archived or unknown id falls through to
+the active session. Attach then replays the transcript from `fromSeq`.
 
 Ops include `prompt`, `cancel`, `queue.*`, `permission`, `question.answer`,
 `plan.build`, `session.create` / `archive` / `rename` / `mode` / `model` /

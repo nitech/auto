@@ -8,7 +8,7 @@ sources:
   - id: sessions
     resource: /src/core/sessions.mjs
     title: Session manager
-generated: { by: agent, at: 2026-08-15T09:36:00Z }
+generated: { by: agent, at: 2026-08-15T15:50:00Z }
 ---
 
 # Sessions
@@ -43,6 +43,10 @@ There is one active session. Its `folder` is where Telegram messages run.
 Switching only sticks through the session API (`POST /api/session` with a
 folder, or `POST /api/session/active` by id or title). `cd` and a spoken
 "now in repo X" revert on the next message.
+
+The [web](web.md) tab remembers its own open chat (`?session=` and the
+browser). That is not this active id: a Telegram switch must not send a
+refresh of the phone browser to a different conversation.
 
 ## Persistence
 

@@ -1412,6 +1412,33 @@ if (existsSync(SRC)) {
   if (!failed) ok('v2 web: transcript loading marker');
 }
 
+// A refresh used to omit the session from the handshake (lastSeq is 0 on a
+// fresh page), so the host opened whichever chat was active — often not the
+// one this tab had been looking at.
+{
+  const js = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  let failed = false;
+  if (!js.includes('auto.session') || !js.includes('function rememberSession')) {
+    fail('the web client must remember the open session across a reload');
+    failed = true;
+  }
+  if (!js.includes('history.replaceState')) {
+    fail('the open session must live in the URL so a refresh asks for the same chat');
+    failed = true;
+  }
+  const connectAt = js.indexOf('function connect()');
+  const connect = connectAt >= 0 ? js.slice(connectAt, js.indexOf('ws.onopen', connectAt)) : '';
+  if (!connect.includes('rememberedSession')) {
+    fail('connect() must ask for the remembered session on first load, not only on reconnect');
+    failed = true;
+  }
+  if (/if \(state\.sessionId && state\.lastSeq\)/.test(connect)) {
+    fail('a first load has no lastSeq; that must not drop the session from the handshake');
+    failed = true;
+  }
+  if (!failed) ok('v2 web: remembers the open session');
+}
+
 // Composer modes: Cursor's five, coloured the way the IDE colours them.
 {
   const html = readFileSync(join(ROOT, 'src/web/index.html'), 'utf8');
@@ -3540,6 +3567,23 @@ try {
         } else {
           ok(`web: a reconnect re-sends ${caught.records.length} record(s), not the log`);
         }
+      }
+
+      // A refresh has a session id and no fromSeq. That must still open the
+      // named chat, not fall through to whichever one is active.
+      const listed = await fetch(`http://127.0.0.1:${PORT}/api/sessions`, {
+        signal: AbortSignal.timeout(4000),
+      }).then((r) => r.json());
+      const named = listed.sessions?.find((s) => s.id && s.id !== listed.activeId) || {
+        id: full.sessionId,
+      };
+      const byUrl = await attachOnce(`?session=${named.id}`);
+      if (byUrl.sessionId !== named.id) {
+        fail(
+          `handshake with ?session= must attach that chat, got ${byUrl.sessionId} wanted ${named.id}`,
+        );
+      } else {
+        ok('web: a refresh with ?session= opens that chat');
       }
     } catch (e) {
       fail(`attach replay: ${e.message}`);

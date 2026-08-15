@@ -13,7 +13,7 @@ import { readFileSync, existsSync, statSync, writeFileSync, rmSync } from 'node:
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
-import { SessionManager, POLICY } from '../core/sessions.mjs';
+import { SessionManager, POLICY, STATUS } from '../core/sessions.mjs';
 import { BrowserHost } from '../core/browser.mjs';
 import { TelegramBridge } from '../core/telegram.mjs';
 import { listProjects, workspaceIdFor, foldersByWorkspaceId } from '../core/projects.mjs';
@@ -645,13 +645,16 @@ wss.on('connection', async (ws, req) => {
     policies: Object.values(POLICY),
     chats: recentChats(),
   });
-  // A reconnecting client says what it already has, in the URL, because the
-  // first thing this socket does is replay and there is no room for a question
-  // first. A dropped connection on a phone is a normal event; re-sending a
-  // conversation it is still showing is not.
+  // A client says which chat it was in, in the URL, because the first thing
+  // this socket does is replay and there is no room for a question first. A
+  // refresh and a dropped connection both come through here; without the
+  // session id, this would open whichever chat is active, not the one the tab
+  // had. An archived id is treated as missing.
   const asked = new URL(req.url || '/', 'http://localhost').searchParams;
   const wanted = asked.get('session');
-  const known = wanted && sessions.get(wanted) ? wanted : sessions.activeId;
+  const askedMeta = wanted && sessions.get(wanted);
+  const known =
+    askedMeta && askedMeta.status !== STATUS.archived ? wanted : sessions.activeId;
   try {
     await OPS.attach(ws, state, {
       sessionId: known,

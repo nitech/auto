@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-15
+* **Update**: The web tab remembers the open chat (`?session=` and the browser) so a refresh or returning to Auto opens the same conversation, not the host's active session.
 * **Update**: Settings is a gear + label at the bottom of the session rail, and the panel fills the screen. The top-bar ⋯ is gone.
 * **Update**: A host restart mid-turn no longer marks Cursor's finished bubbles as already in the transcript, so the closing answer still reaches the phone.
 * **Update**: Composer mode/model chips stay 16px for iOS but `zoom: 0.75` so they look like 12px.

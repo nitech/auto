@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Web app
-description: PWA that attaches to a session, replays the transcript, and holds no authoritative state.
+description: PWA that attaches to a session, replays the transcript, and remembers which chat was open.
 tags: [web, pwa]
 status: stable
 sources:
@@ -17,7 +17,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-15T15:40:00Z }
+generated: { by: agent, at: 2026-08-15T15:50:00Z }
 ---
 
 # Web app
@@ -25,6 +25,11 @@ generated: { by: agent, at: 2026-08-15T15:40:00Z }
 A projection of the host's [transcript](transcripts.md). It attaches over
 the WebSocket, replays from a sequence number, and renders records as they
 stream. A reload or a dropped connection costs nothing.
+
+The open chat is this tab's, not the host's active session. A refresh puts
+`?session=` on the URL and the handshake asks for that id even when the page
+has nothing to replay yet; opening Auto at `/` (the PWA start URL) reads the
+same id from the browser. Telegram `/switch` does not steal the tab.
 
 Open `http://<tailscale-ip>:4331/`. It is a PWA. Mode and model live beside
 the composer, as in Cursor; approval policy lives in the top bar (and in

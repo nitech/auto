@@ -2,8 +2,9 @@
  * Auto v2 web client.
  *
  * A projection of the host's transcript: it attaches to a session, replays
- * from a sequence number, and renders records as they stream. It holds no
- * authoritative state, so a reload or a dropped connection costs nothing.
+ * from a sequence number, and renders records as they stream. The transcript
+ * itself is not stored here, so a reload or a dropped connection costs
+ * nothing; which chat was open is remembered, so you come back to it.
  */
 
 import {
@@ -1501,12 +1502,44 @@ function sendOp(msg) {
   if (state.ws?.readyState === 1) state.ws.send(JSON.stringify(msg));
 }
 
+/**
+ * Which chat this tab was looking at. The host's active session is shared with
+ * Telegram, so it is a poor stand-in: a /switch there, or another tab, would
+ * steal this one on reload. The URL is this tab's; localStorage is for opening
+ * Auto at `/` (the PWA start URL) and still landing in the same conversation.
+ */
+const SESSION_KEY = 'auto.session';
+
+function rememberedSession() {
+  try {
+    const fromUrl = new URLSearchParams(location.search).get('session');
+    if (fromUrl) return fromUrl;
+    return localStorage.getItem(SESSION_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function rememberSession(id) {
+  if (!id) return;
+  try {
+    localStorage.setItem(SESSION_KEY, id);
+  } catch {
+    /* private mode: the choice lasts as long as the page does */
+  }
+  const url = new URL(location.href);
+  if (url.searchParams.get('session') === id) return;
+  url.searchParams.set('session', id);
+  history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
 function attach(sessionId) {
   if (sessionId === state.sessionId) {
     setRail(false);
     return;
   }
   state.sessionId = sessionId;
+  rememberSession(sessionId);
   state.lastSeq = 0;
   els.transcript.innerHTML = '';
   state.toolCards.clear();
@@ -1529,9 +1562,12 @@ function connect() {
   // socket, so this has to travel with the handshake rather than be asked for
   // afterwards; without it every dropped connection redraws the conversation
   // from scratch, which on a flaky phone connection is most of them.
+  // A first load has no lastSeq — that used to omit the session entirely, and
+  // the host then opened whichever chat was active, not the one this tab had.
   const q = new URLSearchParams();
-  if (state.sessionId && state.lastSeq) {
-    q.set('session', state.sessionId);
+  const sessionId = state.sessionId || rememberedSession();
+  if (sessionId) q.set('session', sessionId);
+  if (state.sessionId && sessionId === state.sessionId && state.lastSeq) {
     q.set('fromSeq', String(state.lastSeq));
   }
   const query = q.toString();
@@ -1587,6 +1623,7 @@ function connect() {
       const fresh =
         gap || (msg.replaced ?? (msg.sessionId !== state.sessionId || msg.records[0]?.seq === 1));
       state.sessionId = msg.sessionId;
+      rememberSession(msg.sessionId);
       if (fresh) {
         els.transcript.innerHTML = '';
         state.toolCards.clear();
