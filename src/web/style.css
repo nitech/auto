@@ -1115,7 +1115,8 @@ details.think .body {
   /* Horizontal inset lives on the box, plus a little extra so the placeholder
      clears the 18px corner. The picker row matches this on the left. */
   padding: 4px 0 4px 4px;
-  min-height: 32px;
+  /* Two lines at rest: padding + 2 × 1.45 line-height. Send sits on the last line. */
+  min-height: calc(8px + 2.9em);
   line-height: 1.45;
   /* iOS zooms the page into any field under 16px, and never zooms back out. */
   font-size: 16px;
