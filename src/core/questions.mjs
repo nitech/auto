@@ -42,16 +42,22 @@ export function indexesForAnswer(questions, selections) {
  * Does this control's text belong to this option label?
  *
  * Cursor truncates long rows, so the leaf is often a prefix of the label we
- * stored from the database — `startsWith` the other way around.
+ * stored from the database — `startsWith` the other way around. It also letters
+ * the rows ("A Red"), and that prefix is not part of the stored label.
  */
 export function optionMatches(label, text) {
   const clean = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const same = (needle, name) => {
+    if (!needle || !name) return false;
+    if (name === needle || name.startsWith(needle) || needle.startsWith(name + ' ')) return true;
+    // A truncated row is a prefix of the label. Short crumbs ("the", "A") are not.
+    return name.length >= 12 && needle.startsWith(name);
+  };
   const needle = clean(label);
   const name = clean(text);
-  if (!needle || !name) return false;
-  if (name === needle || name.startsWith(needle) || needle.startsWith(name + ' ')) return true;
-  // A truncated row is a prefix of the label. Short crumbs ("the", "A") are not.
-  return name.length >= 12 && needle.startsWith(name);
+  if (same(needle, name)) return true;
+  const stripped = name.replace(/^(?:[a-z]|\d+)[.)]?\s+/, '');
+  return stripped !== name && same(needle, stripped);
 }
 
 /**

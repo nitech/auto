@@ -1013,9 +1013,10 @@ export class CursorCdp {
    * Answer a question Cursor is putting to a person, by pressing the options
    * they picked and then Continue — or Skip, which answers nothing.
    *
-   * The card is found by the bubble id Auto already stored, so a question in
-   * another chat cannot be the one that gets pressed. The chat is brought
-   * forward first: a card in a background tab is not on screen to click.
+   * The bubble is scrolled into view first (a virtualized card is not in the
+   * DOM to click), then the option rows are pressed *where they are* with a
+   * real mouse. They are lettered pointer-cursor rows, not radios, and a
+   * dispatched click on the word "Red" does not select the row.
    */
   async answer({ threadId, askId, labels = [], indexes = [], texts = [], skip = false }) {
     if (!askId) return { status: 'error', reason: 'no question was named' };
@@ -1036,19 +1037,16 @@ export class CursorCdp {
 
     return this.#withThread(threadId, async (window) => {
       const done = await window.answer({ askId, labels, indexes, texts, skip });
-      if (done?.pressed) {
-        return { status: 'pressed', selected: done.selected || [], submitted: done.submitted };
+      const points = done?.press?.length ? done.press : done?.at ? [done.at] : [];
+      // Question rows ignore a dispatched click the same way the pickers do:
+      // locate, then press where they sit. A click on the leaf span is not
+      // the row, and clicking twice would toggle a radio off again.
+      for (const at of points) {
+        await window.mouseAt(at);
+        await wait(this.settleMs);
       }
-      // Some of Cursor's controls ignore a dispatched click and only believe a
-      // real mouse — the pickers taught us that. If the script found where to
-      // press, try there.
-      if (done?.at) {
-        await window.mouseAt(done.at);
-        return {
-          status: 'pressed',
-          selected: done.selected || [],
-          submitted: done.submitted || 'Continue',
-        };
+      if (done?.pressed || points.length) {
+        return { status: 'pressed', selected: done.selected || [], submitted: done.submitted };
       }
       return {
         status: 'not-pressed',

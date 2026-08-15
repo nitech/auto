@@ -14,7 +14,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: How desktop tools are drawn
-generated: { by: agent, at: 2026-08-15T12:35:00Z }
+generated: { by: agent, at: 2026-08-15T13:05:00Z }
 ---
 
 # Approvals, questions, and plans
@@ -59,8 +59,10 @@ deliberate action instead.
 questions. The phone letters them (`A`, or `1A` when there are several) so
 a tap or a typed `A` / `1B` presses that option in Cursor and Continue.
 `Skip` is still there, on the question card, not as a permission. Cursor
-truncates long option rows; Auto matches a prefix of the stored label, and
-falls back to the Nth option on the card when the words are gone. Anything
+letters and truncates the rows in the window ("A Red", or a long label cut
+short); Auto strips the letter, matches a prefix, and falls back to the Nth
+row above Continue. The press is a real mouse on the row — a click on the
+word is not enough, and was the miss behind "no option says Red". Anything
 that is not a lettered pick is a message, not an answer — a thought that
 happened to start with a letter must not vanish into the question.
 Answering in the IDE first still works; Auto notices and marks it answered.

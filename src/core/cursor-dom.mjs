@@ -676,11 +676,11 @@ ${HELPERS}
 /**
  * Answer a question card in the chat, by the options a person picked.
  *
- * The card is the bubble Cursor drew for `ask_question`. Auto already knows its
- * id and the labels on its options — those came out of the desktop's database —
- * so this finds that bubble, presses the labels, and then Continue (or Skip).
- * Labels are sentences, far too long for the approval vocabulary, which is why
- * they are not found as generic controls.
+ * Locates rather than clicks: the rows ignore a dispatched click the same way
+ * the model picker does, so the caller presses where they sit with a real mouse.
+ * They are often not buttons — lettered pointer-cursor rows, sometimes a sibling
+ * of the `ask_question` bubble rather than inside it — which is why searching
+ * only for `role=radio` inside `[data-message-id]` missed "Red".
  *
  * @param {object} opts
  * @param {string} opts.askId
@@ -690,6 +690,7 @@ ${HELPERS}
  */
 export const answerCard = ({ askId, labels = [], indexes = [], texts = [], skip = false }) => `(() => {
 ${HELPERS}
+${PRESSABLE}
   const pane = __pane();
   const clean = (s) => String(s ?? '').replace(/\\s+/g, ' ').trim();
   const wanted = ${JSON.stringify(String(askId || ''))};
@@ -703,118 +704,106 @@ ${HELPERS}
     if (!width || !height) return null;
     return { x: Math.round(x + width / 2), y: Math.round(y + height / 2) };
   };
-  const matchesOption = (needle, name) => {
+  const same = (needle, name) => {
     const want = clean(needle).toLowerCase();
     const have = clean(name).toLowerCase();
     if (!want || !have) return false;
     if (have === want || have.startsWith(want) || want.startsWith(have + ' ')) return true;
-    return have.length >= 12 && want.startsWith(have);
+    if (have.length >= 12 && want.startsWith(have)) return true;
+    const stripped = have.replace(/^(?:[a-z]|\\d+)[.)]?\\s+/, '');
+    if (stripped === have) return false;
+    if (stripped === want || stripped.startsWith(want) || want.startsWith(stripped + ' ')) return true;
+    return stripped.length >= 12 && want.startsWith(stripped);
   };
+  const isSubmit = (name) => /^(skip|continue|submit)\\b/i.test(clean(name));
+  const named = (c) => c.label || c.text;
 
+  // Bring the bubble on screen so a virtualized card actually exists to press.
   let card = null;
-  for (const s of ${list(SELECTORS.message)}) {
-    for (const el of pane.querySelectorAll(s)) {
-      if (el.getAttribute('data-message-id') === wanted) card = el;
-    }
-    if (card) break;
+  for (const el of pane.querySelectorAll('[data-message-id], [data-find-bubble-ids], [data-tool-call-id]')) {
+    const ids = [
+      el.getAttribute('data-message-id'),
+      el.getAttribute('data-find-bubble-ids'),
+      el.getAttribute('data-tool-call-id'),
+    ].filter(Boolean);
+    if (ids.some((id) => id === wanted || String(id).includes(wanted))) card = el;
   }
-  // The id is the honest handle, but a Cursor update can stop writing it. Fall
-  // back to the first option's words: those belong to this card and no other.
   if (!card) {
     const needle = labels[0] || '';
     if (needle) {
       const holders = [...pane.querySelectorAll('div,span,p,li,label,button')].filter((el) => {
         const t = clean(el.textContent);
-        return matchesOption(needle, t) &&
-          ![...el.children].some((k) => matchesOption(needle, clean(k.textContent)));
+        return same(needle, t) && ![...el.children].some((k) => same(needle, clean(k.textContent)));
       });
-      const holder = holders[holders.length - 1];
-      card = holder?.closest(${JSON.stringify(SELECTORS.message[0])}) || holder;
+      card = holders.at(-1)?.closest('[data-message-id], [data-find-bubble-ids]') || holders.at(-1);
     }
   }
-  if (!card) return Promise.resolve({ pressed: false, reason: 'the question is not on screen' });
-  card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  if (card) card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 
-  const optionNodes = () =>
-    [...card.querySelectorAll('button, [role="button"], [role="radio"], [role="checkbox"], [role="option"]')].filter(
-      (el) => {
-        const name = clean(el.getAttribute('aria-label') || el.textContent);
-        if (!name || /^(skip|continue|submit)$/i.test(name)) return false;
-        if (el.disabled || el.getAttribute('aria-disabled') === 'true') return false;
-        return true;
-      },
-    );
+  const matchesControl = (c, word) =>
+    same(word, named(c)) || same(word, c.label) || same(word, c.text);
 
-  const pressWord = (scope, word) => {
-    const want = clean(word).toLowerCase();
-    if (!want) return null;
-    const nodes = [...scope.querySelectorAll('button, [role="button"], [role="radio"], [role="checkbox"], [role="option"]')];
-    const matches = nodes.filter((el) => {
-      const name = clean(el.getAttribute('aria-label') || el.textContent);
-      return matchesOption(word, name);
-    });
-    const target = matches[matches.length - 1];
-    if (!target || target.disabled || target.getAttribute('aria-disabled') === 'true') return null;
-    target.click();
-    return { name: clean(target.getAttribute('aria-label') || target.textContent), at: spot(target) };
+  const locate = (word) => {
+    const all = __pressable().filter((c) => !c.disabled);
+    const submitBtn = all.filter((c) => isSubmit(named(c))).at(-1);
+    const submitTop = submitBtn?.el.getBoundingClientRect().top ?? Infinity;
+    const hits = all.filter((c) => matchesControl(c, word) && !isSubmit(named(c)));
+    const above = hits.filter((c) => c.el.getBoundingClientRect().top < submitTop);
+    const target = (above.length ? above : hits).at(-1);
+    const at = target ? spot(target.el) : null;
+    return at ? { name: named(target), at } : null;
   };
 
-  const pressLabel = (label) => {
-    const needle = clean(label);
-    if (!needle) return null;
-    const hit = pressWord(card, needle);
-    if (hit) return hit;
-    // Options are often a row, not a button: the deepest element holding the
-    // words, then the pressable thing around it.
-    const holders = [...card.querySelectorAll('div,span,p,li,label,button')].filter((el) =>
-      matchesOption(needle, clean(el.textContent)),
-    );
-    const exact = holders.filter((el) => clean(el.textContent) === needle);
-    const pool = exact.length ? exact : holders;
-    const leaf = pool.filter((el) => ![...el.children].some((k) => pool.includes(k))).pop();
-    if (!leaf) return null;
-    const target =
-      leaf.closest('button, [role="button"], [role="radio"], [role="checkbox"], [role="option"]') || leaf;
-    target.click();
-    return { name: needle, at: spot(target) };
-  };
-
-  const pressNth = (n) => {
+  const locateNth = (n) => {
     if (!Number.isInteger(n) || n < 0) return null;
-    const nodes = optionNodes();
-    const target = nodes[n];
-    if (!target) return null;
-    target.click();
-    return { name: clean(target.getAttribute('aria-label') || target.textContent), at: spot(target) };
+    const all = __pressable().filter((c) => !c.disabled && !isSubmit(named(c)));
+    const submitBtn = __pressable().filter((c) => isSubmit(named(c))).at(-1);
+    const submitTop = submitBtn?.el.getBoundingClientRect().top ?? Infinity;
+    const rows = all
+      .filter((c) => c.el.getBoundingClientRect().top < submitTop)
+      .sort((a, b) => a.el.getBoundingClientRect().top - b.el.getBoundingClientRect().top);
+    const target = rows[n];
+    const at = target ? spot(target.el) : null;
+    return at ? { name: named(target), at } : null;
   };
 
-  const pressSubmit = async (word) => {
-    for (let look = 0; look < 8; look += 1) {
-      const hit = pressWord(card, word) || pressWord(pane, word);
-      if (hit) return hit;
-      await pause(40);
-    }
-    return null;
+  const locateSubmit = (word) => {
+    const target = __pressable()
+      .filter((c) => !c.disabled && same(word, named(c)))
+      .at(-1);
+    const at = target ? spot(target.el) : null;
+    return at ? { name: named(target), at } : null;
   };
 
   return (async () => {
+    await pause(80);
+    const offered = __pressable();
+    if (
+      !card &&
+      !offered.some((c) => isSubmit(named(c)) || labels.some((l) => matchesControl(c, l)))
+    ) {
+      return { pressed: false, reason: 'the question is not on screen' };
+    }
+
     if (skip) {
-      const hit = await pressSubmit('Skip');
+      const hit = locateSubmit('Skip');
       return hit
-        ? { pressed: true, selected: [], submitted: 'Skip', at: hit.at }
+        ? { pressed: true, selected: [], submitted: 'Skip', at: hit.at, press: [hit.at] }
         : { pressed: false, reason: 'no Skip control on the card' };
     }
 
     const selected = [];
+    const press = [];
     for (const [i, label] of labels.entries()) {
-      const hit = pressLabel(label) || pressNth(indexes[i] ?? i);
+      const hit = locate(label) || locateNth(indexes[i] ?? i);
       if (!hit) return { pressed: false, reason: 'no option says ' + JSON.stringify(label), selected };
       selected.push(label);
-      await pause(40);
+      press.push(hit.at);
     }
 
+    const scope = card || pane;
     for (const [i, text] of texts.entries()) {
-      const box = [...card.querySelectorAll('textarea, input[type="text"]')][i];
+      const box = [...scope.querySelectorAll('textarea, input[type="text"]')][i];
       if (!box || !text) continue;
       box.focus();
       box.value = text;
@@ -822,10 +811,10 @@ ${HELPERS}
       box.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
-    const hit = (await pressSubmit('Continue')) || (await pressSubmit('Submit'));
-    return hit
-      ? { pressed: true, selected, submitted: hit.name, at: hit.at }
-      : { pressed: false, reason: 'no Continue control on the card', selected };
+    const hit = locateSubmit('Continue') || locateSubmit('Submit');
+    if (!hit) return { pressed: false, reason: 'no Continue control on the card', selected };
+    press.push(hit.at);
+    return { pressed: true, selected, submitted: hit.name, at: hit.at, press };
   })();
 })()`;
 

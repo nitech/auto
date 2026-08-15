@@ -934,6 +934,17 @@ if (existsSync(SRC)) {
     if (nth.status !== 'pressed' || missingWords.pressed.at(-1) !== `${long}|Continue`) {
       fail(`the Nth option is the fallback when the label is missing: ${JSON.stringify(nth)}`);
     }
+    const lettered = new FakeWindow({ threadId: THREAD, hasComposer: true });
+    lettered.optionNames = ['A Red', 'B Blue'];
+    lettered.optionMatch = { optionMatches };
+    const letterHit = await machine({ lettered }).answer({
+      threadId: THREAD,
+      askId: 'b9',
+      labels: ['Red'],
+    });
+    if (letterHit.status !== 'pressed') {
+      fail(`a lettered row should still press: ${JSON.stringify(letterHit)}`);
+    }
 
     if (!isApproval('Run command') || !isApproval('Skip') || !isApproval('Allow once')) {
       fail('approval vocabulary should recognise Cursor asking');
@@ -2498,6 +2509,14 @@ if (existsSync(SRC)) {
     }
     if (optionMatches(longOpt, 'the') || optionMatches(longOpt, 'Red')) {
       fail('a short crumb is not an option match');
+      failed = true;
+    }
+    if (!optionMatches('Red', 'A Red') || !optionMatches('Blue', 'B. Blue')) {
+      fail('a lettered row still belongs to its label');
+      failed = true;
+    }
+    if (optionMatches('Red', 'Bored') || optionMatches('Red', 'A')) {
+      fail('a letter prefix is not an excuse to match the wrong word');
       failed = true;
     }
 

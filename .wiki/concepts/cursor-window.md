@@ -17,7 +17,7 @@ sources:
   - id: clipboard
     resource: /src/core/clipboard.mjs
     title: Image paste via clipboard
-generated: { by: agent, at: 2026-08-15T12:35:00Z }
+generated: { by: agent, at: 2026-08-15T13:05:00Z }
 ---
 
 # The Cursor window
@@ -51,10 +51,14 @@ generated. What a conversation says is excluded, or a message beginning
 Queue icon buttons carry no words — those alone are found by `codicon`
 name (VS Code's icon vocabulary).
 
-A question card is pressed by the option labels stored from the desktop
-database, not by the approval vocabulary. Long labels are truncated in the
-window; a prefix still counts, and the Nth option on the card is the
-fallback. Skip and Continue on that bubble are the question's own buttons.
+A question card is pressed *where the option rows sit*, with a real mouse —
+they ignore a dispatched click the same way the pickers do. The rows are
+lettered pointer-cursor controls ("A Red"), often a sibling of the
+`ask_question` bubble rather than a `role=radio` inside it, which is why
+searching that bubble for the word "Red" missed. Long labels are truncated;
+a prefix still counts, a letter prefix is stripped, and the Nth row above
+Continue is the fallback. Skip and Continue on that card are the question's
+own buttons.
 
 When Cursor's UI moves, `src/core/cursor-dom.mjs` is the only file that
 should need to change. `spike/cdp-probe.mjs --discover` is how to find the
