@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-15
+* **Update**: Changing a desktop chat's model keeps the web picker on that model — it used to store Cursor's label as the value and go blank.
 * **Update**: Changing a desktop chat's model no longer lets Cursor auto-send the next queued message when the switch ends a paused turn (e.g. high demand) — the queue is held first.
 * **Update**: Unnamed MCP placeholders (`MCP: tool`) are hidden like in the IDE, instead of showing as OTHER cards.
 * **Update**: A submitted message no longer appears two or three times — the web keeps echo credits for the optimistic bubble, and the host expects Cursor's copy on queued and held sends too.

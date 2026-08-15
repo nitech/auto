@@ -1505,6 +1505,34 @@ function renderModels(models) {
 }
 
 /**
+ * Point the model <select> at a session's choice.
+ *
+ * Options are keyed by model id. After a desktop switch Auto used to store
+ * Cursor's label instead, which matched no option and left the control blank
+ * even though a model was selected. Fall back to the friendly name (and to a
+ * label Cursor's menu would show) so an already-wrong stored value still paints.
+ */
+function selectModel(modelId, modelName) {
+  if (!els.model.options.length) return;
+  const options = [...els.model.options];
+  if (modelId && options.some((o) => o.value === modelId)) {
+    els.model.value = modelId;
+    return;
+  }
+  const name = String(modelName || modelId || '').trim();
+  if (!name) return;
+  const byName = options.find((o) => o.textContent === name);
+  if (byName) {
+    els.model.value = byName.value;
+    return;
+  }
+  const byPrefix = options
+    .filter((o) => o.textContent && name.toLowerCase().startsWith(o.textContent.toLowerCase()))
+    .sort((a, b) => b.textContent.length - a.textContent.length)[0];
+  if (byPrefix) els.model.value = byPrefix.value;
+}
+
+/**
  * Cursor's current modes, in the order the IDE lists them. The catalog from
  * an ACP session may only name three of these; Debug and Multitask still
  * belong in the picker, because a desktop chat has them.
@@ -1574,7 +1602,7 @@ function applyMeta(meta) {
   els.policy.value = meta.policy || 'ask';
   paintMode(meta.mode);
   // A session that has never run has no model yet; leave the picker as-is.
-  if (meta.model && els.model.options.length) els.model.value = meta.model;
+  if (meta.model) selectModel(meta.model, meta.modelName);
   setBusy(meta.status === 'busy');
   els.status.textContent = meta.status === 'busy' ? 'working' : meta.status || 'idle';
   els.status.className = `chip ${meta.status === 'busy' ? 'busy' : meta.status === 'error' ? 'error' : ''}`;
@@ -1821,7 +1849,7 @@ function connect() {
       renderModels(msg.catalog?.models);
       renderModes(msg.catalog?.modes);
       const mine = state.sessions.find((s) => s.id === state.sessionId);
-      if (mine?.model) els.model.value = mine.model;
+      if (mine?.model) selectModel(mine.model, mine.modelName);
       return;
     }
 

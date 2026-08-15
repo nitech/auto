@@ -1560,6 +1560,10 @@ if (existsSync(SRC)) {
     fail('app.js must paint the composer from the selected mode');
     failed = true;
   }
+  if (!js.includes('function selectModel') || !js.includes('selectModel(meta.model, meta.modelName)')) {
+    fail('the model picker must resolve by id or Cursor label, or it goes blank after a switch');
+    failed = true;
+  }
   if (!tg.includes('debug|multitask|ask') && !tg.includes("'debug', 'multitask', 'ask'")) {
     fail('Telegram /mode must accept debug and multitask');
     failed = true;
@@ -1710,7 +1714,7 @@ if (existsSync(SRC)) {
 
 // A prompt Auto typed into Cursor must not come back as a second bubble.
 {
-  const { echoKey } = await import('../src/core/sessions.mjs');
+  const { echoKey, modelIdFor } = await import('../src/core/sessions.mjs');
   let failed = false;
   if (echoKey("auto's ability") !== echoKey('auto\u2019s ability')) {
     fail('a curly apostrophe is the same prompt as a straight one');
@@ -1722,6 +1726,22 @@ if (existsSync(SRC)) {
   }
   if (echoKey('ok') === echoKey('okay')) {
     fail('different prompts must stay different');
+    failed = true;
+  }
+  const catalog = [
+    { modelId: 'claude-opus-5[thinking=true]', name: 'Opus 5' },
+    { modelId: 'kimi-k3[]', name: 'Kimi K3' },
+  ];
+  if (modelIdFor('kimi-k3[]', 'Kimi K3', catalog) !== 'kimi-k3[]') {
+    fail('a tapped model id must stay the stored value after a desktop switch');
+    failed = true;
+  }
+  if (modelIdFor('Kimi K3', 'Kimi K3', catalog) !== 'kimi-k3[]') {
+    fail('a Cursor model label must resolve back to a model id');
+    failed = true;
+  }
+  if (modelIdFor('x', 'Opus 5 High', catalog) !== 'claude-opus-5[thinking=true]') {
+    fail('a variant label must resolve to its model row');
     failed = true;
   }
   if (!failed) ok('v2 core: desktop echo matching');

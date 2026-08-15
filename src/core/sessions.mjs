@@ -43,6 +43,28 @@ export function echoKey(text) {
     .trim();
 }
 
+/**
+ * The model id the web picker needs after a desktop switch.
+ *
+ * Cursor's menu only speaks names ("Opus 5 High"); the <select> is keyed by
+ * ids (`claude-opus-5[thinking=true]`). Prefer the id that was asked for; fall
+ * back to matching Cursor's label against the catalog so a typed name or an
+ * older stored label does not blank the control.
+ */
+export function modelIdFor(wanted, cursorLabel, models = []) {
+  const asked = String(wanted || '');
+  if (asked.includes('[') || asked === 'default[]') return asked;
+  const list = models || [];
+  const hit =
+    list.find((m) => m.modelId === asked) ||
+    list.find((m) => m.name === asked) ||
+    list.find((m) => m.name === cursorLabel) ||
+    list
+      .filter((m) => m.name && String(cursorLabel || '').toLowerCase().startsWith(String(m.name).toLowerCase()))
+      .sort((a, b) => String(b.name).length - String(a.name).length)[0];
+  return hit?.modelId || asked || String(cursorLabel || '') || null;
+}
+
 export const STATUS = {
   idle: 'idle',
   busy: 'busy',
@@ -998,7 +1020,13 @@ export class SessionManager extends EventEmitter {
 
     if (result.status === 'set' || result.status === 'already') {
       const now = result.now || result.was;
-      this.#update(id, picker === 'mode' ? { mode: now } : { model: now, modelName: now });
+      if (picker === 'mode') {
+        this.#update(id, { mode: now });
+      } else {
+        // The web picker is keyed by model id; Cursor's menu only speaks names.
+        // Storing the name as `model` left the <select> blank after a switch.
+        this.#update(id, { model: this.#modelIdFor(wanted, now), modelName: now });
+      }
       this.#record(id, KIND.notice, {
         text:
           result.status === 'already'
@@ -1037,6 +1065,10 @@ export class SessionManager extends EventEmitter {
     if (!asked.includes('[')) return asked;
     if (asked === 'default[]') return 'Auto';
     return this.catalog?.models?.find((m) => m.modelId === asked)?.name || asked.replace(/\[.*$/, '');
+  }
+
+  #modelIdFor(wanted, cursorLabel) {
+    return modelIdFor(wanted, cursorLabel, this.catalog?.models);
   }
 
   /** Say why a picker would not take a choice, in words worth reading. */

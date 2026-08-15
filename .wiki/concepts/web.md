@@ -17,7 +17,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-15T17:15:00Z }
+generated: { by: agent, at: 2026-08-15T17:50:00Z }
 ---
 
 # Web app
@@ -82,7 +82,9 @@ Mode is Agent, Plan, Debug, Multitask, or Ask — the same five Cursor
 lists. The ring around the box, the send button, and the mode word all
 take that mode's colour (blue, amber, red, purple, green), so a glance
 says which one is in force. An ACP catalog that only names three does
-not drop Debug or Multitask from the picker.
+not drop Debug or Multitask from the picker. The model chip is keyed by
+model id; after a desktop switch Auto keeps that id (and Cursor's label
+as the name) so the control does not go blank.
 
 ## Related
 
