@@ -17,7 +17,7 @@ sources:
   - id: clipboard
     resource: /src/core/clipboard.mjs
     title: Image paste via clipboard
-generated: { by: agent, at: 2026-08-15T13:30:00Z }
+generated: { by: agent, at: 2026-08-16T06:35:00Z }
 ---
 
 # The Cursor window
@@ -37,7 +37,7 @@ has scrolled into view.
   after it has proved which chat it is showing (id in markup, or the
   messages on screen looked up in the desktop database).
 - **Never leave a mess.** If the box will not send, the typed text is taken
-  back out and the message goes to the bridge or the [outbox](desktop-chats.md).
+  back out and the message goes to the [bridge](desktop-bridge.md) or its outbox.
 
 `force` exists only for putting a window back where it was.
 
@@ -98,5 +98,6 @@ closes every window. It is the only way a new session can appear in the IDE.
 ## Related
 
 - [Desktop chats](desktop-chats.md)
+- [Desktop bridge](desktop-bridge.md)
 - [Queue](queue.md)
 - [Approvals](approvals.md)

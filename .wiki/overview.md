@@ -14,7 +14,7 @@ sources:
   - id: host
     resource: /src/server/index.mjs
     title: Host process
-generated: { by: agent, at: 2026-08-15T09:36:00Z }
+generated: { by: agent, at: 2026-08-16T06:35:00Z }
 ---
 
 # Auto
@@ -31,8 +31,10 @@ is the truth; clients replay from a sequence number.
 ## Two kinds of session
 
 - **Desktop** — a chat in Cursor's own window. Auto types into it (debug
-  port first, then the desktop bridge, then an outbox) and reads replies from
-  the desktop database. See [desktop chats](concepts/desktop-chats.md) and
+  port first, then the [desktop bridge](concepts/desktop-bridge.md), then an
+  outbox) and reads replies from the desktop database
+  ([threads](concepts/desktop-threads.md)). See
+  [desktop chats](concepts/desktop-chats.md) and
   [the Cursor window](concepts/cursor-window.md).
 - **ACP** — a `cursor-agent acp` subprocess, resumable via `session/load`.
   Used when a desktop chat cannot be started. See [ACP](concepts/acp.md).
@@ -47,6 +49,7 @@ again — that closes every window. Only then does it fall back to ACP.
 | Surface | Role |
 | --- | --- |
 | [Host](concepts/host.md) | HTTP, WebSocket, session API, restart |
+| [Supervise](concepts/supervise.md) | Keep the host alive across crash and reboot |
 | [Web](concepts/web.md) | PWA that replays the transcript |
 | [Telegram](concepts/telegram.md) | Prompt, watch, approve, switch, restart |
 | [Browser](concepts/browser.md) | Real Chrome on this machine, live frames only |
@@ -54,10 +57,11 @@ again — that closes every window. Only then does it fall back to ACP.
 
 ## Standing rules
 
-- Access is Tailscale; Auto has no login of its own.
+- [Access](concepts/access.md) is Tailscale; Auto has no login of its own.
 - One Telegram poller. A second host with the bot token splits messages.
   Develop with `npm run dev` (port 4340, Telegram off).
 - Never host Auto in a Cursor agent background shell — those get killed.
+  Use [supervise](concepts/supervise.md).
 - Skills, docs, and this wiki need no host restart. Anything under `src/`
   does: `POST /api/restart`, Telegram `/restart`, or the web ♻.
 
@@ -67,4 +71,5 @@ again — that closes every window. Only then does it fall back to ACP.
 - [Projects](concepts/projects.md)
 - [Approvals, questions, plans](concepts/approvals.md)
 - [Queue](concepts/queue.md)
+- [Tool lanes](concepts/tool-lanes.md)
 - [Skills and workflow](concepts/skills.md)

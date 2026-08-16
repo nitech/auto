@@ -11,7 +11,7 @@ sources:
   - id: map
     resource: /src/core/map-updates.mjs
     title: ACP update mapping
-generated: { by: agent, at: 2026-08-15T14:43:00Z }
+generated: { by: agent, at: 2026-08-16T06:35:00Z }
 ---
 
 # Transcripts
@@ -37,6 +37,24 @@ worth replaying. See [Browser](browser.md).
 Renderers ignore kinds they do not know. `turn_end` carries `durationMs` when
 the host saw the turn start, so a replay can still say "Worked for 7m 3s".
 
+## ACP `session/update` → record
+
+| Update kind | Transcript kind |
+| --- | --- |
+| `agent_message_chunk` | `agent_delta` |
+| `agent_thought_chunk` | `agent_thought` |
+| `user_message_chunk` | `user_message` (echoed) |
+| `tool_call` | `tool_call` |
+| `tool_call_update` | `tool_update` |
+| `plan` | `plan` |
+| `session_info_update` | `session_info` |
+| `available_commands_update` | `commands` |
+| `current_mode_update` | `session_info` (modeId) |
+| anything else | `acp:<kind>` with raw payload |
+
+Desktop mirroring writes the same record vocabulary from
+[threads](desktop-threads.md), not through this mapper.
+
 ## Replay
 
 The host sends the **end** of the log first (about 1200 records), not the
@@ -51,16 +69,12 @@ On a desktop chat, Cursor writes a reply into its bubble as it is spoken, so
 what is in the database mid-turn is a prefix. Prose is unfinished business
 while the chat is generating: re-read as it grows, announce again only when
 it changed, and put only the new tail into the transcript (clients append).
-A bubble Cursor rewrites rather than extends goes out whole.
-
-A host restart used to seed the watcher with every bubble Cursor had
-already finished. That dropped the closing prose of a turn that ended
-while Auto was down — the IDE had the summary, the phone stopped at the
-last command. After a restart, an open turn only skips bubbles the
-transcript actually holds.
+A bubble Cursor rewrites rather than extends goes out whole. Details and
+restart catch-up live on [desktop threads](desktop-threads.md).
 
 ## Related
 
 - [Sessions](sessions.md)
 - [Web](web.md)
 - [ACP](acp.md)
+- [Tool lanes](tool-lanes.md)

@@ -17,7 +17,10 @@ sources:
   - id: findings
     resource: /spike/FINDINGS.md
     title: ACP probe notes
-generated: { by: agent, at: 2026-08-15T09:36:00Z }
+  - id: map
+    resource: /src/core/map-updates.mjs
+    title: session/update → transcript
+generated: { by: agent, at: 2026-08-16T06:35:00Z }
 ---
 
 # ACP
@@ -29,7 +32,7 @@ on stdin/stdout (no `Content-Length` framing).
 On Windows the `cursor-agent` / `agent` entry points are PowerShell shims.
 Auto resolves past them to the bundled `node.exe index.js` under
 `%LOCALAPPDATA%\cursor-agent\versions\` so nothing sits between us and
-stdio. That `versions\` directory is hidden.
+stdio. That `versions\` directory is hidden — list it with `-Force`.
 
 ## Handshake
 
@@ -41,20 +44,40 @@ nothing is hardcoded. `session/load` resumes after a restart.
 ## Updates
 
 `session/update` kinds become [transcript](transcripts.md) records via
-`map-updates.mjs`. Unrecognised kinds are stored verbatim. A prompt turn
-ends with `{ stopReason: "end_turn" }`.
+`map-updates.mjs`. Unrecognised kinds are stored as `acp:<kind>` verbatim.
+A prompt turn ends with `{ stopReason: "end_turn" }`.
 
-Cursor's agent currently runs its own shells and reports through
-`tool_call_update` rather than calling Auto's `terminal/*` methods, so
-[terminals](terminals.md) path 1 is unused until the CLI starts using it.
+Observed kinds include `agent_message_chunk`, `agent_thought_chunk`,
+`tool_call` / `tool_call_update`, `session_info_update`,
+`available_commands_update`. Thinking is suppressed entirely in print mode
+on the CLI; Auto still records `agent_thought` when it arrives.
+
+## Shells — plan vs reality
+
+Auto advertises `terminal: true`, but Cursor's agent currently runs its own
+shells and reports through `tool_call_update.rawOutput` rather than calling
+Auto's `terminal/*` methods. Consequences:
+
+- Agent command output arrives **complete, at completion**, not streamed
+  during execution.
+- The `terminal/*` handlers stay implemented — cheap, spec-compliant, may
+  be used by a future CLI.
+- User-initiated [terminals](terminals.md) are unaffected.
 
 ## Permissions
 
 `session/request_permission` is a client request that blocks the turn.
-Auto parks it in the same broker the web and Telegram answer. See
-[approvals](approvals.md).
+Auto parks it in the same broker the web and Telegram answer. Approvals of
+two minutes are fine in probing; treat transient `PING timed out` as
+upstream, not as "user was too slow". See [approvals](approvals.md).
+
+Upstream failures sometimes arrive as **agent message text** with
+`stopReason: end_turn`, indistinguishable from a normal answer. The
+[session](sessions.md) layer recognises shapes like `RetriableError` and
+records them as errors rather than finished prose.
 
 ## Related
 
 - [Sessions](sessions.md)
 - [Host](host.md)
+- [Transcripts](transcripts.md)

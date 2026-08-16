@@ -1,5 +1,8 @@
 # Directory Update Log
 
+## 2026-08-16
+* **Lint / expand**: Split overloaded `desktop-chats` into [desktop-bridge](concepts/desktop-bridge.md) and [desktop-threads](concepts/desktop-threads.md); added [access](concepts/access.md), [supervise](concepts/supervise.md), [tool-lanes](concepts/tool-lanes.md). Deepened ACP (shell deviation, error-as-prose), host, transcripts (map table), Telegram (web parity). Refreshed overview and index.
+
 ## 2026-08-15
 * **Update**: MIT `LICENSE`; README notes unofficial status and license. Settings gear is an inline SVG (Icons8 PNGs removed).
 * **Update**: Browser and terminals share one workspace — right dock on a wide screen, full-screen sheet on a phone — instead of stacking strips on the chat column.

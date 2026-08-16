@@ -17,7 +17,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-15T19:10:00Z }
+generated: { by: agent, at: 2026-08-16T06:35:00Z }
 ---
 
 # Web app
@@ -47,10 +47,7 @@ touch swipe, not a pointer drag), or tap × in the header, or tap beside it.
 - The session rail, grouped by [project](projects.md), plus Cursor's recent
   chats so the rail can be the same list the IDE shows.
 - The [queue](queue.md) above the chat box, with reword / send now / delete.
-- Tool calls the way Cursor groups them: a quiet activity line for reads
-  and searches, a file-change row for edits, cards for commands, questions,
-  and Created Plan. The table lives in `desktop-tool-ui.js` so Telegram can
-  share one copy.
+- Tool calls the way Cursor groups them — see [tool lanes](tool-lanes.md).
 - Diffs, thinking (folded when the block ends, timed from the record so a
   replay says "Thought for 8s" rather than staying "Thinking"), permission
   and question cards, [terminals](terminals.md), [browser](browser.md).
@@ -97,3 +94,5 @@ and account quotas ([usage](usage.md)).
 
 - [Host](host.md)
 - [Telegram](telegram.md)
+- [Tool lanes](tool-lanes.md)
+- [Access](access.md)

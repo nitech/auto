@@ -8,28 +8,31 @@ sources:
   - id: telegram
     resource: /src/core/telegram.mjs
     title: Telegram bridge
-generated: { by: agent, at: 2026-08-15T16:30:00Z }
+generated: { by: agent, at: 2026-08-16T06:35:00Z }
 ---
 
 # Telegram
 
-A projection of the host, not a second brain. Credentials come from
-`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` or the `auth.json` the
-telegram-notify skill writes. A bot token allows **one** poller; two hosts
-split messages at random.
+A projection of the host, not a second brain. Credentials and the one-poller
+rule live under [access](access.md).
 
-Telegram says what is running; the [web](web.md) says what it printed.
-Command output goes to the web transcript. Telegram gets the command line
-and, for a failure, the exit code. A card folded up is still expected to
-show the last lines it printed and its exit code.
+## What Telegram shows vs the web
 
-A turn unfolds in one edited message. When it finishes, the same message
-ends with how long it took — *Worked for 7m 3s* or *Thought for 1s* — so a
-phone is not left staring at a command that still says it is running.
-A http(s) URL in the reply is an `<a>` so it is tappable.
-Approvals, question options, and Created Plan actions are buttons. Photos
-are downloaded and sent with the prompt (desktop: pasted into the window;
-ACP: image blocks).
+| | Telegram | Web |
+| --- | --- | --- |
+| Role | What is running | What it printed |
+| Command output | Command line; exit code on failure | Full stream in the transcript |
+| Folded card | Still shows last lines + exit code | Same expectation |
+| Turn clock | Edited message ends with Worked/Thought for | Working… then the same label |
+| Approvals / questions / plans | Inline buttons | Cards |
+| URLs | Tappable `<a>` | Links in markdown and bare http(s) |
+
+Quoting a full build log in Telegram buries the reply it came with — that
+is why command bodies stay on the web. Tool grouping follows
+[tool lanes](tool-lanes.md).
+
+A turn unfolds in one edited message. Photos are downloaded and sent with
+the prompt (desktop: pasted into the window; ACP: image blocks).
 
 ## Commands
 
@@ -47,5 +50,7 @@ question card is an answer, not a new prompt. See [approvals](approvals.md).
 ## Related
 
 - [Host](host.md)
+- [Access](access.md)
 - [Sessions](sessions.md)
 - [Queue](queue.md)
+- [Web](web.md)

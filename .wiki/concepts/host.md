@@ -11,18 +11,19 @@ sources:
   - id: supervise
     resource: /scripts/supervise.mjs
     title: Supervisor
-generated: { by: agent, at: 2026-08-15T15:50:00Z }
+generated: { by: agent, at: 2026-08-16T06:35:00Z }
 ---
 
 # Host
 
 One process, one port. `src/server/index.mjs` on **4331** (0.0.0.0) owns
 HTTP, the WebSocket, the session API, Telegram, the browser, and terminals.
-`npm run dev` is a second instance on 4340 with Telegram off.
+`npm run dev` is a second instance on 4340 with Telegram off — see
+[access](access.md).
 
-The `AutoSupervise` scheduled task runs `scripts/supervise.mjs`, which
-restarts the host on crash and on failed health checks. Do not host Auto in
-a Cursor agent background shell.
+How the process stays alive across crashes and reboots is
+[supervise](supervise.md). Do not host Auto in a Cursor agent background
+shell.
 
 ## HTTP
 
@@ -61,10 +62,12 @@ the port from inside Auto kills the session that asked.
 Desktop chats keep running across a host restart; ACP children do not, but
 their transcripts do, and they resume on next use.
 
-The host re-asserts the desktop-bridge switches about once a minute. See
-[desktop chats](desktop-chats.md).
+The host re-asserts the [desktop-bridge](desktop-bridge.md) switches about
+once a minute.
 
 ## Related
 
 - [Sessions](sessions.md)
+- [Supervise](supervise.md)
+- [Access](access.md)
 - [Skills](skills.md) (auto-restart)

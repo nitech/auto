@@ -7,8 +7,13 @@ Remote control for Cursor's agent. Start at [overview](overview.md).
 * [Sessions](concepts/sessions.md) - One conversation, desktop or ACP, with its own transcript
 * [Transcripts](concepts/transcripts.md) - Append-only JSONL; clients hold no authoritative state
 * [Host](concepts/host.md) - One process on 4331: HTTP, WebSocket, restart, supervisor
+* [Supervise](concepts/supervise.md) - Scheduled-task watchdog; health restart; not an agent shell
+* [Access](concepts/access.md) - Tailscale-only reachability, no Auto login, `.env` knobs
 * [Cursor window](concepts/cursor-window.md) - Typing, pressing, pickers, paste, over the debug port
 * [Desktop chats](concepts/desktop-chats.md) - Carry on a Cursor IDE chat from the phone
+* [Desktop bridge](concepts/desktop-bridge.md) - Named-pipe send, gate, outbox
+* [Desktop threads](concepts/desktop-threads.md) - Reading replies from `state.vscdb`
+* [Tool lanes](concepts/tool-lanes.md) - Activity / file-change / card / hide for tool bubbles
 * [ACP](concepts/acp.md) - Fallback `cursor-agent acp` sessions
 * [Approvals](concepts/approvals.md) - Permissions, question cards, Created Plan, file-review bar
 * [Queue](concepts/queue.md) - Messages waiting behind a turn, in Auto or in Cursor

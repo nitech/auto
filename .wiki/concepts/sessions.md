@@ -8,7 +8,7 @@ sources:
   - id: sessions
     resource: /src/core/sessions.mjs
     title: Session manager
-generated: { by: agent, at: 2026-08-15T16:00:00Z }
+generated: { by: agent, at: 2026-08-16T06:35:00Z }
 ---
 
 # Sessions
@@ -66,6 +66,7 @@ finished answer.
 ## Related
 
 - [Desktop chats](desktop-chats.md)
+- [Desktop threads](desktop-threads.md)
 - [ACP](acp.md)
 - [Queue](queue.md)
 - [Host](host.md)

@@ -14,7 +14,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: How desktop tools are drawn
-generated: { by: agent, at: 2026-08-15T13:30:00Z }
+generated: { by: agent, at: 2026-08-16T06:35:00Z }
 ---
 
 # Approvals, questions, and plans
@@ -40,11 +40,15 @@ A session whose policy you change keeps that choice.
 While a desktop turn runs, Auto watches the window for controls whose words
 mean it is waiting for a person, parks them in the same broker, and presses
 whichever option comes back — withdrawing the question if it is answered in
-the IDE first. Skip and Continue **inside a chat message bubble** are not
-approvals: they belong to Cursor's `ask_question` card. Offering Skip from
-that card as "Permission needed" was the first wild miss — the card is
-drawn before its options are written, and those two words are otherwise
-indistinguishable from an approval.
+the IDE first. The vocabulary lives in `cursor-dom.mjs` (never class names).
+With Cursor set to run everything automatically it rarely asks — treat the
+first real sighting as a chance to learn the words Cursor actually uses.
+
+Skip and Continue **inside a chat message bubble** are not approvals: they
+belong to Cursor's `ask_question` card. Offering Skip from that card as
+"Permission needed" was the first wild miss — the card is drawn before its
+options are written, and those two words are otherwise indistinguishable
+from an approval.
 
 ## The file-review bar is not a question
 
@@ -78,5 +82,6 @@ actions.
 ## Related
 
 - [Cursor window](cursor-window.md)
+- [Tool lanes](tool-lanes.md)
 - [Telegram](telegram.md)
 - [Web](web.md)
