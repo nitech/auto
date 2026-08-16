@@ -2208,6 +2208,33 @@ els.toBottom.onclick = () => {
 // --------------------------------------------------------- new session
 
 /**
+ * Soft keyboards shrink the visual viewport without shrinking the layout one.
+ * Publish that frame as --vv-top / --vv-height so the New session sheet (and
+ * anything else that wants it) can sit above the keys instead of under them.
+ */
+function syncVisualViewport() {
+  const vv = window.visualViewport;
+  const root = document.documentElement;
+  if (!vv) {
+    root.style.removeProperty('--vv-top');
+    root.style.removeProperty('--vv-height');
+    return;
+  }
+  root.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`);
+  root.style.setProperty('--vv-height', `${Math.round(vv.height)}px`);
+}
+
+{
+  const vv = window.visualViewport;
+  if (vv) {
+    vv.addEventListener('resize', syncVisualViewport);
+    vv.addEventListener('scroll', syncVisualViewport);
+  }
+  window.addEventListener('resize', syncVisualViewport);
+  syncVisualViewport();
+}
+
+/**
  * Starting a session is choosing where it works. The list is Cursor's own
  * project list rather than anything Auto invented, and a folder can always be
  * typed by hand for the project nobody has opened in a while. When that folder
@@ -2216,6 +2243,7 @@ els.toBottom.onclick = () => {
 function setNewbie(open) {
   $('newbie').hidden = !open;
   if (!open) return;
+  syncVisualViewport();
   $('newbie-filter').value = '';
   $('newbie-path').value = '';
   $('newbie-note').textContent = '';

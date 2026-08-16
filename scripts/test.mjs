@@ -1726,6 +1726,29 @@ if (existsSync(SRC)) {
   if (!failed) ok('v2 web: session × archives on first tap, swipe closes rail');
 }
 
+// Filtering projects on a phone must keep the list above the soft keyboard.
+// iOS leaves the layout viewport alone, so a bottom sheet pinned with inset:0
+// would put short result lists under the keys.
+{
+  const html = readFileSync(join(ROOT, 'src/web/index.html'), 'utf8');
+  const css = readFileSync(join(ROOT, 'src/web/style.css'), 'utf8');
+  const js = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  let failed = false;
+  if (!js.includes('function syncVisualViewport') || !js.includes('--vv-height')) {
+    fail('the web client must publish the visual viewport size for phone sheets');
+    failed = true;
+  }
+  if (!css.includes('#newbie') || !css.includes('var(--vv-height')) {
+    fail('the New session sheet must size itself to the visual viewport');
+    failed = true;
+  }
+  if (!/interactive-widget=resizes-content/.test(html)) {
+    fail('the viewport meta should ask browsers that support it to resize content for the keyboard');
+    failed = true;
+  }
+  if (!failed) ok('v2 web: New session list stays above the keyboard');
+}
+
 // Composer drafts stay with the chat you typed them in, and an idle send
 // appears in the stream before Cursor has finished taking it — without
 // drawing the host's later copy as a second bubble.

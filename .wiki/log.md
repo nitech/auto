@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-16
+* **Update**: New session sheet on a phone tracks the visual viewport so project filter results stay above the soft keyboard.
 * **Lint / expand**: Split overloaded `desktop-chats` into [desktop-bridge](concepts/desktop-bridge.md) and [desktop-threads](concepts/desktop-threads.md); added [access](concepts/access.md), [supervise](concepts/supervise.md), [tool-lanes](concepts/tool-lanes.md). Deepened ACP (shell deviation, error-as-prose), host, transcripts (map table), Telegram (web parity). Refreshed overview and index.
 
 ## 2026-08-15

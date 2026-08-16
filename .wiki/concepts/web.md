@@ -17,7 +17,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-16T06:35:00Z }
+generated: { by: agent, at: 2026-08-16T20:50:00Z }
 ---
 
 # Web app
@@ -41,6 +41,12 @@ On a phone the session rail is a drawer. × on a row archives that session
 on the first tap (the row used to eat it, so it felt like it needed two).
 Swipe the rail left to close it (the list is a scroller, so this is a
 touch swipe, not a pointer drag), or tap × in the header, or tap beside it.
+
+New session is a bottom sheet. Soft keyboards shrink the visual viewport
+without shrinking the layout one, so the sheet tracks `--vv-top` /
+`--vv-height` from `visualViewport` and caps the project list to that
+frame — otherwise a short filter result sat under the keys. The viewport
+meta also asks for `interactive-widget=resizes-content` where supported.
 
 ## What it draws
 
