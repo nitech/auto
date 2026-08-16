@@ -87,10 +87,11 @@
         <summary><span id="queue-count"></span></summary>
         <div id="queue-list"></div>
       </details>
-      <div id="attachments" hidden></div>
       <!-- One field, with its buttons inside it and its pickers beneath, the
-          way Cursor's own chat box carries them. -->
+          way Cursor's own chat box carries them. Pasted images sit in here
+          too — above the text, still inside the same border. -->
       <div class="composer-box" data-mode="agent">
+        <div id="attachments" hidden></div>
         <div class="composer-main">
           <textarea id="box" rows="2" placeholder="Message the agent…"></textarea>
           <button id="stop" class="in-box stop" title="Stop" aria-label="Stop" hidden>■</button>

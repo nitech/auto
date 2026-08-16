@@ -2118,11 +2118,13 @@ pre:hover .copy,
 .queued-act:last-child:hover { color: var(--red); border-color: var(--danger-border); }
 .queue-note { padding: 8px 10px; color: var(--faint); font-size: 12px; }
 
-#attachments {
+/* Thumbnails live inside the composer border, above the text — not a strip
+   parked on the footer outside the field. */
+.composer-box > #attachments {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  padding-bottom: 8px;
+  padding: 4px 4px 6px;
 }
 
 #attachments[hidden] { display: none; }

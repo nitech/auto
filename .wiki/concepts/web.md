@@ -17,7 +17,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-16T20:50:00Z }
+generated: { by: agent, at: 2026-08-16T20:55:00Z }
 ---
 
 # Web app
@@ -62,7 +62,7 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   transcript. Tabs switch between them; only one is visible at a time.
   A http(s) URL in the chat is a link — markdown `[text](url)` and a bare
   address both. User bubbles too. Images you attach show as thumbnails in
-  the bubble (and above the box before send); tap one for a full-screen
+  the bubble (and inside the composer before send); tap one for a full-screen
   viewer you can pinch / scroll to zoom.
 - A turn still going says **Working…** at the bottom of the stream. When it
   ends, that line becomes **Worked for 7m 3s** or **Thought for 1s** above

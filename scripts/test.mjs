@@ -1624,6 +1624,17 @@ if (existsSync(SRC)) {
     fail('usage dial and dialog must sit beside the attach control');
     failed = true;
   }
+  const attAt = html.indexOf('id="attachments"');
+  const boxAt = html.indexOf('class="composer-box"');
+  const boxEnd = html.indexOf('</div>', html.indexOf('composer-controls'));
+  if (attAt < 0 || boxAt < 0 || attAt < boxAt || (boxEnd > 0 && attAt > boxEnd)) {
+    fail('pasted images must sit inside the composer box, not above it');
+    failed = true;
+  }
+  if (!css.includes('.composer-box > #attachments')) {
+    fail('attachment strip styles must target thumbnails inside the composer box');
+    failed = true;
+  }
   if (!css.includes('.usage-dial') || !css.includes('conic-gradient')) {
     fail('usage dial must be a fillable ring');
     failed = true;
