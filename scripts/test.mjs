@@ -1783,18 +1783,32 @@ if (existsSync(SRC)) {
     fail('an idle send must appear in the stream immediately without duplicating');
     failed = true;
   }
+  const desktopDeliver = sessionsJs.slice(
+    sessionsJs.indexOf('async #deliverDesktop'),
+    sessionsJs.indexOf('async #promptDesktop'),
+  );
   const desktopPrompt = sessionsJs.slice(
     sessionsJs.indexOf('async #promptDesktop'),
     sessionsJs.indexOf('resumeDesktopOutbox'),
   );
-  if (!desktopPrompt.includes("result.status === 'queued'") || !desktopPrompt.includes('this.#expectEcho(id, text)')) {
-    fail('a queued desktop send must #expectEcho so Cursor’s bubble is not a second user message');
+  // Expect before the window write — Cursor can store the bubble while sendText
+  // is still awaiting, and the watcher would otherwise publish a duplicate.
+  const echoAt = desktopDeliver.indexOf('this.#expectEcho(id, text)');
+  const sendAt = desktopDeliver.indexOf('.sendText(');
+  if (echoAt < 0 || sendAt < 0 || echoAt > sendAt) {
+    fail('a desktop send must #expectEcho before typing into Cursor’s window');
     failed = true;
   }
-  // The hold path must expect the echo too — otherwise a refused send that
-  // later goes in through the outbox appears twice.
-  if (!desktopPrompt.includes('outbox.hold') || desktopPrompt.indexOf('this.#expectEcho(id, text)') === desktopPrompt.lastIndexOf('this.#expectEcho(id, text)')) {
-    fail('a held desktop send must #expectEcho as well as a queued one');
+  if (!desktopPrompt.includes("result.status === 'queued'")) {
+    fail('queued desktop sends must still be handled');
+    failed = true;
+  }
+  if (!desktopPrompt.includes('outbox.hold') || !desktopPrompt.includes('#recentUserEcho')) {
+    fail('a held or submitted desktop send must not record a user_message already mirrored from Cursor');
+    failed = true;
+  }
+  if (!sessionsJs.includes('#seedUserDedup') || !sessionsJs.includes('#shouldSkipDesktopUser')) {
+    fail('desktop user bubbles must dedupe by echo, bubble id, and restart seed');
     failed = true;
   }
   const html = readFileSync(join(ROOT, 'src/web/index.html'), 'utf8');

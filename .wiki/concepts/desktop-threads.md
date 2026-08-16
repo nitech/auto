@@ -17,7 +17,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Tool lane vocabulary
-generated: { by: agent, at: 2026-08-16T19:10:00Z }
+generated: { by: agent, at: 2026-08-16T20:45:00Z }
 ---
 
 # Desktop threads
@@ -60,10 +60,14 @@ filled; leave them unread.
 ## Echo and harness noise
 
 Your own message is written to the transcript when sent *and* stored as a
-bubble. Auto shows it once — the web draws an idle send immediately and
-swallows the host's later copy (and a stray Cursor echo); the host
-`#expectEcho`s every path that will come back from the desktop, including
-queued and outbox holds.
+bubble. Auto shows it once:
+
+- `#expectEcho` runs **before** typing into Cursor, so the watcher cannot
+  win a race and publish the bubble first
+- the web draws an idle send immediately and swallows the host's later copy
+  (and a stray Cursor echo) with `pendingEcho` credits
+- after a host restart, `#seedUserDedup` refills echoes and known bubble ids
+  from the transcript so a mid-turn restart does not re-append the prompt
 
 Cursor stores agent-harness notes (`system_notification` when a background
 command finishes) as user bubbles. The IDE does not paint them; Auto must

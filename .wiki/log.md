@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-16
+* **Update**: Desktop prompt echoes are expected before the Cursor write and re-seeded after restart, so user messages stop appearing two or three times.
 * **Update**: Usage sheet shows tokens used / context max and estimated chat cost (summed from Cursor’s `usageData`).
 * **Update**: Pasted images sit inside the composer box (above the text), not in a strip above it.
 * **Update**: New session sheet on a phone tracks the visual viewport so project filter results stay above the soft keyboard.

@@ -435,6 +435,7 @@ export class SessionManager extends EventEmitter {
     const t = this.transcripts.open.get(sessionId);
     if (!t) return null;
     const rec = t.append(kind, payload);
+    if (kind === KIND.userMessage) this.#noteSeenUserBubble(sessionId, rec.desktopBubbleId);
     if (kind === KIND.toolCall && rec.toolCallId) {
       this.#noteTool(sessionId, rec.toolCallId, rec.status || 'in_progress');
     } else if (kind === KIND.toolUpdate && rec.toolCallId && rec.status) {
@@ -1270,6 +1271,8 @@ export class SessionManager extends EventEmitter {
   #recordDesktopMessage(id, message) {
     if (message.role === 'user') {
       if (isHarnessPrompt(message.text)) return;
+      // Already in the transcript (our send, or a bubble we caught up on).
+      if (this.#shouldSkipDesktopUser(id, message)) return;
       this.#record(id, KIND.userMessage, { text: message.text, desktopBubbleId: message.id });
       return;
     }
@@ -1583,7 +1586,7 @@ export class SessionManager extends EventEmitter {
       // Our own message comes back to us: it was written into the transcript
       // when we sent it, and the desktop stores it as a bubble like any
       // other. Show it once.
-      if (message.role === 'user' && this.#consumeEcho(id, message.text)) return;
+      if (message.role === 'user' && this.#shouldSkipDesktopUser(id, message)) return;
       this.#recordDesktopMessage(id, message);
     });
     watcher.on('running', (running) => {
@@ -1765,13 +1768,17 @@ export class SessionManager extends EventEmitter {
       // set used to drop whatever landed while we were down — a restart in
       // the middle of a turn marked the final answer seen and never said it.
       const t = await this.transcripts.get(meta.id);
+      const records = t.readFrom(0);
       const state = readThread(meta.desktopThreadId, { tail: 0 });
-      const seed = desktopWatchSeed(t.readFrom(0), state || {});
+      const seed = desktopWatchSeed(records, state || {});
       const existing = this.live.get(meta.id) || {};
       existing.toolsDrawn = seed.drawn;
       existing.openTools = seed.openTools;
       if (seed.turnStarted) existing.turnStarted = seed.turnStarted;
       this.live.set(meta.id, existing);
+      // Echoes live only in memory — refill them from the transcript so a
+      // restart mid-turn does not re-publish the prompt we already wrote.
+      this.#seedUserDedup(meta.id, records);
       // Cursor may have named the thread while we were down — or while we
       // were showing the placeholder we locked at attach.
       const patch = adoptDesktopTitle(meta, state?.title);
@@ -1793,6 +1800,29 @@ export class SessionManager extends EventEmitter {
       (e) => now - e.at < 120_000,
     );
     this.live.set(id, runtime);
+  }
+
+  /** Bubble ids we have already written as user_message — survive a restart via seed. */
+  #noteSeenUserBubble(id, bubbleId) {
+    if (!bubbleId) return;
+    const runtime = this.live.get(id) || {};
+    runtime.seenUserBubbles = runtime.seenUserBubbles || new Set();
+    runtime.seenUserBubbles.add(bubbleId);
+    this.live.set(id, runtime);
+  }
+
+  /**
+   * After a host restart, memory echoes are gone. Refill from the transcript
+   * so Cursor's copy of a prompt we already recorded is not appended again.
+   */
+  #seedUserDedup(id, records = []) {
+    const now = Date.now();
+    for (const rec of records) {
+      if (rec.kind !== KIND.userMessage) continue;
+      if (rec.desktopBubbleId) this.#noteSeenUserBubble(id, rec.desktopBubbleId);
+      // Recent prompts only — same window as #expectEcho expiry.
+      if (rec.text && (!rec.ts || now - rec.ts < 120_000)) this.#expectEcho(id, rec.text);
+    }
   }
 
   /**
@@ -1821,6 +1851,35 @@ export class SessionManager extends EventEmitter {
     return runtime.echoes.some((e) => e.text === key);
   }
 
+  /** Same prompt already in the transcript within the echo window. */
+  #recentUserEcho(id, text) {
+    const t = this.transcripts.open.get(id);
+    if (!t || !text) return false;
+    const key = echoKey(text);
+    const now = Date.now();
+    for (const rec of t.readFrom(0, { limit: 80 })) {
+      if (rec.kind !== KIND.userMessage) continue;
+      if (echoKey(rec.text) !== key) continue;
+      if (!rec.ts || now - rec.ts < 120_000) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Skip a desktop user bubble we already have — expected echo, known bubble
+   * id, or the same words recorded moments ago (watcher beat #record).
+   */
+  #shouldSkipDesktopUser(id, message) {
+    if (!message) return false;
+    if (message.id) {
+      const runtime = this.live.get(id);
+      if (runtime?.seenUserBubbles?.has(message.id)) return true;
+    }
+    if (this.#consumeEcho(id, message.text)) return true;
+    if (this.#recentUserEcho(id, message.text)) return true;
+    return false;
+  }
+
   /**
    * Hand one message to the desktop. The only place that talks to the IDE.
    *
@@ -1833,15 +1892,17 @@ export class SessionManager extends EventEmitter {
     const meta = this.meta.get(id);
     if (!meta?.desktopThreadId) return { status: 'error', message: 'Not a desktop chat' };
 
+    // Expect before the window write: Cursor can store the bubble while
+    // sendText is still awaiting, and the watcher would otherwise publish it
+    // before we mark it as ours.
+    this.#expectEcho(id, text);
+
     const typed = await this.cursor
       // A chat in a background tab is still this chat: bring it forward rather
       // than making someone open it in Cursor before their message will go.
       .sendText({ threadId: meta.desktopThreadId, text, images, bringForward: true })
       .catch((err) => ({ status: 'error', reason: err.message }));
     if (typed.status === 'submitted' || typed.status === 'queued') {
-      // A submitted message will come back as a desktop bubble; a queued one
-      // must not, or it would show in the stream before Cursor has included it.
-      if (typed.status === 'submitted') this.#expectEcho(id, text);
       this.emit('log', `typed a message into Cursor's window for "${meta.title}"`);
       return {
         status: typed.status,
@@ -1863,7 +1924,6 @@ export class SessionManager extends EventEmitter {
       status: 'error',
       message: err.message,
     }));
-    if (sent.status === 'submitted') this.#expectEcho(id, text);
     if (sent.status === 'submitted' || sent.status === 'queued') return { ...sent, via: 'bridge' };
     return { ...sent, cdp: typed.reason || typed.status };
   }
@@ -1883,10 +1943,7 @@ export class SessionManager extends EventEmitter {
     if (result.status === 'queued') {
       // Cursor is holding it. The stream waits until the turn actually takes
       // it; the queue on screen is where it can be seen until then.
-      // Expect the eventual desktop bubble now: we do not write the message
-      // into the transcript while it is only queued, but Cursor will store it
-      // as a user bubble when it runs, and that must not appear as a second send.
-      this.#expectEcho(id, text);
+      // deliverDesktop already #expectEcho'd before the write.
       this.#update(id, { status: STATUS.busy });
       this.#watchDesktop(id);
       const seen = await this.queued(id);
@@ -1895,9 +1952,11 @@ export class SessionManager extends EventEmitter {
     }
 
     if (result.status === 'submitted') {
-      // deliverDesktop already #expectEcho'd; the web may have drawn the bubble
-      // optimistically, so this record is what pendingEcho swallows there.
-      this.#record(id, KIND.userMessage, this.#userMessageFields(text, images));
+      // deliverDesktop already #expectEcho'd. The watcher may have seen the
+      // bubble first — do not write a second user_message if it did.
+      if (!this.#recentUserEcho(id, text)) {
+        this.#record(id, KIND.userMessage, this.#userMessageFields(text, images));
+      }
       // An image that did not make it has to be said out loud: a message asking
       // "what do you think of this?" with nothing attached reads as an agent
       // ignoring the question.
@@ -1915,9 +1974,10 @@ export class SessionManager extends EventEmitter {
     }
 
     const place = this.outbox.hold(id, text);
-    // Held for later: still our send, and the desktop will echo it when it goes in.
-    this.#expectEcho(id, text);
-    this.#record(id, KIND.userMessage, this.#userMessageFields(text, images));
+    // Held for later: deliverDesktop already expected the echo.
+    if (!this.#recentUserEcho(id, text)) {
+      this.#record(id, KIND.userMessage, this.#userMessageFields(text, images));
+    }
     this.#record(id, KIND.notice, { text: this.#whyHeld(meta, result, place) });
     if (images.length) {
       // The outbox keeps words, not pictures: an image has to be pasted into a
