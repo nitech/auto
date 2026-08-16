@@ -2637,9 +2637,13 @@ function paintUsageDial(session) {
   const fill = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
   btn.style.setProperty('--usage-pct', String(fill));
   btn.dataset.level = usageLevel(fill);
-  btn.title = Number.isFinite(pct)
-    ? `Context ${Math.round(pct)}% full — tap for usage`
-    : 'Usage — tap for details';
+  const parts = [];
+  if (Number.isFinite(pct)) parts.push(`Context ${Math.round(pct)}% full`);
+  if (session?.contextTokensUsed != null && session?.contextTokensMax != null) {
+    parts.push(`${tokens(session.contextTokensUsed)} / ${tokens(session.contextTokensMax)} tokens`);
+  }
+  if (session?.costCents != null) parts.push(money(session.costCents / 100));
+  btn.title = parts.length ? `${parts.join(' · ')} — tap for usage` : 'Usage — tap for details';
 }
 
 function refreshUsage(force = false) {
@@ -2700,19 +2704,36 @@ function renderUsageSheet(msg) {
   const fill = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
   const level = usageLevel(fill);
   const bits = [];
+  const used = session.contextTokensUsed;
+  const max = session.contextTokensMax;
+  const hasTokens = used != null && max != null;
+  const tokenLine = hasTokens
+    ? `${session.contextAssumed ? '≈ ' : ''}${tokens(used)} / ${tokens(max)} tokens`
+    : null;
 
   bits.push(`<section class="sheet-block"><h2>This chat</h2>`);
   bits.push(`<div class="usage-hero">
     <div class="usage-hero-dial" data-level="${esc(level)}" style="--usage-pct:${fill}"></div>
     <div class="usage-hero-copy">
       <strong>${Number.isFinite(pct) ? `${Math.round(pct)}%` : '—'}</strong>
-      <span>of context used${session.context ? ` · ${esc(session.context)} window` : ''}${session.maxMode ? ' · Max Mode' : ''}</span>
+      <span>${tokenLine || `of context used${session.maxMode ? ' · Max Mode' : ''}`}</span>
+      <span class="usage-hero-cost">${
+        session.costCents != null
+          ? `Est. ${money(session.costCents / 100)} this chat`
+          : Number.isFinite(pct)
+            ? 'Est. cost not recorded yet'
+            : ''
+      }</span>
     </div>
   </div>`);
-  if (session.model) bits.push(`<div class="usage-note">Model: ${esc(session.model)}</div>`);
-  if (session.costCents != null) {
-    bits.push(`<div class="usage-note">This chat ≈ ${money(session.costCents / 100)} (Cursor’s own tally)</div>`);
+  if (hasTokens && session.contextAssumed) {
+    bits.push(`<div class="usage-note">Window assumed ${esc(session.context || '200k')} — this model did not store a size.</div>`);
+  } else if (hasTokens && session.context) {
+    bits.push(`<div class="usage-note">${esc(session.context)} context window${session.maxMode ? ' · Max Mode' : ''}</div>`);
+  } else if (session.maxMode) {
+    bits.push(`<div class="usage-note">Max Mode — absolute tokens need a named context size.</div>`);
   }
+  if (session.model) bits.push(`<div class="usage-note">Model: ${esc(session.model)}</div>`);
   if (session.tokens) {
     bits.push(
       `<div class="usage-note">Recorded tokens: ${tokens(session.tokens.input)} in · ${tokens(session.tokens.output)} out across ${session.tokens.bubbles} message${session.tokens.bubbles === 1 ? '' : 's'}</div>`,

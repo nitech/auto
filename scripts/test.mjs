@@ -1643,6 +1643,10 @@ if (existsSync(SRC)) {
     fail('web client must fetch and render session + account usage');
     failed = true;
   }
+  if (!js.includes('contextTokensUsed') || !js.includes('Est. ') || !js.includes('usage-hero-cost')) {
+    fail('usage sheet must show context tokens used/max and estimated chat cost');
+    failed = true;
+  }
   const pickerCss = css.slice(css.indexOf('.composer-controls select {'));
   const pickerBlock = pickerCss.slice(0, pickerCss.indexOf('}') + 1);
   if (!/font-size:\s*16px/.test(pickerBlock)) {
@@ -1849,7 +1853,22 @@ if (existsSync(SRC)) {
 {
   const { clearAccountUsageCache, accountUsage } = await import('../src/core/cursor-usage.mjs');
   const { cursorAccount } = await import('../src/core/cursor-auth.mjs');
+  const { parseContextTokens, sumUsageCostCents } = await import('../src/core/desktop-threads.mjs');
   let failed = false;
+
+  if (parseContextTokens('200k') !== 200_000 || parseContextTokens('1M') !== 1_000_000 || parseContextTokens('272k') !== 272_000) {
+    fail('parseContextTokens must read Cursor window labels');
+    failed = true;
+  }
+  if (sumUsageCostCents({ default: { costInCents: 100 }, 'composer-1': { costInCents: 50 } }) !== 150) {
+    fail('sumUsageCostCents must total every model key');
+    failed = true;
+  }
+  if (sumUsageCostCents({}) != null || sumUsageCostCents(null) != null) {
+    fail('sumUsageCostCents must be null when Cursor wrote no cost');
+    failed = true;
+  }
+
   clearAccountUsageCache();
   const account = cursorAccount();
   if (account && typeof account !== 'object') {

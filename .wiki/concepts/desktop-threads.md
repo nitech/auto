@@ -88,8 +88,10 @@ what was held so it is not fired as a new turn. See [queue](queue.md).
 ## Context dial
 
 `composerData.contextUsagePercent` is how full this chat's context window
-is. Auto shows it as a dial beside attach; account quotas come from
-Cursor's dashboard API. See [usage](usage.md).
+is. Absolute tokens are that percent of the model's context size (or an
+assumed 200k for default). Chat cost is the sum of `usageData.*.costInCents`.
+Auto shows these on the usage sheet; account quotas come from Cursor's
+dashboard API. See [usage](usage.md).
 
 ## Related
 

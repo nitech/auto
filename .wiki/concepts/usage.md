@@ -17,7 +17,7 @@ sources:
   - id: web
     resource: /src/web/app.js
     title: Dial and usage sheet
-generated: { by: agent, at: 2026-08-15T18:10:00Z }
+generated: { by: agent, at: 2026-08-16T19:10:00Z }
 ---
 
 # Usage dial and account quotas
@@ -32,10 +32,13 @@ in the IDE chat chrome.
 From `composerData:<threadId>` in Cursor's `state.vscdb`:
 
 - `contextUsagePercent` — dial fill (0–100)
-- `modelConfig` window size (`context` parameter) and `maxMode`
-- sparse `usageData.default.costInCents` when Cursor wrote a chat cost
-- bubble `tokenCount` summed when present; otherwise a note that fill is
-  not written yet
+- absolute tokens — percent × context window (`200k` → 200000). Named models
+  store the window on `modelConfig.selectedModels[0].parameters`; default /
+  Auto often does not, so Auto assumes **200k** (and marks it assumed) unless
+  Max Mode is on
+- `usageData.*.costInCents` — summed across every model key Cursor wrote
+  (not only `default`), shown as estimated cost for this chat; often empty
+- bubble `tokenCount`s summed when present; usually zero on recent builds
 
 ACP-only sessions have no `composerData`; the dial still opens the account
 sheet and says context fill is desktop-only.

@@ -483,6 +483,83 @@ export function readThread(threadId, { seen, tail } = {}) {
 }
 
 /**
+ * Cursor stores window sizes as labels like `200k`, `272k`, `1M`.
+ * @param {string|null|undefined} label
+ * @returns {number|null}
+ */
+export function parseContextTokens(label) {
+  if (label == null || label === '') return null;
+  const s = String(label).trim().toLowerCase();
+  const m = s.match(/^(\d+(?:\.\d+)?)\s*([km])?$/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n < 0) return null;
+  if ((m[2] || '').toLowerCase() === 'm') return Math.round(n * 1_000_000);
+  if ((m[2] || '').toLowerCase() === 'k') return Math.round(n * 1_000);
+  return Math.round(n);
+}
+
+/**
+ * Chat cost Cursor wrote under `usageData` — often keyed by model, not only
+ * `default`. Sum every `costInCents` so a multi-model thread is not undercounted.
+ * @param {Record<string, { costInCents?: number }>|null|undefined} usageData
+ * @returns {number|null}
+ */
+export function sumUsageCostCents(usageData) {
+  if (!usageData || typeof usageData !== 'object') return null;
+  let total = 0;
+  let any = false;
+  for (const row of Object.values(usageData)) {
+    const c = Number(row?.costInCents);
+    if (!Number.isFinite(c)) continue;
+    total += c;
+    any = true;
+  }
+  return any ? total : null;
+}
+
+/** When Auto / default has no context knob, Cursor still fills a ~200k window. */
+const ASSUMED_CONTEXT_LABEL = '200k';
+
+/**
+ * Resolve the context window label and absolute token fill from composerData.
+ * Named models carry a `context` parameter; default often does not.
+ */
+function contextFillFrom(data) {
+  const config = data.modelConfig || {};
+  const chosen = config.selectedModels?.[0] || {};
+  const knobs = new Map((chosen.parameters || []).map((p) => [p.id, p.value]));
+  const pct = Number(data.contextUsagePercent);
+  const contextUsagePercent = Number.isFinite(pct) ? pct : null;
+  let context = knobs.has('context') ? String(knobs.get('context')) : null;
+  let contextAssumed = false;
+  // Default / Auto rarely stores the knob; without a size we cannot turn the
+  // dial percent into tokens. Assume the common 200k pool window — never when
+  // Max Mode is on, where the real ceiling varies by model.
+  if (!context && !config.maxMode && contextUsagePercent != null) {
+    context = ASSUMED_CONTEXT_LABEL;
+    contextAssumed = true;
+  }
+  const contextTokensMax = parseContextTokens(context);
+  const contextTokensUsed =
+    contextTokensMax != null && contextUsagePercent != null
+      ? Math.round((contextUsagePercent / 100) * contextTokensMax)
+      : null;
+  return {
+    model: config.modelName || chosen.modelId || null,
+    maxMode: Boolean(config.maxMode),
+    context,
+    contextAssumed,
+    contextUsagePercent,
+    contextTokensMax,
+    contextTokensUsed,
+    costCents: sumUsageCostCents(data.usageData),
+    effort: knobs.has('effort') ? String(knobs.get('effort')) : null,
+    thinking: knobs.has('thinking') ? String(knobs.get('thinking')) === 'true' : null,
+  };
+}
+
+/**
  * What a chat is set to: which mode, which model, and how hard it is thinking.
  *
  * The desktop writes all of this beside the thread itself, so what a chat will
@@ -513,32 +590,27 @@ export function readSettings(threadId) {
       return null;
     }
 
-    const config = data.modelConfig || {};
-    const chosen = config.selectedModels?.[0] || {};
-    const knobs = new Map((chosen.parameters || []).map((p) => [p.id, p.value]));
-    const said = (key) => (knobs.has(key) ? String(knobs.get(key)) : null);
-    const pct = Number(data.contextUsagePercent);
-    const cost = Number(data.usageData?.default?.costInCents);
-
+    const fill = contextFillFrom(data);
     return {
       mode: data.unifiedMode || null,
       customMode: data.activeCustomMode || null,
-      model: config.modelName || chosen.modelId || null,
-      maxMode: Boolean(config.maxMode),
-      effort: said('effort'),
-      thinking: knobs.has('thinking') ? said('thinking') === 'true' : null,
-      context: said('context'),
-      contextUsagePercent: Number.isFinite(pct) ? pct : null,
-      costCents: Number.isFinite(cost) ? cost : null,
+      model: fill.model,
+      maxMode: fill.maxMode,
+      effort: fill.effort,
+      thinking: fill.thinking,
+      context: fill.contextAssumed ? null : fill.context,
+      contextUsagePercent: fill.contextUsagePercent,
+      costCents: fill.costCents,
     };
   });
 }
 
 /**
- * How full this chat's context window is, plus a light token tally.
+ * How full this chat's context window is, plus cost and a light token tally.
  *
- * `contextUsagePercent` on the composer is the dial. Bubble `tokenCount`s are
- * a coarser check — often zero on older messages — summed only when present.
+ * `contextUsagePercent` on the composer is the dial. Absolute tokens are that
+ * percent of the model's context window (or an assumed 200k for default).
+ * Bubble `tokenCount`s are a coarser check — often zero — summed only when present.
  */
 export function readContextUsage(threadId) {
   return withDb((db) => {
@@ -554,20 +626,7 @@ export function readContextUsage(threadId) {
       return null;
     }
 
-    const settings = (() => {
-      const config = data.modelConfig || {};
-      const chosen = config.selectedModels?.[0] || {};
-      const knobs = new Map((chosen.parameters || []).map((p) => [p.id, p.value]));
-      const pct = Number(data.contextUsagePercent);
-      const cost = Number(data.usageData?.default?.costInCents);
-      return {
-        model: config.modelName || chosen.modelId || null,
-        maxMode: Boolean(config.maxMode),
-        context: knobs.has('context') ? String(knobs.get('context')) : null,
-        contextUsagePercent: Number.isFinite(pct) ? pct : null,
-        costCents: Number.isFinite(cost) ? cost : null,
-      };
-    })();
+    const settings = contextFillFrom(data);
 
     let inputTokens = 0;
     let outputTokens = 0;
@@ -598,7 +657,21 @@ export function readContextUsage(threadId) {
       if (settings.contextUsagePercent == null) {
         const rem = Number(message?.contextWindowStatusAtCreation?.percentageRemainingFloat
           ?? message?.contextWindowStatusAtCreation?.percentageRemaining);
-        if (Number.isFinite(rem)) settings.contextUsagePercent = Math.max(0, 100 - rem);
+        if (Number.isFinite(rem)) {
+          settings.contextUsagePercent = Math.max(0, 100 - rem);
+          if (settings.contextTokensMax != null) {
+            settings.contextTokensUsed = Math.round(
+              (settings.contextUsagePercent / 100) * settings.contextTokensMax,
+            );
+          } else if (!settings.maxMode) {
+            settings.context = ASSUMED_CONTEXT_LABEL;
+            settings.contextAssumed = true;
+            settings.contextTokensMax = parseContextTokens(ASSUMED_CONTEXT_LABEL);
+            settings.contextTokensUsed = Math.round(
+              (settings.contextUsagePercent / 100) * settings.contextTokensMax,
+            );
+          }
+        }
       }
     }
 

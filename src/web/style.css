@@ -1333,7 +1333,13 @@ details.think .body {
 
 .usage-hero-copy { min-width: 0; }
 .usage-hero-copy strong { display: block; font-size: 22px; letter-spacing: -0.02em; }
-.usage-hero-copy span { color: var(--muted); font-size: 13px; }
+.usage-hero-copy span { display: block; color: var(--muted); font-size: 13px; line-height: 1.35; }
+.usage-hero-cost {
+  margin-top: 4px;
+  color: var(--text) !important;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
 
 .usage-plan {
   margin: 0 0 14px;
