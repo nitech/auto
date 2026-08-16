@@ -17,7 +17,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Tool lane vocabulary
-generated: { by: agent, at: 2026-08-16T06:35:00Z }
+generated: { by: agent, at: 2026-08-16T19:10:00Z }
 ---
 
 # Desktop threads
