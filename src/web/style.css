@@ -2376,9 +2376,6 @@ pre:hover .copy,
      mistake to offer, so the queue's buttons are thumb-sized here. */
   .queued-act { width: 36px; height: 36px; font-size: 15px; }
 
-  /* Panel toggles live in the sheet on a phone, where the bar has no room. */
-  .desk-only { display: none; }
-
   /* Phone: the workspace covers everything, like Settings — a split leaves
      no room for a remote browser or a shell. */
   #app.workspace-open {

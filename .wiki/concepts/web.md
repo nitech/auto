@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-17T15:05:00Z }
+generated: { by: agent, at: 2026-08-17T17:50:00Z }
 ---
 
 # Web app
@@ -86,6 +86,8 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   Those two share one **workspace**: a column to the right of the chat on a
   wide screen, a full-screen sheet on a phone — not strips stacked on the
   transcript. Tabs switch between them; only one is visible at a time.
+  Topbar icons open either tool at every width (including the phone); the
+  workspace itself is still fullscreen on a narrow screen.
   A http(s) URL in the chat is a link — markdown `[text](url)` and a bare
   address both. User bubbles too. Images you attach show as thumbnails in
   the bubble (and inside the composer before send); tap one for a full-screen

@@ -1883,10 +1883,9 @@ function connect() {
         if (!state.permCards.has(p.requestId)) renderPermission(p);
       }
       if (msg.terminalsAvailable === false) {
-        for (const t of [$('term-toggle'), $('sheet-terminals')]) {
-          t.disabled = true;
-          t.title = 'Terminals are unavailable on this host';
-        }
+        const t = $('term-toggle');
+        t.disabled = true;
+        t.title = 'Terminals are unavailable on this host';
       }
       decorate(els.transcript);
       scrollDown(true);
@@ -2703,14 +2702,6 @@ $('install-app').onclick = async () => {
   await installPrompt.userChoice.catch(() => {});
   installPrompt = null;
   paintInstall();
-};
-$('sheet-browser').onclick = () => {
-  setSheet(false);
-  $('browser-toggle').click();
-};
-$('sheet-terminals').onclick = () => {
-  setSheet(false);
-  $('term-toggle').click();
 };
 
 document.addEventListener('keydown', (e) => {
