@@ -1603,15 +1603,17 @@ html[data-standalone] .composer-controls select {
 
 /**
  * Under the header: Chat (always first, no ×) plus Browser and each shell.
- * Hidden while only Chat is open. Scrolls sideways when tabs overflow.
+ * Slim browser-style tabs that sit on the bar and merge into the panel below
+ * when active. Scrolls sideways when they overflow.
  */
 .view-tabs {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  align-items: flex-end;
+  gap: 0;
   flex: none;
   min-width: 0;
-  padding: 6px 10px;
+  height: 28px;
+  padding: 0 8px;
   border-bottom: 1px solid var(--line);
   background: var(--bg-2);
   overflow-x: auto;
@@ -1624,25 +1626,33 @@ html[data-standalone] .composer-controls select {
 .view-tab {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex: 0 0 auto;
-  max-width: 160px;
-  padding: 5px 10px;
-  border-radius: 7px;
+  max-width: 140px;
+  height: 26px;
+  margin-bottom: -1px; /* sit on the bar rule; active covers it */
+  padding: 0 10px;
   border: 1px solid transparent;
+  border-bottom-color: transparent;
+  border-radius: 6px 6px 0 0;
   background: transparent;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 12px;
+  line-height: 1;
   cursor: pointer;
   white-space: nowrap;
 }
+.view-tab + .view-tab {
+  margin-left: 1px;
+}
 .view-tab:hover {
   color: var(--text);
-  border-color: var(--line-2);
+  background: color-mix(in srgb, var(--bg-3) 70%, transparent);
 }
 .view-tab.active {
-  background: var(--bg-3);
-  border-color: var(--line-2);
+  background: var(--bg);
+  border-color: var(--line);
+  border-bottom-color: var(--bg);
   color: var(--text);
 }
 .view-tab-label {
@@ -1651,15 +1661,29 @@ html[data-standalone] .composer-controls select {
 }
 .view-tab-x {
   flex: none;
-  opacity: 0.45;
-  font-size: 14px;
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-right: -2px;
+  border-radius: 3px;
+  opacity: 0.4;
+  font-size: 13px;
   line-height: 1;
-  padding: 0 1px;
 }
-.view-tab-x:hover { opacity: 1; color: var(--red); }
+.view-tab-x:hover {
+  opacity: 1;
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+}
 .view-tab-new {
   flex: none;
-  margin-left: 2px;
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 4px;
+  padding: 0;
+  font-size: 14px;
 }
 
 button.icon.active {
@@ -2343,14 +2367,15 @@ pre:hover .copy,
      mistake to offer, so the queue's buttons are thumb-sized here. */
   .queued-act { width: 36px; height: 36px; font-size: 15px; }
 
+  .view-tabs { height: 32px; }
   .view-tab {
-    min-height: 36px;
-    padding: 6px 12px;
-    font-size: 13.5px;
+    height: 30px;
+    padding: 0 12px;
+    font-size: 12.5px;
   }
   .view-tab-new {
-    min-width: 36px;
-    min-height: 36px;
+    min-width: 28px;
+    min-height: 28px;
   }
 
   #topbar { padding: max(8px, env(safe-area-inset-top, 0px)) 10px 8px; gap: 6px; }
