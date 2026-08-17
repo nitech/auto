@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-17T14:15:00Z }
+generated: { by: agent, at: 2026-08-17T14:50:00Z }
 ---
 
 # Web app
@@ -74,6 +74,8 @@ meta also asks for `interactive-widget=resizes-content` where supported.
 
 ## What it draws
 
+- While a long transcript replays, the chat pane shows the Auto A mark
+  (same glyph as the rail) and "Loading conversation…", not a blank.
 - The session rail, grouped by [project](projects.md), plus Cursor's recent
   chats so the rail can be the same list the IDE shows.
 - The [queue](queue.md) above the chat box, with reword / send now / delete.

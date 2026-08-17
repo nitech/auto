@@ -120,9 +120,16 @@
 
     <div class="scroller">
       <!-- Visible before JS runs: a long transcript takes a few seconds to
-          replay, and an empty pane reads as the app having frozen. -->
+          replay, and an empty pane reads as the app having frozen. Same A
+          as the rail — not an <img> of icon.svg — so a manual theme pick
+          still matches. -->
       <div id="transcript-loading" class="transcript-loading" role="status" aria-live="polite">
-        <span class="spinner" aria-hidden="true"></span>
+        <svg class="brand-mark loading-mark" viewBox="96 88 320 328" aria-hidden="true">
+          <path d="M140 372 L256 132" fill="none" stroke="currentColor" stroke-width="68" stroke-linecap="round"/>
+          <path d="M372 372 L256 132" fill="none" stroke="currentColor" stroke-width="68" stroke-linecap="round"/>
+          <path d="M223.59 277.19 A36 36 0 0 1 288.41 277.19 L295 155 L217 155 Z" fill="currentColor"/>
+          <circle cx="256" cy="372" r="32" fill="var(--usage-accent)"/>
+        </svg>
         <span>Loading conversation…</span>
       </div>
       <div id="transcript" aria-busy="true"></div>

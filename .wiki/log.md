@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-17
+* **Update**: Transcript loading overlay shows the Auto A mark (breathing) instead of a spinner.
 * **Update**: Session rail shows this machine's hostname (or a nick from Settings → Host); stored in `state/host.json`.
 * **Update**: iOS Home Screen no longer zooms when tapping mode/model — dropped CSS `zoom` on those chips (WebKit still focus-zoomed the scaled size) and locked `maximum-scale=1` in standalone.
 * **Update**: New chats started from Auto land on Auto-select (`default[]` / Cursor's "Auto"), instead of inheriting the last chat's model.

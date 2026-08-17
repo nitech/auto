@@ -1597,8 +1597,16 @@ if (existsSync(SRC)) {
     fail('the loading marker should announce itself as a status');
     failed = true;
   }
+  if (!html.includes('loading-mark') || !html.includes('Loading conversation')) {
+    fail('the loading marker should show the Auto mark while history replays');
+    failed = true;
+  }
   if (!css.includes('.transcript-loading') || !css.includes('.transcript-loading[hidden]')) {
     fail('the loading marker needs a style, and a way to leave the screen');
+    failed = true;
+  }
+  if (!css.includes('.loading-mark') || !css.includes('loading-breathe')) {
+    fail('the Auto mark on the loading overlay needs a size and a breathe');
     failed = true;
   }
   if (!js.includes('function setHistoryLoading') || !js.includes('setHistoryLoading(true)')) {

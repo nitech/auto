@@ -1699,9 +1699,17 @@ button.icon.active {
 
 .transcript-loading[hidden] { display: none; }
 
-.transcript-loading .spinner {
-  width: 22px;
-  height: 22px;
+.transcript-loading .loading-mark {
+  width: 48px;
+  height: 48px;
+  color: var(--text);
+  opacity: 0.85;
+  animation: loading-breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes loading-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(0.96); }
+  50% { opacity: 1; transform: scale(1); }
 }
 
 .browser-view {
