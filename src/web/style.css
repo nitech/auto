@@ -208,6 +208,16 @@ html[data-standalone] #app {
   flex: 1;
 }
 
+/* The favicon's A mark, glyph only — currentColor and the usage amber, so it
+   follows the app theme rather than the system's (an <img> of icon.svg would
+   follow the system and can disagree with a manual theme pick). */
+.brand-mark {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  align-self: center;
+}
+
 #session-list {
   flex: 1;
   overflow-y: auto;
