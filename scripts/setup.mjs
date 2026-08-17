@@ -6,6 +6,7 @@
  * missing Tailscale or agent CLI is the next step, not a broken package.
  * `npm run setup` is the same script without that softness — it exits 1
  * when something Auto cannot start without is missing.
+ * `npm run supervise` prints this checklist too, then starts the host.
  *
  * Prints a checklist and the next command, then points at docs/install.md.
  */
@@ -51,6 +52,82 @@ function tailscaleBin() {
     if (existsSync(guess)) return guess;
   }
   return null;
+}
+
+export function supportsColor() {
+  if (process.env.NO_COLOR) return false;
+  if (process.env.FORCE_COLOR) return true;
+  return Boolean(process.stdout?.isTTY);
+}
+
+const ANSI = {
+  green: '32',
+  red: '31',
+  yellow: '33',
+  cyan: '36',
+  bold: '1',
+  brightCyan: '1;96',
+};
+
+/** Colour a string when stdout is a TTY (unless NO_COLOR). */
+export function paint(kind, text) {
+  const s = String(text ?? '');
+  if (!supportsColor() || !ANSI[kind]) return s;
+  return `\x1b[${ANSI[kind]}m${s}\x1b[0m`;
+}
+
+/** This machine's Tailscale IPv4, or null. */
+export function tailscaleIpv4() {
+  const ts = tailscaleBin();
+  if (!ts) return null;
+  const ip = run(ts, ['ip', '-4'], { timeout: 8000, shell: false });
+  return (
+    String(ip.stdout || '')
+      .split(/\s+/)
+      .map((s) => s.trim())
+      .find((s) => /^100\.\d+\.\d+\.\d+$/.test(s)) || null
+  );
+}
+
+/**
+ * Where a phone (and this PC) should open Auto.
+ * Pass the setup checks to reuse the Tailscale lookup already done.
+ */
+export function whereAutoLives(port, checks) {
+  const n = Number(port) || 4331;
+  const fromCheck = checks?.find((c) => c.id === 'tailscale');
+  const ip = fromCheck ? fromCheck.ip || null : tailscaleIpv4();
+  return {
+    ip,
+    port: n,
+    phoneUrl: ip ? `http://${ip}:${n}/` : null,
+    localUrl: `http://127.0.0.1:${n}/`,
+  };
+}
+
+/** Whether the CLI is missing or `agent status` is not signed in. */
+export function agentLoginRequired(checks) {
+  const login = checks?.find((c) => c.id === 'agent-login');
+  if (login) return !login.ok;
+  const agent = checks?.find((c) => c.id === 'agent');
+  return Boolean(agent) && !agent.ok;
+}
+
+/**
+ * Plain-text banner for where Auto lives. Supervise colours this for a TTY.
+ */
+export function formatReachability({ ip, port, loginOk = true, agentOk = true, up = true } = {}) {
+  const n = Number(port) || 4331;
+  const lines = [up ? 'Auto is up' : 'Auto is starting'];
+  if (ip) lines.push(`Phone: http://${ip}:${n}/`);
+  else lines.push('Phone: Tailscale has no 100.x address yet — sign in, then: tailscale ip -4');
+  lines.push(`This PC: http://127.0.0.1:${n}/`);
+  if (agentOk === false) {
+    lines.push('Cursor agent CLI not found — install it, then: agent login');
+  } else if (!loginOk) {
+    lines.push('Agent login required — run: agent login');
+  }
+  return lines.join('\n');
 }
 
 function nodeMajor(version = process.versions.node) {
@@ -194,6 +271,7 @@ export async function collectChecks({ root = ROOT } = {}) {
       id: 'tailscale',
       required: false,
       ok: false,
+      ip: null,
       detail: 'Tailscale not installed',
       hint:
         process.platform === 'win32'
@@ -201,11 +279,7 @@ export async function collectChecks({ root = ROOT } = {}) {
           : 'Install from https://tailscale.com/download, sign in, then install the app on your phone with the same account.',
     });
   } else {
-    const ip = run(ts, ['ip', '-4'], { timeout: 8000, shell: false });
-    const addr = String(ip.stdout || '')
-      .split(/\s+/)
-      .map((s) => s.trim())
-      .find((s) => /^100\.\d+\.\d+\.\d+$/.test(s));
+    const addr = tailscaleIpv4();
     const up = run(ts, ['status', '--json'], { timeout: 8000, shell: false });
     let backend = '';
     try {
@@ -217,6 +291,7 @@ export async function collectChecks({ root = ROOT } = {}) {
       id: 'tailscale',
       required: false,
       ok: Boolean(addr),
+      ip: addr || null,
       detail: addr
         ? `Tailscale ${addr}${backend && backend !== 'Running' ? ` (${backend})` : ''}`
         : `Tailscale installed${backend ? ` (${backend})` : ''}, no 100.x address yet`,
@@ -245,41 +320,49 @@ export async function collectChecks({ root = ROOT } = {}) {
 }
 
 function mark(check) {
-  if (check.ok) return '✓';
-  if (check.warn) return '!';
-  return '✗';
+  if (check.ok) return paint('green', '✓');
+  if (check.warn) return paint('yellow', '!');
+  return paint('red', '✗');
 }
 
-export async function printReport({ postinstall = false, root = ROOT } = {}) {
+/**
+ * @param {object} [opts]
+ * @param {boolean} [opts.postinstall]
+ * @param {string} [opts.root]
+ * @param {boolean} [opts.next]  when false (supervise), skip "run supervise" / tutorial
+ */
+export async function printReport({ postinstall = false, root = ROOT, next = true } = {}) {
   const checks = await collectChecks({ root });
   const requiredMissing = checks.filter((c) => c.required && !c.ok);
   const ts = checks.find((c) => c.id === 'tailscale');
   const tsHint = ts?.ok ? ts.hint : null;
 
   console.log('');
-  console.log('Auto setup');
+  console.log(paint('bold', 'Auto setup'));
   for (const c of checks) {
     console.log(`  ${mark(c)} ${c.detail}`);
-    if (!c.ok && c.hint) console.log(`    ${c.hint}`);
+    if (!c.ok && c.hint) console.log(paint('yellow', `    ${c.hint}`));
   }
   console.log('');
 
   if (requiredMissing.length) {
-    console.log('Still needed before Auto can drive Cursor:');
+    console.log(paint('red', 'Still needed before Auto can drive Cursor:'));
     for (const c of requiredMissing) {
-      if (c.hint) console.log(`  – ${c.hint}`);
+      if (c.hint) console.log(paint('yellow', `  – ${c.hint}`));
     }
     console.log('');
-  } else {
+  } else if (next) {
     console.log('Next:  npm run supervise');
     if (tsHint) console.log(`Then:  ${tsHint}`);
     else console.log('Then:  install Tailscale (see docs/install.md) and open the 100.x:4331 URL from your phone.');
     console.log('');
   }
 
-  console.log('Tutorial: docs/install.md');
-  if (postinstall) console.log('Re-run checks any time: npm run setup');
-  console.log('');
+  if (next) {
+    console.log('Tutorial: docs/install.md');
+    if (postinstall) console.log('Re-run checks any time: npm run setup');
+    console.log('');
+  }
 
   return { checks, requiredMissing };
 }

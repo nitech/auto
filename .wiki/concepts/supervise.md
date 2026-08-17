@@ -11,7 +11,7 @@ sources:
   - id: autostart
     resource: /scripts/install-autostart.ps1
     title: Scheduled task install
-generated: { by: agent, at: 2026-08-16T06:35:00Z }
+generated: { by: agent, at: 2026-08-17T10:40:00Z }
 ---
 
 # Supervise and autostart
@@ -28,6 +28,12 @@ Start-ScheduledTask -TaskName AutoSupervise
 
 ## What it does
 
+- Runs the same first-run [checklist](access.md) as `npm run setup` (Node,
+  CLI, **CLI login**, Tailscale, `.env`). Missing `agent login` is printed
+  in red; the host still starts so the web app can be reached.
+- Once the host answers health, prints in colour where Auto lives: the
+  Tailscale `http://100.x:4331/` URL for a phone, and `127.0.0.1` for this
+  PC. The same text is appended to `supervise.log` without colour.
 - Spawns `src/server/index.mjs` and restarts it when the process exits.
 - Polls `GET /api/health` on a timer (default ~15s). After enough consecutive
   failures it force-restarts the child.

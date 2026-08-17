@@ -96,7 +96,7 @@ Fix anything with `✗`, then:
 npm run setup
 ```
 
-That command exits `1` until the required rows are green. `npm install` itself will not fail because Tailscale or the CLI is missing — those are the next steps.
+That command exits `1` until the required rows are green. `npm install` itself will not fail because Tailscale or the CLI is missing — those are the next steps. You can skip a second `npm run setup` and go straight to `npm run supervise`: it runs the same checklist, then starts Auto.
 
 ## 4. Cursor agent CLI
 
@@ -120,13 +120,21 @@ Official overview: [cursor.com/docs/cli/overview](https://cursor.com/docs/cli/ov
 npm run supervise
 ```
 
-Leave that window open. Open the Tailscale address from the phone’s browser (Safari / Chrome), not from a PC-only bookmark:
+It prints the setup checklist first. If the CLI is not logged in, that is in **red** (`Agent login required — run: agent login`). Auto still starts so you can open the web app.
+
+Once the host is up it prints, in colour, the address Auto lives on:
 
 ```text
-http://100.x.y.z:4331/
+  Auto is up
+
+  Phone
+    http://100.x.y.z:4331/
+
+  This PC
+    http://127.0.0.1:4331/
 ```
 
-Use the value `tailscale ip -4` printed on the PC. Add to Home Screen — it is a PWA.
+Leave that window open. Open the **Phone** URL from the phone’s browser (Safari / Chrome), not from a PC-only bookmark. Add to Home Screen — it is a PWA.
 
 If the phone spins and never loads:
 
@@ -214,7 +222,7 @@ Use `npm install` and `node`. If you run the setup script under Bun it will warn
 | Symptom | Likely cause |
 | --- | --- |
 | `npm run setup` says CLI not found | Step 4; new terminal after the installer |
-| `agent status` says `Not logged in`, or setup says `CLI found, not logged in` | `agent login` — then `npm run setup` again |
+| `agent status` says `Not logged in`, or setup/supervise says `CLI found, not logged in` | `agent login` — then `npm run setup` or restart supervise |
 | Model picker empty, host logs `Authentication required` | Same: the CLI is present but not signed in |
 | Phone cannot open `100.x:4331` | Tailscale not on both devices, or Windows Firewall (step 5) |
 | Host dies when a Cursor chat ends | Auto was started in an agent background shell — use supervise / the scheduled task |

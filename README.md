@@ -24,9 +24,10 @@ Windows-first. You need the Cursor **app**; the **agent CLI** is separate and th
 git clone https://github.com/nitech/auto.git
 cd auto
 npm install          # also prints a setup checklist
-npm run setup        # again after installing Tailscale / the CLI
-npm run supervise
+npm run supervise    # runs the checklist again, then keeps Auto up
 ```
+
+`npm run setup` is the same checklist without starting the host — useful after installing Tailscale or the CLI. `npm run supervise` will tell you in colour if `agent login` is still required, and prints the Tailscale URL once Auto is up.
 
 Open `http://<tailscale-ip>:4331/` from a phone on the same tailnet. Add it to the home screen — it is a PWA.
 
@@ -66,8 +67,8 @@ Desktop chat control is Windows-oriented (debug port, clipboard paste, scheduled
 | --- | --- |
 | `src/server/index.mjs` | The host: HTTP, WebSocket, session API, static web app |
 | `docs/install.md` | First-run tutorial (Tailscale, CLI, debug port) |
-| `scripts/setup.mjs` | Checklist run by `npm install` / `npm run setup` |
-| `scripts/supervise.mjs` | Restart and health watchdog |
+| `scripts/setup.mjs` | Checklist run by `npm install`, `npm run setup`, and `npm run supervise` |
+| `scripts/supervise.mjs` | Restart and health watchdog; prints the Tailscale URL |
 | `state/` | Sessions, transcripts, browser profile — gitignored |
 | `.wiki/` | Compiled knowledge for agents working in this repo |
 

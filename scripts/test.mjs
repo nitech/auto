@@ -73,7 +73,8 @@ if (existsSync(SRC)) {
 
 // 1g. First-run checklist — the rows a stranger sees after npm install.
 {
-  const { collectChecks, ensureEnvFile, agentCliLoggedIn } = await import('./setup.mjs');
+  const { collectChecks, ensureEnvFile, agentCliLoggedIn, formatReachability, whereAutoLives, agentLoginRequired } =
+    await import('./setup.mjs');
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
   if (pkg.scripts?.postinstall !== 'node scripts/setup.mjs --postinstall') {
     fail('package.json postinstall should run scripts/setup.mjs --postinstall');
@@ -97,6 +98,29 @@ if (existsSync(SRC)) {
     fail('setup must accept a coloured "Logged in as …"');
   }
   if (!agentCliLoggedIn('Login successful!')) fail('setup must accept "Login successful!"');
+  if (agentLoginRequired([{ id: 'agent-login', ok: false }]) !== true) {
+    fail('agentLoginRequired must be true when the login row failed');
+  }
+  if (agentLoginRequired([{ id: 'agent-login', ok: true }]) !== false) {
+    fail('agentLoginRequired must be false when the login row passed');
+  }
+  const live = formatReachability({ ip: '100.64.1.2', port: 4331, loginOk: true, up: true });
+  if (!live.includes('http://100.64.1.2:4331/')) fail('reachability banner must include the Tailscale URL and port');
+  if (!live.includes('http://127.0.0.1:4331/')) fail('reachability banner must include the local URL');
+  if (!live.includes('Auto is up')) fail('reachability banner must say Auto is up');
+  const needLogin = formatReachability({ ip: null, port: 4331, loginOk: false, up: false });
+  if (!/agent login/i.test(needLogin)) fail('reachability banner must say when agent login is required');
+  if (!needLogin.includes('100.x')) fail('reachability banner must say when Tailscale has no address');
+  const where = whereAutoLives(4331, [{ id: 'tailscale', ip: '100.9.8.7', ok: true }]);
+  if (where.phoneUrl !== 'http://100.9.8.7:4331/') fail(`whereAutoLives should use the check IP, got ${where.phoneUrl}`);
+  const noTs = whereAutoLives(4331, [{ id: 'tailscale', ip: null, ok: false }]);
+  if (noTs.phoneUrl !== null) fail('whereAutoLives should not invent a Tailscale URL');
+  const sup = readFileSync(join(HERE, 'supervise.mjs'), 'utf8');
+  if (!sup.includes("from './setup.mjs'")) fail('supervise should run the setup checklist');
+  if (!sup.includes('announceReachability') || !sup.includes('formatReachability')) {
+    fail('supervise should print where Auto lives after the host is up');
+  }
+  if (!sup.includes('agentLoginRequired')) fail('supervise should detect when agent login is required');
   const checks = await collectChecks({ root: ROOT });
   const ids = checks.map((c) => c.id);
   for (const need of ['node', 'pty', 'agent', 'tailscale', 'env']) {

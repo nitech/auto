@@ -14,7 +14,7 @@ sources:
   - id: host
     resource: /src/server/index.mjs
     title: Host process
-generated: { by: agent, at: 2026-08-17T05:40:00Z }
+generated: { by: agent, at: 2026-08-17T10:40:00Z }
 ---
 
 # Auto
@@ -58,8 +58,8 @@ again — that closes every window. Only then does it fall back to ACP.
 ## Standing rules
 
 - [Access](concepts/access.md) is Tailscale; Auto has no login of its own.
-  First clone: [docs/install.md](../docs/install.md). `npm run setup` is the
-  checklist.
+  First clone: [docs/install.md](../docs/install.md). `npm run supervise`
+  runs the setup checklist and prints the Tailscale URL.
 - One Telegram poller. A second host with the bot token splits messages.
   Develop with `npm run dev` (port 4340, Telegram off).
 - Never host Auto in a Cursor agent background shell — those get killed.

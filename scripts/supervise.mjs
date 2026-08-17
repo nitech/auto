@@ -6,6 +6,9 @@
  * Run this outside Cursor agent shells (Scheduled Task at logon) so Auto does
  * not die when an agent terminal is killed.
  *
+ * Prints the first-run checklist (same as `npm run setup`) and, once the host
+ * is up, the Tailscale URL in colour so a phone can find it.
+ *
  *   node scripts/supervise.mjs
  *   npm run supervise
  */
@@ -13,6 +16,13 @@ import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  agentLoginRequired,
+  formatReachability,
+  paint,
+  printReport,
+  whereAutoLives,
+} from './setup.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
@@ -194,12 +204,78 @@ function shutdown() {
   process.exit(0);
 }
 
+async function waitUntilHealthy(ms = 25_000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (await healthy()) return true;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return false;
+}
+
+/**
+ * The one line a first-run should not miss: where Auto is, and whether
+ * `agent login` is still required. Coloured on a TTY; plain in supervise.log.
+ */
+function announceReachability({ ip, port, loginOk, agentOk, up }) {
+  const plain = formatReachability({ ip, port, loginOk, agentOk, up });
+  try {
+    appendFileSync(LOG, `[${new Date().toISOString()}] [supervise]\n${plain}\n`);
+  } catch {
+    /* logging must never take the supervisor down */
+  }
+
+  const phone = ip ? `http://${ip}:${port}/` : null;
+  console.log('');
+  console.log(paint('bold', up ? '  Auto is up' : '  Auto is starting'));
+  console.log('');
+  if (phone) {
+    console.log(`  ${paint('cyan', 'Phone')}`);
+    console.log(`    ${paint('brightCyan', phone)}`);
+  } else {
+    console.log(`  ${paint('yellow', 'Phone')}`);
+    console.log(paint('yellow', '    Tailscale has no 100.x address yet'));
+    console.log('    Sign in, then: tailscale ip -4');
+  }
+  console.log('');
+  console.log('  This PC');
+  console.log(`    ${paint('cyan', `http://127.0.0.1:${port}/`)}`);
+  if (agentOk === false) {
+    console.log('');
+    console.log(paint('red', '  Cursor agent CLI not found — install it, then: agent login'));
+  } else if (!loginOk) {
+    console.log('');
+    console.log(paint('red', '  Agent login required — run: agent login'));
+  }
+  console.log('');
+}
+
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 log(`[supervise] watching Auto on :${port}`);
+log('[supervise] checking setup');
+const report = await printReport({ next: false });
+const where = whereAutoLives(port, report.checks);
+const agentOk = report.checks.find((c) => c.id === 'agent')?.ok !== false;
+const loginOk = !agentLoginRequired(report.checks);
+if (report.requiredMissing.length) {
+  log(`[supervise] setup still needed: ${report.requiredMissing.map((c) => c.id).join(', ')}`);
+}
+if (agentOk === false) {
+  console.log(paint('red', 'Cursor agent CLI not found. Auto will start, but it cannot drive Cursor until the CLI is installed.'));
+  console.log(paint('yellow', '  See docs/install.md'));
+  console.log('');
+} else if (!loginOk) {
+  console.log(paint('red', 'Agent login required. Auto will start, but the model picker stays empty until:'));
+  console.log(paint('yellow', '  agent login'));
+  console.log('');
+}
 
 if (await healthy()) log('[supervise] already healthy — supervising without respawn');
 else startChild();
+
+const up = await waitUntilHealthy(25_000);
+announceReachability({ ...where, loginOk, agentOk, up });
 
 healthLoop();
