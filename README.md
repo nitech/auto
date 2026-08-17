@@ -8,7 +8,7 @@ This is **not** Cursor’s “Auto” model. It is a small Node process next to 
 
 You get the agent’s full output, not a summary: streamed prose, thinking, every tool call with its input and result, diffs, terminal output, browser screenshots, and approval prompts you can answer from the phone.
 
-**Unofficial.** Auto is not affiliated with Anysphere or Cursor, and it is not [CursorRemote](https://github.com/len5ky/CursorRemote). It talks to Cursor through the agent CLI, the IDE’s debug port, and local state Cursor already keeps on disk. Cursor updates can break that. Use at your own risk and check Cursor’s terms for your account.
+**Unofficial.** Auto is not affiliated with Anysphere or Cursor. It talks to Cursor through the agent CLI, the IDE’s debug port, and local state Cursor already keeps on disk. Cursor updates can break that. Use at your own risk and check Cursor’s terms for your account.
 
 ## Security
 
@@ -81,7 +81,7 @@ Knowledge is `.wiki/`. Start at `.wiki/index.md`. After a non-trivial code chang
 
 ## Related
 
-Same itch, different program. [CursorRemote](https://github.com/len5ky/CursorRemote) is a source-available VS Code/Cursor extension that polls the IDE DOM over CDP and sells a license key. Auto is MIT, has no key, and drives Cursor through the agent CLI and the same desktop chat (debug port plus Cursor’s local state), with Tailscale as access control. Not a fork, not affiliated.
+- [CursorRemote](https://github.com/len5ky/CursorRemote) — a source-available Cursor extension that polls the IDE DOM over CDP. Auto is a separate MIT host: agent CLI and desktop chat, Tailscale, no license key.
 
 ## License
 
