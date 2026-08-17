@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 export const BG = '#0b0d12';
 export const STROKE = '#dfe3ea';
-export const DOT = '#6ea8ff';
+export const DOT = '#e5a95a';
 export const APEX = [256, 132];
 export const FOOT_L = [140, 372];
 export const FOOT_R = [372, 372];
@@ -36,7 +36,7 @@ const WEB = join(ROOT, 'src', 'web');
 const HEX = {
   bg: [0x0b, 0x0d, 0x12],
   stroke: [0xdf, 0xe3, 0xea],
-  dot: [0x6e, 0xa8, 0xff],
+  dot: [0xe5, 0xa9, 0x5a],
 };
 
 function crc32(buf) {

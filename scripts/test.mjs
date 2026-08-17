@@ -1871,7 +1871,7 @@ if (existsSync(SRC)) {
     fail('Android install needs 192 and 512 PNG icons');
     failed = true;
   }
-  if (!icon.includes('viewBox="0 0 512 512"') || !icon.includes('#0b0d12') || !icon.includes('#dfe3ea') || !icon.includes('#6ea8ff')) {
+  if (!icon.includes('viewBox="0 0 512 512"') || !icon.includes('#0b0d12') || !icon.includes('#dfe3ea') || !icon.includes('#e5a95a')) {
     fail('icon.svg must be the full-bleed Auto mark');
     failed = true;
   }

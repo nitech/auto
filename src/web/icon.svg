@@ -14,5 +14,5 @@
   <!-- Fillet pad: arc is the hole ceiling; top edge sits buried in the solid. -->
   <path d="M223.59 277.19 A36 36 0 0 1 288.41 277.19 L295 155 L217 155 Z"
         fill="#dfe3ea"/>
-  <circle cx="256" cy="372" r="32" fill="#6ea8ff"/>
+  <circle cx="256" cy="372" r="32" fill="#e5a95a"/>
 </svg>
