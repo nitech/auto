@@ -18,7 +18,7 @@ import {
 import { lineDiff, collapseContext, diffStats } from './diff.js';
 import { renderMarkdown, linkify } from './markdown.js';
 import { initBrowser, onFrame, onStatus } from './browser.js';
-import { initWorkspace, isOpen as workspaceIsOpen, showChat } from './workspace.js';
+import { initWorkspace, isOpen as workspaceIsOpen, showChat, onViewsChange, restoreViews } from './workspace.js';
 import {
   activityCopy,
   classifyTool,
@@ -1720,6 +1720,7 @@ function sendOp(msg) {
  * Auto at `/` (the PWA start URL) and still landing in the same conversation.
  */
 const SESSION_KEY = 'auto.session';
+const VIEWS_KEY = 'auto.views';
 
 function rememberedSession() {
   try {
@@ -1742,6 +1743,33 @@ function rememberSession(id) {
   if (url.searchParams.get('session') === id) return;
   url.searchParams.set('session', id);
   history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
+/** Which tool tabs were open for a chat — survives refresh and session switch. */
+function rememberedViews(sessionId) {
+  if (!sessionId) return null;
+  try {
+    const all = JSON.parse(localStorage.getItem(VIEWS_KEY) || '{}');
+    return all[sessionId] || null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberViews(sessionId, snap) {
+  if (!sessionId || !snap) return;
+  try {
+    const all = JSON.parse(localStorage.getItem(VIEWS_KEY) || '{}');
+    all[sessionId] = snap;
+    const keys = Object.keys(all);
+    // Cap growth: drop the oldest-looking keys beyond a few dozen chats.
+    if (keys.length > 40) {
+      for (const k of keys.slice(0, keys.length - 40)) delete all[k];
+    }
+    localStorage.setItem(VIEWS_KEY, JSON.stringify(all));
+  } catch {
+    /* private mode */
+  }
 }
 
 function attach(sessionId) {
@@ -1863,8 +1891,10 @@ function connect() {
       state.replaying = true;
       applyMeta(msg.meta);
       renderRail();
-      // Panes first, so replayed terminal chunks have somewhere to land.
-      for (const t of msg.terminals || []) openPane(t);
+      // Panes first (quiet), so replayed terminal chunks have somewhere to land
+      // and the remembered active tab can win after restoreViews.
+      for (const t of msg.terminals || []) openPane(t, { activate: false });
+      if (fresh) restoreViews(rememberedViews(msg.sessionId));
       // Say what is not on screen, so the top of a long chat reads as the middle
       // of a conversation rather than the beginning of one.
       if (fresh && msg.earlier > 0) {
@@ -2746,6 +2776,7 @@ document.addEventListener('visibilitychange', () => {
 paintMode();
 syncSend();
 initWorkspace();
+onViewsChange((snap) => rememberViews(state.sessionId, snap));
 initTerminals(sendOp);
 initBrowser(sendOp);
 connect();

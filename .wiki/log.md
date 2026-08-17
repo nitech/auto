@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-17
+* **Update**: View tabs (Browser / shells / which was selected) are remembered per chat across refresh and session switch.
 * **Update**: Browser and each shell open as tabs under the header (Chat first, no × on Chat); the side workspace dock is gone. The strip scrolls sideways when tabs overflow.
 * **Update**: Browser and terminal toggles live in the topbar at every width (including phone); Settings no longer has a Panels section for them.
 * **Update**: Mode/model chips draw at a true 12px in the installed PWA (maximum-scale=1 makes focus-zoom impossible there; the 16px base stays for Safari tabs), and the mode chip's background takes a tint of the mode colour. The rail's new-session and close buttons are inline SVGs instead of text glyphs.

@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-17T18:05:00Z }
+generated: { by: agent, at: 2026-08-17T18:45:00Z }
 ---
 
 # Web app
@@ -87,7 +87,9 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   cannot be closed; Browser and each shell get an ×. The strip scrolls
   sideways when tabs overflow, and hides while only Chat is open. Topbar
   icons open or focus a tool; Escape returns to Chat without closing the
-  tab.
+  tab. Which tabs were open (and which was selected) is remembered per chat
+  in the browser, so a refresh or switching back restores them — live shells
+  the host still has, plus the Browser tab.
   A http(s) URL in the chat is a link — markdown `[text](url)` and a bare
   address both. User bubbles too. Images you attach show as thumbnails in
   the bubble (and inside the composer before send); tap one for a full-screen

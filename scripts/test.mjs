@@ -1685,6 +1685,10 @@ if (existsSync(SRC)) {
     fail('app.js must own the workspace lifecycle');
     failed = true;
   }
+  if (!app.includes('auto.views') || !app.includes('restoreViews') || !ws.includes('restoreViews')) {
+    fail('view tabs must be remembered across refresh via restoreViews');
+    failed = true;
+  }
   if (!failed) ok('v2 web: browser/terminals as header tabs');
 }
 

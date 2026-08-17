@@ -66,7 +66,7 @@ export function initTerminals(send) {
     onShow: () => {
       requestAnimationFrame(() => panes.get(activeId)?.fit());
     },
-    onSelect: (id) => activate(id),
+    onSelect: (id) => activatePane(id),
     onNew: () => requestNew(),
     onClose: (id) => sendOp({ op: 'terminal.close', terminalId: id }),
   });
@@ -83,7 +83,7 @@ export function toggleDock(force) {
     if (panes.size) {
       const id = activeId || [...panes.keys()].at(-1);
       openTerminal(id, panes.get(id)?.title);
-      activate(id);
+      activatePane(id);
     } else requestNew();
     return;
   }
@@ -91,7 +91,7 @@ export function toggleDock(force) {
   else {
     const id = activeId || [...panes.keys()].at(-1);
     openTerminal(id, panes.get(id)?.title);
-    activate(id);
+    activatePane(id);
   }
 }
 
@@ -104,7 +104,7 @@ export function resetTerminals() {
   clearTerminalTabs();
 }
 
-export function openPane(desc) {
+export function openPane(desc, { activate = true } = {}) {
   if (!desc || panes.has(desc.terminalId)) return;
   const id = desc.terminalId;
   const title = desc.title || 'shell';
@@ -140,8 +140,8 @@ export function openPane(desc) {
   for (const chunk of early.get(id) || []) term.write(chunk);
   early.delete(id);
 
-  openTerminal(id, title);
-  activate(id);
+  openTerminal(id, title, { activate });
+  if (activate) activatePane(id);
   requestAnimationFrame(fit);
 }
 
@@ -154,10 +154,10 @@ export function closePane(terminalId) {
   if (activeId === terminalId) activeId = null;
   closeTerminal(terminalId);
   const next = panes.keys().next();
-  if (!next.done && activeId == null) activate(next.value);
+  if (!next.done && activeId == null) activatePane(next.value);
 }
 
-function activate(id) {
+function activatePane(id) {
   if (!panes.has(id)) return;
   activeId = id;
   for (const [key, pane] of panes) {

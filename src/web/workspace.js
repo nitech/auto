@@ -47,14 +47,18 @@ export function showChat() {
 export function openBrowser() {
   browserOpen = true;
   select('browser');
+  notify();
 }
 
 export function closeBrowser() {
   if (!browserOpen) return;
   browserOpen = false;
   if (active === 'browser') select('chat');
-  else paint();
-  paintToggles();
+  else {
+    paint();
+    paintToggles();
+  }
+  notify();
 }
 
 /** Icon: open or focus the browser; if already viewing it, go back to Chat. */
@@ -63,12 +67,23 @@ export function toggleBrowser() {
   else openBrowser();
 }
 
-export function openTerminal(id, title) {
+/**
+ * @param {string} id
+ * @param {string} [title]
+ * @param {{ activate?: boolean }} [opts]  activate defaults true; false while
+ *   restoring several panes so the remembered tab can win afterwards.
+ */
+export function openTerminal(id, title, { activate = true } = {}) {
   if (!id) return;
   const first = terminals.size === 0;
   terminals.set(id, { title: title || 'shell' });
-  select(id);
+  if (activate) select(id);
+  else {
+    paint();
+    paintToggles();
+  }
   if (first) hooks.terminals.onShow?.({ opening: true });
+  notify();
 }
 
 export function closeTerminal(id) {
@@ -80,8 +95,11 @@ export function closeTerminal(id) {
     const next = terminals.keys().next();
     if (!next.done) select(next.value);
     else select('chat');
-  } else paint();
-  paintToggles();
+  } else {
+    paint();
+    paintToggles();
+  }
+  notify();
 }
 
 export function selectTerminal(id) {
@@ -107,6 +125,7 @@ export function resetTools() {
   paint();
   paintToggles();
   showPanels();
+  notify();
 }
 
 /** Drop every terminal tab; leave the browser tab alone. */
@@ -118,6 +137,49 @@ export function clearTerminalTabs() {
   if (wasTerm) select('chat');
   else paint();
   paintToggles();
+  notify();
+}
+
+/** What this tab had open — enough to put the strip back after a reload. */
+export function snapshot() {
+  return {
+    browser: browserOpen,
+    active:
+      active === 'chat' || active === 'browser' || terminals.has(active) ? active : 'chat',
+  };
+}
+
+/**
+ * Re-open the browser tab and select Chat / Browser / a live shell after
+ * attach has already registered the host's terminals.
+ * @param {{ browser?: boolean, active?: string } | null | undefined} snap
+ */
+export function restoreViews(snap) {
+  browserOpen = Boolean(snap?.browser);
+  let want = snap?.active || 'chat';
+  if (want === 'browser' && !browserOpen) want = 'chat';
+  if (want !== 'chat' && want !== 'browser' && !terminals.has(want)) want = 'chat';
+  // Avoid a no-op select short-circuit before panels/paint catch up.
+  if (active === want) {
+    showPanels();
+    paint();
+    paintToggles();
+    if (want === 'browser') hooks.browser.onShow?.({ opening: true });
+    if (want !== 'chat' && want !== 'browser') hooks.terminals.onSelect?.(want);
+  } else {
+    select(want);
+  }
+  notify();
+}
+
+/** Persist hook — app.js writes this per session to localStorage. */
+let changeHook = null;
+export function onViewsChange(fn) {
+  changeHook = fn || null;
+}
+
+function notify() {
+  changeHook?.(snapshot());
 }
 
 /** True when a tool view (not Chat) is showing. */
@@ -167,6 +229,7 @@ function select(view) {
   if (prev === view) {
     paint();
     paintToggles();
+    notify();
     return;
   }
 
@@ -181,6 +244,7 @@ function select(view) {
   if (view !== 'chat' && view !== 'browser' && terminals.has(view)) {
     hooks.terminals.onSelect?.(view);
   }
+  notify();
 }
 
 function showPanels() {
