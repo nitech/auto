@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-17T19:45:00Z }
+generated: { by: agent, at: 2026-08-17T19:50:00Z }
 ---
 
 # Web app
@@ -116,9 +116,11 @@ Mode and model are chips under the text: a slight background and rounded
 edges so a thumb can see where each picker starts. Their base font is
 **16px** — iOS Safari zooms the page into anything smaller and never zooms
 back out, and an older `zoom: 0.75` trick still triggered it (WebKit uses
-the scaled size). The installed PWA is different: there the viewport sets
-`maximum-scale=1`, which a Home Screen app honours, so focus-zoom is
-impossible and the chips draw at a true 12px, the size Cursor gives them.
+the scaled size). They draw at about **75%** via `transform: scale(0.75)`
+instead — computed font-size stays 16px, so focus-zoom does not fire. The
+installed PWA is different: there the viewport sets `maximum-scale=1`,
+which a Home Screen app honours, so focus-zoom is impossible and the chips
+draw at a true 12px with no transform, the size Cursor gives them.
 
 Mode is Agent, Plan, Debug, Multitask, or Ask — the same five Cursor
 lists. The ring around the box, the send button, and the mode chip itself —

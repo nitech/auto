@@ -1196,7 +1196,9 @@ html[data-standalone] #composer {
  * The base font must stay at least 16px: iOS Safari zooms the page into any
  * form control smaller than that and never zooms back out. Do not use CSS
  * `zoom` to fake a smaller chip — WebKit's focus-zoom uses the scaled size,
- * so 16px at zoom 0.75 still triggers the page zoom.
+ * so 16px at zoom 0.75 still triggers the page zoom. `transform: scale`
+ * is safe: computed font-size stays 16px, and the chip draws at ~75%
+ * (about 12px, matching Cursor).
  */
 .composer-controls {
   display: flex;
@@ -1213,20 +1215,30 @@ html[data-standalone] #composer {
   font-size: 16px;
   line-height: 1.2;
   padding: 3px 8px;
-  max-width: 42%;
+  /* 42% / 0.75 so the scaled chip still caps near 42% of the row. */
+  max-width: 56%;
   min-width: 0;
+  transform: scale(0.75);
+  transform-origin: left center;
+  /* Transform does not shrink layout; reclaim the unused 25%. */
+  margin-block: -0.35em;
+  margin-inline-end: -2.5em;
 }
 
 /*
  * Installed as a Home Screen app the viewport is locked with maximum-scale=1
  * (index.html), and a standalone PWA honours it — focus-zoom cannot happen,
- * so the chips can draw at the 12px Cursor gives them. Safari ignores that
- * lock in a plain tab, which is why the 16px base above stays the guard.
+ * so the chips can draw at a true 12px. Safari ignores that lock in a plain
+ * tab, which is why the 16px + scale(0.75) base above stays the guard.
  */
 html[data-standalone] .composer-controls select {
   font-size: 12px;
   padding: 3px 8px;
   border-radius: 6px;
+  max-width: 42%;
+  transform: none;
+  margin-block: 0;
+  margin-inline-end: 0;
 }
 
 .composer-controls select:hover {

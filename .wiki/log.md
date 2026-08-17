@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-17
+* **Update**: Mode/model chips draw at ~75% size via `transform: scale(0.75)` while keeping a 16px font so iOS Safari does not focus-zoom; Home Screen PWA still uses true 12px.
 * **Update**: WebSocket status sits in the session-rail header beside Auto (Connected / Reconnecting…), not under Settings at the foot.
 * **Update**: View tabs (Browser / shells / which was selected) are remembered per chat across refresh and session switch.
 * **Update**: Browser and each shell open as tabs under the header (Chat first, no × on Chat); the side workspace dock is gone. The strip scrolls sideways when tabs overflow.

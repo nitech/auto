@@ -20,10 +20,14 @@
   html[data-standalone] #composer { padding-bottom: 8px !important; }
   /* Mode/model draw at 12px in the installed PWA, where maximum-scale=1 makes
      focus-zoom impossible — see style.css. A cached sheet must not resurrect
-     the old zoom: 0.75 trick. */
+     the old zoom: 0.75 trick or leave transform: scale on. */
   html[data-standalone] .composer-controls select {
     font-size: 12px !important;
     zoom: normal !important;
+    transform: none !important;
+    margin-block: 0 !important;
+    margin-inline-end: 0 !important;
+    max-width: 42% !important;
   }
 </style>
 <script>
