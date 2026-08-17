@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-17
+* **Update**: iOS Home Screen no longer zooms when tapping mode/model — dropped CSS `zoom` on those chips (WebKit still focus-zoomed the scaled size) and locked `maximum-scale=1` in standalone.
 * **Update**: New chats started from Auto land on Auto-select (`default[]` / Cursor's "Auto"), instead of inheriting the last chat's model.
 * **Update**: Telegram posts prompts typed on the web or in Cursor (without echoing ones typed in Telegram), and retries a turn whose first send failed.
 * **Update**: `npm run supervise` runs the setup checklist, flags a missing `agent login` in red, and prints the Tailscale URL (and local port) in colour once the host is up.

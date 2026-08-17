@@ -1734,7 +1734,9 @@ if (existsSync(SRC)) {
   }
   const attAt = html.indexOf('id="attachments"');
   const boxAt = html.indexOf('class="composer-box"');
-  const boxEnd = html.indexOf('</div>', html.indexOf('composer-controls'));
+  // Close of the composer-box itself — not an inner </div>, and not the
+  // "composer-controls" string that also appears in the standalone <style>.
+  const boxEnd = html.indexOf('</div>', controlsAt > 0 ? controlsAt : boxAt);
   if (attAt < 0 || boxAt < 0 || attAt < boxAt || (boxEnd > 0 && attAt > boxEnd)) {
     fail('pasted images must sit inside the composer box, not above it');
     failed = true;
@@ -1761,12 +1763,20 @@ if (existsSync(SRC)) {
     fail('composer pickers must be 16px so iOS does not zoom on tap');
     failed = true;
   }
-  if (!/zoom:\s*0\.75/.test(pickerBlock)) {
-    fail('composer pickers must zoom to 12px visually without dropping below 16px');
+  if (/zoom\s*:/.test(pickerBlock)) {
+    fail('composer pickers must not use CSS zoom — iOS focus-zoom still fires on the scaled size');
     failed = true;
   }
   if (!/background:\s*var\(--bg-3\)/.test(pickerBlock) || !/border-radius:\s*8px/.test(pickerBlock)) {
     fail('composer pickers must read as chips (background and rounded edges)');
+    failed = true;
+  }
+  if (!html.includes('maximum-scale=1') || !html.includes('data-standalone')) {
+    fail('Home Screen PWA must lock scale so iOS cannot zoom the page on picker tap');
+    failed = true;
+  }
+  if (!html.includes('zoom: normal') || !/composer-controls select[\s\S]*font-size:\s*16px\s*!important/.test(html)) {
+    fail('standalone inline CSS must keep pickers at 16px without zoom (beats a cached sheet)');
     failed = true;
   }
   if (!failed) ok('v2 web: composer mode colours');

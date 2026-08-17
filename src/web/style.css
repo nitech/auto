@@ -1131,15 +1131,17 @@ html[data-standalone] #composer {
 
 /*
  * Mode and model sit under the text they govern, as Cursor's chat box has
- * them. A chip background shows where each picker starts and stops. 16px is
- * the floor: iOS zooms the page into any control smaller than that and never
- * zooms back out. zoom: 0.75 draws them at 12px without changing the
- * computed font-size iOS checks — transform would leave a 16px-tall hole.
+ * them. A chip background shows where each picker starts and stops.
+ *
+ * Font must stay at least 16px: iOS zooms the page into any form control
+ * smaller than that and never zooms back out. Do not use CSS `zoom` to make
+ * them look smaller — WebKit's focus-zoom uses the scaled size, so 16px at
+ * zoom 0.75 still triggers the page zoom on an iPhone Home Screen app.
  */
 .composer-controls {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   padding: 0 0 0 4px;
 }
 
@@ -1149,9 +1151,9 @@ html[data-standalone] #composer {
   border-radius: 8px;
   color: var(--muted);
   font-size: 16px;
-  zoom: 0.75;
-  padding: 4px 10px;
-  max-width: 40%;
+  line-height: 1.2;
+  padding: 3px 8px;
+  max-width: 42%;
   min-width: 0;
 }
 

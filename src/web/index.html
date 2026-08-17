@@ -18,6 +18,12 @@
   /* Wins over a cached style.css. iOS reports ~80px of bottom inset on a Home
      Screen app; the layout viewport already ends above the home bar / keyboard. */
   html[data-standalone] #composer { padding-bottom: 8px !important; }
+  /* Mode/model must stay ≥16px with no CSS zoom — see style.css. Cached sheets
+     that still use zoom: 0.75 would zoom the whole PWA on tap. */
+  html[data-standalone] .composer-controls select {
+    font-size: 16px !important;
+    zoom: normal !important;
+  }
 </style>
 <script>
   // Before first paint, so a light-theme phone never flashes a dark page,
@@ -29,8 +35,19 @@
     document.documentElement.dataset.theme = light ? 'light' : 'dark';
     const theme = document.querySelector('meta[name="theme-color"]');
     if (theme) theme.setAttribute('content', light ? '#ffffff' : '#0b0d12');
-    if (navigator.standalone || matchMedia('(display-mode: standalone)').matches) {
+    const standalone = navigator.standalone
+      || matchMedia('(display-mode: standalone)').matches;
+    if (standalone) {
       document.documentElement.dataset.standalone = '';
+      // Home Screen apps: stop iOS focus-zoom on the mode/model <select>s.
+      // Pinch-zoom is rarely useful in a chat PWA; maximum-scale locks it.
+      const vp = document.querySelector('meta[name="viewport"]');
+      if (vp) {
+        vp.setAttribute(
+          'content',
+          'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content',
+        );
+      }
     }
     const vv = window.visualViewport;
     if (vv) {

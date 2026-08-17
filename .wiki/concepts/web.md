@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-17T07:28:00Z }
+generated: { by: agent, at: 2026-08-17T11:40:00Z }
 ---
 
 # Web app
@@ -105,9 +105,12 @@ were typing and restores it when you come back. An idle send appears in
 the stream at once — it used to wait until Cursor's window had taken it.
 
 Mode and model are chips under the text: a slight background and rounded
-edges so a thumb can see where each picker starts. Their font is 16px
-(iOS zooms the page into anything smaller and never zooms back out) and
-`zoom: 0.75` draws them at 12px so they still look like quiet chips.
+edges so a thumb can see where each picker starts. Their font is **16px** —
+iOS zooms the page into anything smaller and never zooms back out. An older
+trick of `zoom: 0.75` to draw them smaller still triggered focus-zoom on a
+Home Screen app (WebKit uses the scaled size), so the chips stay a true
+16px. Installed as a PWA, the viewport also sets `maximum-scale=1` so a tap
+cannot leave the page zoomed.
 
 Mode is Agent, Plan, Debug, Multitask, or Ask — the same five Cursor
 lists. The ring around the box, the send button, and the mode word all
