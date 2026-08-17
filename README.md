@@ -1,6 +1,4 @@
-# Auto
-
-<img src="src/web/icon.svg" width="72" height="72" alt="Auto">
+# <img src="src/web/icon.svg" width="40" height="40" alt=""> Auto
 
 Remote control for **Cursor’s agent** — the editor you already run, on your phone. One host on the PC serves a web app and an optional Telegram bot, and drives the same chat you see in the IDE.
 
