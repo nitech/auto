@@ -13,11 +13,11 @@
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
 <link rel="stylesheet" href="/vendor/xterm.css" />
-<link rel="stylesheet" href="/style.css?v=ios3" />
+<link rel="stylesheet" href="/style.css" />
 <style>
-  /* Wins over a cached style.css — iOS Home Screen keeps one. env(safe-area-inset-bottom)
-     is ~80px here (and stays that way with the keyboard up), which is the gap. */
-  html[data-standalone] #composer { padding-bottom: 12px !important; }
+  /* Wins over a cached style.css. iOS reports ~80px of bottom inset on a Home
+     Screen app; the layout viewport already ends above the home bar / keyboard. */
+  html[data-standalone] #composer { padding-bottom: 8px !important; }
 </style>
 <script>
   // Before first paint, so a light-theme phone never flashes a dark page,
@@ -278,6 +278,6 @@
 </div>
 <script src="/vendor/xterm.js"></script>
 <script src="/vendor/addon-fit.js"></script>
-<script type="module" src="/app.js?v=ios3"></script>
+<script type="module" src="/app.js"></script>
 </body>
 </html>

@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-17T07:16:00Z }
+generated: { by: agent, at: 2026-08-17T07:28:00Z }
 ---
 
 # Web app
@@ -47,13 +47,13 @@ when Chrome offers one). Already running as the installed app hides that
 block.
 
 Installed on iOS, `black-translucent` draws under the status bar.
-Standalone marks `data-standalone` before first paint and fills `#app`
-with `inset: 0`. The viewport asks for `interactive-widget=resizes-content`,
-so a keyboard already shrinks the layout — pinning again to
-`visualViewport` left a gap above the keys. Composer padding is a fixed
-12px, inlined in `index.html` with `!important`, because
-`env(safe-area-inset-bottom)` is ~80px on a Home Screen app (keyboard or
-not) and iOS caches `style.css`.
+Standalone marks `data-standalone` before first paint. JS sizes `#app` to
+the visual viewport and forces 8px under the composer — never
+`env(safe-area-inset-bottom)`, which is ~80px on a Home Screen app even
+with the keyboard up. The shell is `Cache-Control: no-store`; every
+css/js URL in it is stamped `?v=<size>-<mtime>` on the way out, so a
+change is a new URL and the installed app downloads it instead of
+keeping the first stylesheet it ever saw.
 
 Mode and model live beside the composer, as in Cursor; approval policy
 lives in the top bar (and in Settings on a narrow screen). Settings is a
@@ -115,7 +115,9 @@ take that mode's colour (blue, amber, red, purple, green), so a glance
 says which one is in force. An ACP catalog that only names three does
 not drop Debug or Multitask from the picker. The model chip is keyed by
 model id; after a desktop switch Auto keeps that id (and Cursor's label
-as the name) so the control does not go blank. A fillable dial sits left
+as the name) so the control does not go blank. Catalog names that are
+slugs (`kimi-k3`) are shown with spaces (`Kimi K3`) so the chip matches
+the IDE. A fillable dial sits left
 of the attach `+` — context fill for this chat; tap it for session detail
 and account quotas ([usage](usage.md)).
 

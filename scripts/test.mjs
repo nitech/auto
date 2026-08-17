@@ -1246,6 +1246,26 @@ if (existsSync(SRC)) {
     if (pickItem(rows, 'High').item) picking = fail('a badge on every row is ambiguous') ?? true;
     if (pickItem(rows, 'Opus 5 Max').item) picking = fail('a variant not on that row is not a match') ?? true;
 
+    // Agent ids use hyphens; Cursor's menu uses spaces. Same name.
+    const slugs = [
+      { label: 'Kimi K3', x: 1, y: 40 },
+      { label: 'Max', x: 9, y: 40 },
+      { label: 'Cursor Grok 4.6', x: 1, y: 70 },
+      { label: 'High', x: 9, y: 70 },
+    ];
+    if (pickItem(slugs, 'kimi-k3').press.length !== 1) {
+      picking = fail('kimi-k3 should match the Kimi K3 row') ?? true;
+    }
+    if (pickItem(slugs, 'kimi-k3 Max').press.length !== 2) {
+      picking = fail('kimi-k3 Max should press the row then Max') ?? true;
+    }
+    if (pickItem(slugs, 'grok-4.6').press.length !== 1) {
+      picking = fail('grok-4.6 should match Cursor Grok 4.6') ?? true;
+    }
+    if (pickItem(slugs, 'grok-4.6 High').press.length !== 2) {
+      picking = fail('grok-4.6 High should press the row then High') ?? true;
+    }
+
     if (!picking) ok('v2 core: a chat’s model and mode can be set from its own menus');
   } catch (e) {
     fail(`v2 cursor-cdp: ${e.message}`);
@@ -1638,6 +1658,10 @@ if (existsSync(SRC)) {
     fail('the model picker must resolve by id or Cursor label, or it goes blank after a switch');
     failed = true;
   }
+  if (!js.includes('function modelOptionLabel') || !js.includes("split('-')")) {
+    fail('the model picker must show kimi-k3 as Kimi K3, not the catalog slug');
+    failed = true;
+  }
   if (!tg.includes('debug|multitask|ask') && !tg.includes("'debug', 'multitask', 'ask'")) {
     fail('Telegram /mode must accept debug and multitask');
     failed = true;
@@ -1825,25 +1849,21 @@ if (existsSync(SRC)) {
     fail('an installed app must read the visual viewport before first paint');
     failed = true;
   }
-  if (!css.includes('html[data-standalone] #app') || !css.includes('inset: 0')) {
-    fail('installed Auto must fill the screen with inset: 0, not a too-short visual viewport');
+  if (!css.includes('html[data-standalone] #app')) {
+    fail('installed Auto must pin #app when standalone');
     failed = true;
   }
-  if (css.includes('data-keyboard') || js.includes('dataset.keyboard')) {
-    fail('do not pin the standalone shell to visualViewport — resizes-content already sits it on the keyboard');
+  if (!js.includes('function fitStandaloneShell') || !js.includes("padding-bottom', '8px'")) {
+    fail('standalone must size to the visual viewport and force 8px under the composer');
     failed = true;
   }
-  if (!html.includes('html[data-standalone] #composer') || !html.includes('padding-bottom: 12px !important')) {
+  if (!html.includes('html[data-standalone] #composer') || !html.includes('padding-bottom: 8px !important')) {
     fail('standalone composer padding must live in index.html so a cached style.css cannot keep the 80px gap');
     failed = true;
   }
   const standaloneComposer = css.slice(css.indexOf('html[data-standalone] #composer'));
-  if (!standaloneComposer.includes('padding-bottom: 12px') || /html\[data-standalone\] #composer[^}]*env\(safe-area-inset-bottom/.test(css)) {
+  if (!standaloneComposer.includes('padding-bottom: 8px') || /html\[data-standalone\] #composer[^}]*env\(safe-area-inset-bottom/.test(css)) {
     fail('standalone composer must not use env(safe-area-inset-bottom) — iOS reports ~80px even with the keyboard up');
-    failed = true;
-  }
-  if (!html.includes('style.css?v=') || !html.includes('app.js?v=')) {
-    fail('css/js URLs must be cache-busted so an iOS Home Screen app picks up layout fixes');
     failed = true;
   }
   const topbarCss = css.slice(css.indexOf('#topbar {'), css.indexOf('#topbar-controls'));
@@ -1855,7 +1875,25 @@ if (existsSync(SRC)) {
     fail('html/body must not scroll — a too-tall page clips the header on iOS');
     failed = true;
   }
+  const server = readFileSync(join(ROOT, 'src/server/index.mjs'), 'utf8');
+  if (!server.includes('stampHtml') || !server.includes("rel === '/index.html'") || !server.includes("'no-store'")) {
+    fail('the host must fingerprint css/js in the shell and not let iOS store a stale index.html');
+    failed = true;
+  }
   if (!failed) ok('v2 web: Home Screen install (favicon, Apple tags, icons)');
+}
+
+{
+  const { stampHtml } = await import('../src/web/stamp.mjs');
+  const out = stampHtml(
+    '<link href="/style.css" /><script src="/app.js"></script><link href="/style.css?v=old" />',
+    (p) => (p === '/style.css' ? 'aaa' : 'bbb'),
+  );
+  if (!out.includes('/style.css?v=aaa') || !out.includes('/app.js?v=bbb') || out.includes('?v=old')) {
+    fail(`stampHtml must rewrite css/js URLs with ?v=, got ${out}`);
+  } else {
+    ok('v2 web: css/js URLs are fingerprinted from size+mtime');
+  }
 }
 
 // × on a session row must archive on the first tap, and the rail must close
@@ -1978,7 +2016,7 @@ if (existsSync(SRC)) {
 
 // A prompt Auto typed into Cursor must not come back as a second bubble.
 {
-  const { echoKey, modelIdFor } = await import('../src/core/sessions.mjs');
+  const { echoKey, modelIdFor, cursorNameFor } = await import('../src/core/sessions.mjs');
   let failed = false;
   if (echoKey("auto's ability") !== echoKey('auto\u2019s ability')) {
     fail('a curly apostrophe is the same prompt as a straight one');
@@ -2006,6 +2044,35 @@ if (existsSync(SRC)) {
   }
   if (modelIdFor('x', 'Opus 5 High', catalog) !== 'claude-opus-5[thinking=true]') {
     fail('a variant label must resolve to its model row');
+    failed = true;
+  }
+  const slugs = [
+    { modelId: 'kimi-k3[reasoning=max]', name: 'kimi-k3' },
+    { modelId: 'composer-2.5[fast=true]', name: 'composer-2.5' },
+    { modelId: 'claude-opus-5[thinking=true,effort=high]', name: 'claude-opus-5' },
+  ];
+  if (cursorNameFor('kimi-k3[reasoning=max]', slugs) !== 'kimi-k3 Max') {
+    fail('a Max variant must become the row name plus Max');
+    failed = true;
+  }
+  if (cursorNameFor('kimi-k3', slugs) !== 'kimi-k3 Max') {
+    fail('a slug without brackets must still pick up the catalog id\'s Max badge');
+    failed = true;
+  }
+  if (cursorNameFor('composer-2.5[fast=true]', slugs) !== 'composer-2.5 Fast') {
+    fail('fast=true must become the Fast badge');
+    failed = true;
+  }
+  if (cursorNameFor('claude-opus-5[thinking=true,effort=high]', slugs) !== 'claude-opus-5') {
+    fail('effort=high is not a badge — High sits on several rows');
+    failed = true;
+  }
+  if (cursorNameFor('default[]') !== 'Auto') {
+    fail('default[] is Auto in Cursor\'s menu');
+    failed = true;
+  }
+  if (cursorNameFor('Kimi K3', slugs) !== 'Kimi K3') {
+    fail('a typed Cursor label must pass through');
     failed = true;
   }
   if (!failed) ok('v2 core: desktop echo matching');

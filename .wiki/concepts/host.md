@@ -11,7 +11,7 @@ sources:
   - id: supervise
     resource: /scripts/supervise.mjs
     title: Supervisor
-generated: { by: agent, at: 2026-08-16T06:35:00Z }
+generated: { by: agent, at: 2026-08-17T07:28:00Z }
 ---
 
 # Host
@@ -37,7 +37,10 @@ shell.
 | `POST /api/session/active` | Switch by id, title, or folder |
 | `POST /api/restart` | Answer first, wait for ACP work, then exit |
 
-Everything else is the static web app.
+Everything else is the static web app. `index.html` is `no-store` and
+every css/js URL in it is stamped `?v=<size>-<mtime>` so an iOS Home
+Screen app downloads a changed stylesheet instead of keeping the first
+one it saw. Other assets revalidate with an ETag.
 
 ## WebSocket
 

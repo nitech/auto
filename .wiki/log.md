@@ -1,7 +1,8 @@
 # Directory Update Log
 
 ## 2026-08-17
-* **Update**: iOS Home Screen composer still floated above the keyboard — `env(safe-area-inset-bottom)` stays ~80px with the keys up; use 12px, inline it in the HTML, and stop pinning to visualViewport.
+* **Update**: Picking Kimi K3 from the phone no longer fails — agent slugs (`kimi-k3`) match Cursor's menu words (`Kimi K3`), and `reasoning=max` is the Max badge.
+* **Update**: iOS Home Screen composer still had a strip under it — 8px padding, shell sized to the visual viewport; css/js URLs are now fingerprinted from file mtime so the installed app redownloads them.
 * **Update**: Web app is actually installable on the Home Screen — Apple meta + PNG touch icon, 192/512 manifest icons, SVG favicon, and a Settings hint (Share → Add to Home Screen on iPhone).
 * **Update**: First-run tutorial at `docs/install.md` (Tailscale, Cursor CLI, debug port). `npm install` runs `scripts/setup.mjs`. Access/overview depersonalised for a public clone.
 

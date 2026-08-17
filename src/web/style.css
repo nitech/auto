@@ -168,15 +168,15 @@ button, select, textarea { font: inherit; color: inherit; }
 }
 
 /*
- * iOS Home Screen: 100dvh is taller than the visible window. Fill the
- * layout viewport (`inset: 0`). `interactive-widget=resizes-content` already
- * shrinks that viewport onto the keyboard — do not also pin to
- * visualViewport.height, or the composer floats above the keys.
+ * iOS Home Screen: position fixed and fill. JS then sets height to the
+ * visual viewport so a strip is not left under the composer.
  */
 html[data-standalone] #app {
   position: fixed;
-  inset: 0;
-  height: auto;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100dvh;
 }
 
 /* Chat stays whole; browser/terminals take a column beside it. */
@@ -1092,11 +1092,10 @@ details.think .body {
 /*
  * Do not use env(safe-area-inset-bottom) here. On an iOS Home Screen app it
  * is ~80px with or without the keyboard, so the box floats a field above
- * the home bar and above the keys. 12px is enough air; the layout viewport
- * already ends above the home indicator / keyboard.
+ * the home bar and above the keys. 8px is enough air.
  */
 html[data-standalone] #composer {
-  padding-bottom: 12px;
+  padding-bottom: 8px;
 }
 
 /**

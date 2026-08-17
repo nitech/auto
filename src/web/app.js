@@ -1537,6 +1537,22 @@ function projectHeader(project, count) {
 }
 
 /**
+ * What the model <select> should say for a catalog row.
+ *
+ * The agent names models as slugs (`kimi-k3`) while Cursor's menu uses words
+ * (`Kimi K3`). Hyphens become spaces so the chip matches what the IDE shows.
+ */
+function modelOptionLabel(m) {
+  if (m.modelId === 'default[]') return 'Auto-select (Cursor picks)';
+  const name = String(m.name || m.modelId || '').replace(/\[.*$/, '');
+  if (/\s/.test(name) || !name.includes('-')) return m.name || m.modelId;
+  return name
+    .split('-')
+    .map((part) => (part && /[a-z]/.test(part[0]) ? part[0].toUpperCase() + part.slice(1) : part))
+    .join(' ');
+}
+
+/**
  * The model list comes from the agent, not from us — 33 entries whose ids
  * carry their options. Keep the id as the value and show the friendly name.
  */
@@ -1546,8 +1562,7 @@ function renderModels(models) {
   for (const m of models) {
     const opt = document.createElement('option');
     opt.value = m.modelId;
-    // The agent's automatic pick is called "Auto", which reads as this app.
-    opt.textContent = m.modelId === 'default[]' ? 'Auto-select (Cursor picks)' : m.name || m.modelId;
+    opt.textContent = modelOptionLabel(m);
     els.model.append(opt);
   }
   els.model.dataset.filled = String(models.length);
@@ -2222,6 +2237,28 @@ function syncVisualViewport() {
   }
   root.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`);
   root.style.setProperty('--vv-height', `${Math.round(vv.height)}px`);
+  fitStandaloneShell();
+}
+
+/**
+ * iOS Home Screen: the layout viewport stops above the home indicator, which
+ * reads as a white strip under the composer. Size the shell to the visual
+ * viewport (the pixels you can see) and keep composer padding at 8px — never
+ * env(safe-area-inset-bottom), which is ~80px here even with the keyboard up.
+ */
+function fitStandaloneShell() {
+  if (!document.documentElement.hasAttribute('data-standalone')) return;
+  const app = $('app');
+  const composer = $('composer');
+  const vv = window.visualViewport;
+  if (app && vv) {
+    app.style.top = `${Math.round(vv.offsetTop)}px`;
+    app.style.height = `${Math.round(vv.height)}px`;
+    app.style.left = '0';
+    app.style.right = '0';
+    app.style.bottom = 'auto';
+  }
+  if (composer) composer.style.setProperty('padding-bottom', '8px', 'important');
 }
 
 {

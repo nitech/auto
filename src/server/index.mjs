@@ -8,6 +8,7 @@
  *
  *   node src/server/index.mjs [--port=4331] [--folder=D:\some\repo]
  */
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { readFileSync, existsSync, statSync, writeFileSync, rmSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
@@ -23,6 +24,7 @@ import {
   gateState,
   storageAvailable,
 } from '../core/desktop-bridge-gate.mjs';
+import { fileTag, stampHtml } from '../web/stamp.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -475,7 +477,21 @@ const VENDOR = {
  * to ask every time and given a tag it can ask with. Nothing changed means an
  * empty 304; a file that changed has a different size or timestamp, which
  * breaks the cache by itself with nothing to remember to bump.
+ *
+ * iOS Home Screen apps ignore that for a named file. The shell (`index.html`)
+ * is therefore `no-store`, and every css/js URL in it carries a `?v=` of the
+ * file's size and mtime. A change is a new URL, so the installed app downloads
+ * it instead of keeping the first stylesheet it ever saw.
  */
+function assetTag(urlPath) {
+  const file = VENDOR[urlPath] ? join(ROOT, VENDOR[urlPath]) : join(WEB, urlPath);
+  try {
+    return fileTag(file);
+  } catch {
+    return '0';
+  }
+}
+
 function serveStatic(req, res) {
   const url = new URL(req.url, 'http://localhost');
   let rel = url.pathname === '/' ? '/index.html' : url.pathname;
@@ -486,6 +502,23 @@ function serveStatic(req, res) {
   const file = VENDOR[rel] ? join(ROOT, VENDOR[rel]) : join(WEB, rel);
   const ext = rel.slice(rel.lastIndexOf('.'));
   try {
+    if (rel === '/index.html') {
+      const html = stampHtml(readFileSync(file, 'utf8'), assetTag);
+      const etag = `W/"${createHash('sha1').update(html).digest('base64url').slice(0, 16)}"`;
+      const headers = {
+        'Content-Type': CONTENT_TYPES['.html'],
+        'Cache-Control': 'no-store',
+        ETag: etag,
+      };
+      if (req.headers['if-none-match'] === etag) {
+        res.writeHead(304, headers);
+        res.end();
+        return;
+      }
+      res.writeHead(200, headers);
+      res.end(html);
+      return;
+    }
     const stat = statSync(file);
     const etag = `W/"${stat.size.toString(36)}-${Math.round(stat.mtimeMs).toString(36)}"`;
     const headers = {
@@ -493,7 +526,6 @@ function serveStatic(req, res) {
       'Cache-Control': 'no-cache',
       ETag: etag,
     };
-    // Reading the file at all is the cost worth skipping here.
     if (req.headers['if-none-match'] === etag) {
       res.writeHead(304, headers);
       res.end();
