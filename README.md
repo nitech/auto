@@ -80,10 +80,6 @@ Knowledge is `.wiki/`. Start at `.wiki/index.md`. After a non-trivial code chang
 
 **Agent rule:** Any change to this repo must follow the workflow in [AGENTS.md](AGENTS.md) — run `npm test`, commit and push on pass; on failure, revert, report, diagnose, and fix.
 
-## Related
-
-- [CursorRemote](https://github.com/len5ky/CursorRemote) — a source-available Cursor extension that polls the IDE DOM over CDP. Auto is a separate MIT host: agent CLI and desktop chat, Tailscale, no license key.
-
 ## License
 
 [MIT](LICENSE). Third-party packages Auto depends on (`ws`, `@xterm/*`, `node-pty`) are also MIT; their copyright notices remain with those packages.
