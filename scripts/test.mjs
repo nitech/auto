@@ -1825,8 +1825,17 @@ if (existsSync(SRC)) {
     fail('an installed app must read the visual viewport before first paint');
     failed = true;
   }
-  if (!css.includes('html[data-standalone] #app') || !css.includes('--vv-height')) {
-    fail('installed Auto must size to the visual viewport, or 100dvh leaves a gap under the composer');
+  if (!css.includes('html[data-standalone] #app') || !css.includes('inset: 0')) {
+    fail('installed Auto must fill the screen with inset: 0, not a too-short visual viewport');
+    failed = true;
+  }
+  if (!css.includes('data-keyboard') || !js.includes('dataset.keyboard')) {
+    fail('a keyboard must shrink the standalone shell to the visual viewport');
+    failed = true;
+  }
+  const standaloneComposer = css.slice(css.indexOf('html[data-standalone] #composer'));
+  if (!standaloneComposer.includes('min(34px') || css.includes('calc(10px + env(safe-area-inset-bottom))')) {
+    fail('standalone composer padding must cap the iOS-inflated safe-area-inset-bottom');
     failed = true;
   }
   const topbarCss = css.slice(css.indexOf('#topbar {'), css.indexOf('#topbar-controls'));

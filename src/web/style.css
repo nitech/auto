@@ -168,17 +168,22 @@ button, select, textarea { font: inherit; color: inherit; }
 }
 
 /*
- * iOS Home Screen: 100dvh is taller than the visible window, so the extra
- * height shows as a gap under the composer and the top of the grid (the
- * header) is clipped. Pin to the visual viewport instead. black-translucent
- * also draws under the status bar — topbar / rail padding handles that.
+ * iOS Home Screen: 100dvh is taller than the visible window. Fill the
+ * layout viewport instead (under the status bar and home indicator);
+ * topbar / composer padding keep content out of those zones. A keyboard
+ * shrinks the visual viewport — then we pin to that, not inset: 0.
  */
 html[data-standalone] #app {
   position: fixed;
+  inset: 0;
+  height: auto;
+}
+html[data-standalone][data-keyboard] #app {
   top: var(--vv-top, 0px);
-  left: 0;
   right: 0;
-  height: var(--vv-height, 100dvh);
+  bottom: auto;
+  left: 0;
+  height: var(--vv-height, 100%);
 }
 
 /* Chat stays whole; browser/terminals take a column beside it. */
@@ -1086,9 +1091,18 @@ details.think .body {
 #composer {
   display: flex;
   flex-direction: column;
-  padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  padding: 12px 20px max(12px, env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--line);
   background: var(--bg);
+}
+
+/*
+ * iOS standalone inflates safe-area-inset-bottom to ~80px (home indicator
+ * plus a phantom slice of 100dvh). The real home indicator is 34px; adding
+ * the env() on top of 10px made a gap as tall as the composer.
+ */
+html[data-standalone] #composer {
+  padding-bottom: max(10px, min(34px, env(safe-area-inset-bottom, 0px)));
 }
 
 /**
@@ -2295,7 +2309,7 @@ pre:hover .copy,
   }
   #transcript { padding: 14px 12px 4px; }
   .msg.user { max-width: 88%; }
-  #composer { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  #composer { padding: 10px 12px max(10px, env(safe-area-inset-bottom, 0px)); }
 
   /* Deleting a queued message by mis-tapping the one beside it is not a fair
      mistake to offer, so the queue's buttons are thumb-sized here. */

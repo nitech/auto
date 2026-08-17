@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-17T06:50:00Z }
+generated: { by: agent, at: 2026-08-17T07:02:00Z }
 ---
 
 # Web app
@@ -46,13 +46,13 @@ Safari tab with a screenshot for an icon. Settings explains the path
 when Chrome offers one). Already running as the installed app hides that
 block.
 
-Installed on iOS, `black-translucent` draws under the status bar and
-`100dvh` is taller than the visible window — the header sat behind the
-clock and a gap opened under the composer. Standalone marks
-`data-standalone` before first paint, pins `#app` to `--vv-height` from
-`visualViewport`, and the topbar / rail pad `safe-area-inset-top` so ☰
-and the title sit below the Dynamic Island. Composer padding still
-clears the home indicator.
+Installed on iOS, `black-translucent` draws under the status bar.
+Standalone marks `data-standalone` before first paint, fills `#app` with
+`inset: 0` (a keyboard then pins it to `--vv-height`), and the topbar /
+rail pad `safe-area-inset-top` so ☰ and the title sit below the Dynamic
+Island. Composer padding uses the home-indicator inset, capped at 34px —
+iOS otherwise reports ~80px there and the box floated a full field above
+the home bar.
 
 Mode and model live beside the composer, as in Cursor; approval policy
 lives in the top bar (and in Settings on a narrow screen). Settings is a
