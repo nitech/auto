@@ -1712,10 +1712,19 @@ button.icon.active {
 .browser-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: 2px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--line);
   background: var(--bg-2);
+}
+
+/* Nav chrome stays compact so the address bar keeps the width. */
+.browser-bar .icon {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 2px 4px;
+  font-size: 14px;
+  line-height: 1;
 }
 
 #browser-url {
@@ -1724,9 +1733,10 @@ button.icon.active {
   background: var(--bg);
   border: 1px solid var(--line-2);
   border-radius: 8px;
-  padding: 6px 10px;
+  padding: 5px 10px;
   color: var(--fg);
   font-size: 13px;
+  margin-left: 4px;
 }
 
 #browser-url:focus {
@@ -2405,6 +2415,13 @@ pre:hover .copy,
     min-width: 40px;
     min-height: 40px;
     padding: 4px 8px;
+  }
+  /* Browser nav is an exception: three fat icons steal the address bar. */
+  .browser-bar .icon {
+    min-width: 30px;
+    min-height: 30px;
+    padding: 2px 4px;
+    font-size: 15px;
   }
   .session .close,
   .project .close {
