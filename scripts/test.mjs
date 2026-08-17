@@ -1783,12 +1783,18 @@ if (existsSync(SRC)) {
     fail('composer pickers must be 16px so iOS does not zoom on tap');
     failed = true;
   }
-  if (/zoom\s*:/.test(pickerBlock)) {
-    fail('composer pickers must not use CSS zoom — iOS focus-zoom still fires on the scaled size');
+  if (/zoom\s*:/.test(pickerBlock) || /transform\s*:/.test(pickerBlock)) {
+    fail('composer pickers must not use CSS zoom/transform on the select — scale the group instead');
     failed = true;
   }
-  if (!/transform:\s*scale\(0\.75\)/.test(pickerBlock)) {
-    fail('composer pickers must scale to ~75% via transform (keeps 16px computed font-size)');
+  const pickersGroupAt = css.indexOf('.composer-pickers {');
+  const pickersGroup = pickersGroupAt < 0 ? '' : css.slice(pickersGroupAt, css.indexOf('}', pickersGroupAt) + 1);
+  if (!/transform:\s*scale\(0\.75\)/.test(pickersGroup)) {
+    fail('composer pickers group must scale to ~75% via transform (keeps 16px font, no chip overlap)');
+    failed = true;
+  }
+  if (!html.includes('composer-pickers')) {
+    fail('mode and model must share a composer-pickers wrapper so scale keeps their gap');
     failed = true;
   }
   if (!/background:\s*var\(--bg-3\)/.test(pickerBlock) || !/border-radius:\s*8px/.test(pickerBlock)) {
@@ -1799,15 +1805,20 @@ if (existsSync(SRC)) {
     fail('Home Screen PWA must lock scale so iOS cannot zoom the page on picker tap');
     failed = true;
   }
-  if (!html.includes('zoom: normal') || !html.includes('transform: none')
+  if (!html.includes('zoom: normal')
+      || !/composer-pickers[\s\S]*transform:\s*none\s*!important/.test(html)
       || !/composer-controls select[\s\S]*font-size:\s*12px\s*!important/.test(html)) {
     fail('standalone inline CSS must pin pickers at 12px without zoom/scale (beats a cached sheet)');
     failed = true;
   }
+  const standalonePickersAt = css.indexOf('html[data-standalone] .composer-pickers');
+  const standalonePickers = standalonePickersAt < 0
+    ? ''
+    : css.slice(standalonePickersAt, css.indexOf('}', standalonePickersAt) + 1);
   const standaloneAt = css.indexOf('html[data-standalone] .composer-controls select');
   const standaloneBlock = standaloneAt < 0 ? '' : css.slice(standaloneAt, css.indexOf('}', standaloneAt) + 1);
-  if (!/font-size:\s*12px/.test(standaloneBlock) || !/transform:\s*none/.test(standaloneBlock)) {
-    fail('the installed PWA must draw pickers at true 12px with no transform — maximum-scale=1 makes focus-zoom impossible there');
+  if (!/transform:\s*none/.test(standalonePickers) || !/font-size:\s*12px/.test(standaloneBlock)) {
+    fail('the installed PWA must draw pickers at true 12px with no group transform — maximum-scale=1 makes focus-zoom impossible there');
     failed = true;
   }
   const modeChip = css.slice(css.indexOf('#mode,'), css.indexOf('#mode option'));

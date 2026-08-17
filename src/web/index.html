@@ -20,14 +20,16 @@
   html[data-standalone] #composer { padding-bottom: 8px !important; }
   /* Mode/model draw at 12px in the installed PWA, where maximum-scale=1 makes
      focus-zoom impossible — see style.css. A cached sheet must not resurrect
-     the old zoom: 0.75 trick or leave transform: scale on. */
+     the old zoom: 0.75 trick or leave transform: scale on the pickers group. */
+  html[data-standalone] .composer-pickers {
+    transform: none !important;
+    gap: 4px !important;
+  }
   html[data-standalone] .composer-controls select {
     font-size: 12px !important;
     zoom: normal !important;
     transform: none !important;
-    margin-block: 0 !important;
-    margin-inline-end: 0 !important;
-    max-width: 42% !important;
+    max-width: 12rem !important;
   }
 </style>
 <script>
@@ -186,14 +188,16 @@
           <button id="send" class="in-box send" title="Send" aria-label="Send">↑</button>
         </div>
         <div class="composer-controls">
-          <select id="mode" title="Agent mode" aria-label="Agent mode">
-            <option value="agent">Agent</option>
-            <option value="plan">Plan</option>
-            <option value="debug">Debug</option>
-            <option value="multitask">Multitask</option>
-            <option value="ask">Ask</option>
-          </select>
-          <select id="model" title="Model" aria-label="Model"></select>
+          <div class="composer-pickers">
+            <select id="mode" title="Agent mode" aria-label="Agent mode">
+              <option value="agent">Agent</option>
+              <option value="plan">Plan</option>
+              <option value="debug">Debug</option>
+              <option value="multitask">Multitask</option>
+              <option value="ask">Ask</option>
+            </select>
+            <select id="model" title="Model" aria-label="Model"></select>
+          </div>
           <div class="composer-actions">
             <button id="usage" class="in-box usage" type="button" title="Usage" aria-label="Usage" hidden>
               <span class="usage-dial" aria-hidden="true"></span>
