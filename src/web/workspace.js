@@ -227,9 +227,6 @@ function paint() {
       }),
     );
   }
-  bits.push(
-    `<button type="button" class="view-tab-new icon" id="view-tab-new-term" title="New terminal" aria-label="New terminal">+</button>`,
-  );
   bar.innerHTML = bits.join('');
 
   bar.querySelectorAll('.view-tab').forEach((el) => {
@@ -248,9 +245,6 @@ function paint() {
       else if (el.dataset.terminalId) select(el.dataset.terminalId);
     });
   });
-
-  const neu = $('view-tab-new-term');
-  if (neu) neu.onclick = () => hooks.terminals.onNew?.();
 
   bar.querySelector('.view-tab.active')?.scrollIntoView({
     inline: 'nearest',
