@@ -1751,6 +1751,74 @@ if (existsSync(SRC)) {
   if (!failed) ok('v2 web: settings in the rail, full screen');
 }
 
+// Home Screen install: iOS needs Apple meta + a PNG touch icon; Android wants
+// 192/512 PNGs with purpose split (not "any maskable"). The tab uses the SVG.
+{
+  const html = readFileSync(join(ROOT, 'src/web/index.html'), 'utf8');
+  const js = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  const manifest = JSON.parse(readFileSync(join(ROOT, 'src/web/manifest.webmanifest'), 'utf8'));
+  const icon = readFileSync(join(ROOT, 'src/web/icon.svg'), 'utf8');
+  let failed = false;
+  if (!html.includes('rel="icon"') || !html.includes('href="/icon.svg"')) {
+    fail('the tab needs an SVG favicon');
+    failed = true;
+  }
+  if (!html.includes('apple-touch-icon') || !html.includes('/apple-touch-icon.png')) {
+    fail('iOS Home Screen needs an apple-touch-icon PNG');
+    failed = true;
+  }
+  if (!html.includes('apple-mobile-web-app-capable') || !html.includes('mobile-web-app-capable')) {
+    fail('installed Auto must open standalone, not as a Safari tab');
+    failed = true;
+  }
+  if (!html.includes('id="install-block"') || !js.includes('beforeinstallprompt') || !js.includes('display-mode: standalone')) {
+    fail('Settings must explain Add to Home Screen, and offer the install prompt when the browser has one');
+    failed = true;
+  }
+  if (manifest.display !== 'standalone' || manifest.start_url !== '/') {
+    fail('the manifest must open Auto standalone at /');
+    failed = true;
+  }
+  const purposes = (manifest.icons || []).map((i) => i.purpose);
+  if (purposes.some((p) => /\bany\b/.test(p) && /\bmaskable\b/.test(p))) {
+    fail('manifest icon purpose must not combine any and maskable on one entry');
+    failed = true;
+  }
+  if (!purposes.includes('any') || !purposes.includes('maskable')) {
+    fail('the manifest needs both any and maskable icons');
+    failed = true;
+  }
+  const pngs = (manifest.icons || []).filter((i) => i.type === 'image/png');
+  if (!pngs.some((i) => i.sizes === '192x192') || !pngs.some((i) => i.sizes === '512x512')) {
+    fail('Android install needs 192 and 512 PNG icons');
+    failed = true;
+  }
+  if (!icon.includes('viewBox="0 0 512 512"') || !icon.includes('#0b0d12') || !icon.includes('#6ea8ff') || !icon.includes('#4ad07f')) {
+    fail('icon.svg must be the full-bleed Auto mark');
+    failed = true;
+  }
+  if (/<rect[^>]*\brx=/.test(icon)) {
+    fail('the PWA icon must be full-bleed so iOS/Android can mask it — no rounded rect');
+    failed = true;
+  }
+  const pngFiles = ['apple-touch-icon.png', 'icon-192.png', 'icon-512.png'];
+  const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+  for (const name of pngFiles) {
+    const p = join(ROOT, 'src/web', name);
+    if (!existsSync(p)) {
+      fail(`missing ${name} — run node scripts/raster-icon.mjs`);
+      failed = true;
+      continue;
+    }
+    const head = readFileSync(p).subarray(0, 4);
+    if (!head.equals(pngMagic)) {
+      fail(`${name} is not a PNG`);
+      failed = true;
+    }
+  }
+  if (!failed) ok('v2 web: Home Screen install (favicon, Apple tags, icons)');
+}
+
 // × on a session row must archive on the first tap, and the rail must close
 // when swiped left — a phone has no hover, and the row used to eat the tap.
 {

@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-17
+* **Update**: Web app is actually installable on the Home Screen — Apple meta + PNG touch icon, 192/512 manifest icons, SVG favicon, and a Settings hint (Share → Add to Home Screen on iPhone).
 * **Update**: First-run tutorial at `docs/install.md` (Tailscale, Cursor CLI, debug port). `npm install` runs `scripts/setup.mjs`. Access/overview depersonalised for a public clone.
 
 ## 2026-08-16

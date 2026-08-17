@@ -1,6 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#0b0d12"/>
-  <circle cx="256" cy="256" r="150" fill="none" stroke="#2b5bd7" stroke-width="26"/>
-  <circle cx="256" cy="256" r="54" fill="#6ea8ff"/>
-  <circle cx="256" cy="106" r="30" fill="#4ad07f"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Auto">
+  <title>Auto</title>
+  <!--
+    Full-bleed field so iOS and Android can apply their own mask. The mark
+    stays inside the inner 80% (maskable safe zone). An open ring with a live
+    pip at 12 o'clock — Auto is the always-on remote; the circuit closes when
+    it is up. Geometry is shared with scripts/raster-icon.mjs.
+  -->
+  <rect width="512" height="512" fill="#0b0d12"/>
+  <path d="M311.91 110.36A156 156 0 1 1 200.09 110.36" fill="none" stroke="#6ea8ff" stroke-width="44" stroke-linecap="round"/>
+  <circle cx="256" cy="256" r="52" fill="#6ea8ff"/>
+  <circle cx="238" cy="238" r="16" fill="#d7e7ff" opacity=".35"/>
+  <circle cx="256" cy="100" r="28" fill="#4ad07f"/>
+  <circle cx="248" cy="92" r="10" fill="#d4ffe4" opacity=".45"/>
 </svg>

@@ -4,8 +4,14 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
 <meta name="theme-color" content="#0b0d12" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Auto" />
 <title>Auto</title>
 <link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
 <link rel="stylesheet" href="/vendor/xterm.css" />
 <link rel="stylesheet" href="/style.css" />
 <script>
@@ -15,6 +21,8 @@
     const light = pref === 'light'
       || (pref === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
     document.documentElement.dataset.theme = light ? 'light' : 'dark';
+    const theme = document.querySelector('meta[name="theme-color"]');
+    if (theme) theme.setAttribute('content', light ? '#ffffff' : '#0b0d12');
   } catch (_) {
     document.documentElement.dataset.theme = 'dark';
   }
@@ -190,6 +198,14 @@
         <button id="sheet-browser">Browser</button>
         <button id="sheet-terminals">Terminals</button>
       </div>
+    </section>
+
+    <section class="sheet-block" id="install-block" hidden>
+      <h2>Home Screen</h2>
+      <div class="sheet-row" id="install-row" hidden>
+        <button type="button" id="install-app">Add to Home Screen</button>
+      </div>
+      <div class="sheet-note" id="install-note"></div>
     </section>
 
     <section class="sheet-block">

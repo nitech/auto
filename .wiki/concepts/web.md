@@ -17,7 +17,13 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
-generated: { by: agent, at: 2026-08-16T20:55:00Z }
+  - id: manifest
+    resource: /src/web/manifest.webmanifest
+    title: Web app manifest
+  - id: icon
+    resource: /src/web/icon.svg
+    title: App icon
+generated: { by: agent, at: 2026-08-17T05:40:00Z }
 ---
 
 # Web app
@@ -31,11 +37,19 @@ The open chat is this tab's, not the host's active session. A refresh puts
 has nothing to replay yet; opening Auto at `/` (the PWA start URL) reads the
 same id from the browser. Telegram `/switch` does not steal the tab.
 
-Open `http://<tailscale-ip>:4331/`. It is a PWA. Mode and model live beside
-the composer, as in Cursor; approval policy lives in the top bar (and in
-Settings on a narrow screen). Settings is a row at the bottom of the
-session rail — a gear and the word Settings — and opens a full-screen
-page.
+Open `http://<tailscale-ip>:4331/`. It is a PWA: `display: standalone`, an
+SVG tab icon, and PNG icons (180 / 192 / 512) so a phone can put it on the
+Home Screen. iOS needs `apple-mobile-web-app-capable` and
+`apple-touch-icon.png` or Add to Home Screen still works but opens as a
+Safari tab with a screenshot for an icon. Settings explains the path
+(Share → Add to Home Screen on iPhone; the browser's own Install prompt
+when Chrome offers one). Already running as the installed app hides that
+block.
+
+Mode and model live beside the composer, as in Cursor; approval policy
+lives in the top bar (and in Settings on a narrow screen). Settings is a
+row at the bottom of the session rail — a gear and the word Settings —
+and opens a full-screen page.
 
 On a phone the session rail is a drawer. × on a row archives that session
 on the first tap (the row used to eat it, so it felt like it needed two).

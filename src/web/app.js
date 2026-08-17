@@ -2543,9 +2543,49 @@ function setSheet(open) {
   $('sheet-conn').textContent = `${els.connLabel.textContent} · ${location.host}`;
 }
 
+/**
+ * iOS never fires beforeinstallprompt — Share → Add to Home Screen is the
+ * whole path. Android Chrome does, so that one gets a real button. Already
+ * running as the installed app hides the block.
+ */
+let installPrompt = null;
+
+function isStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;
+}
+
+function isIos() {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function paintInstall() {
+  const block = $('install-block');
+  const row = $('install-row');
+  const note = $('install-note');
+  if (!block || !row || !note) return;
+  if (isStandalone()) {
+    block.hidden = true;
+    return;
+  }
+  block.hidden = false;
+  if (isIos()) {
+    row.hidden = true;
+    note.textContent =
+      'On iPhone: tap Share, then Add to Home Screen. Auto opens as its own app, not a Safari tab.';
+    return;
+  }
+  row.hidden = !installPrompt;
+  note.textContent = installPrompt
+    ? 'Install Auto so it sits on the Home Screen and opens without browser chrome.'
+    : 'Use the browser menu → Install app (or Add to Home Screen). Auto then opens without browser chrome.';
+}
+
 compact.addEventListener('change', placeControls);
 placeControls();
 applyTheme();
+paintInstall();
 
 $('sheet-open').onclick = () => {
   setRail(false);
@@ -2565,6 +2605,23 @@ $('rename-save').onclick = () => {
 };
 
 $('sheet-sync').onclick = () => sendOp({ op: 'sessions.sync' });
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  paintInstall();
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  paintInstall();
+});
+$('install-app').onclick = async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => {});
+  installPrompt = null;
+  paintInstall();
+};
 $('sheet-browser').onclick = () => {
   setSheet(false);
   $('browser-toggle').click();
