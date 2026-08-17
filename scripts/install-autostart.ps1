@@ -1,9 +1,9 @@
 # Install Auto supervisor as a Windows Scheduled Task at logon.
 # Run once (as current user):
-#   powershell -ExecutionPolicy Bypass -File D:\Sevenfold\auto\scripts\install-autostart.ps1
+#   powershell -ExecutionPolicy Bypass -File scripts\install-autostart.ps1
 #
 # Uninstall:
-#   powershell -ExecutionPolicy Bypass -File D:\Sevenfold\auto\scripts\install-autostart.ps1 -Uninstall
+#   powershell -ExecutionPolicy Bypass -File scripts\install-autostart.ps1 -Uninstall
 
 param(
   [switch]$Uninstall,

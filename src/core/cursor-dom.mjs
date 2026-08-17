@@ -945,8 +945,8 @@ ${HELPERS}
 /**
  * Compare two paths the way a person would.
  *
- * Cursor reports its folder as `/d:/Sevenfold/auto` while Auto holds
- * `D:\\Sevenfold\\auto`. Same folder, three differences.
+ * Cursor reports its folder as `/d:/Projects/app` while Auto holds
+ * `D:\\Projects\\app`. Same folder, three differences.
  */
 export function samePath(a, b) {
   const norm = (p) =>

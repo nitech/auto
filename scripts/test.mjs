@@ -8,6 +8,7 @@
  *   1. Every .mjs script under scripts/ and src/ parses (node --check).
  *   1b–1f. Core behaviour: transcripts, permissions, terminals, diffs,
  *          the browser address bar, and Telegram rendering.
+ *   1g. First-run setup checklist (scripts/setup.mjs) has the expected rows.
  *   2. The Cursor agent CLI resolves — nothing works without it.
  *   2b. Every skill under .claude/skills/ has valid SKILL.md frontmatter.
  *   3. If the host is running, its health and session API answer.
@@ -67,6 +68,46 @@ if (existsSync(SRC)) {
     const rel = relative(ROOT, p);
     if (res.status !== 0) fail(`node --check ${rel}\n${res.stderr}`);
     else ok(`syntax: ${rel}`);
+  }
+}
+
+// 1g. First-run checklist — the rows a stranger sees after npm install.
+{
+  const { collectChecks, ensureEnvFile } = await import('./setup.mjs');
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+  if (pkg.scripts?.postinstall !== 'node scripts/setup.mjs --postinstall') {
+    fail('package.json postinstall should run scripts/setup.mjs --postinstall');
+  }
+  if (pkg.scripts?.setup !== 'node scripts/setup.mjs') {
+    fail('package.json setup should run scripts/setup.mjs');
+  }
+  const checks = await collectChecks({ root: ROOT });
+  const ids = checks.map((c) => c.id);
+  for (const need of ['node', 'pty', 'agent', 'tailscale', 'env']) {
+    if (!ids.includes(need)) fail(`setup checklist missing ${need}`);
+  }
+  const node = checks.find((c) => c.id === 'node');
+  if (!node?.ok) fail(`setup should accept this Node, got ${node?.detail}`);
+  const tmpEnv = mkdtempSync(join(tmpdir(), 'auto-setup-'));
+  try {
+    writeFileSync(join(tmpEnv, '.env.example'), 'AUTO_POLICY=auto\n');
+    const first = ensureEnvFile(tmpEnv);
+    if (!first.copied || !existsSync(join(tmpEnv, '.env'))) {
+      fail('setup should copy .env.example when .env is missing');
+    }
+    const second = ensureEnvFile(tmpEnv);
+    if (second.copied) fail('setup should not overwrite an existing .env');
+  } finally {
+    rmSync(tmpEnv, { recursive: true, force: true });
+  }
+  const post = spawnSync(process.execPath, [join(HERE, 'setup.mjs'), '--postinstall'], {
+    encoding: 'utf8',
+    timeout: 30_000,
+  });
+  if (post.status !== 0) {
+    fail(`setup --postinstall should exit 0, got ${post.status}\n${post.stderr}`);
+  } else {
+    ok('setup checklist');
   }
 }
 

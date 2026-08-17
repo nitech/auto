@@ -18,7 +18,7 @@ const CURSOR_USER = join(APPDATA, 'Cursor', 'User');
 const GLOBAL_STORAGE = join(CURSOR_USER, 'globalStorage', 'storage.json');
 const WORKSPACE_STORAGE = join(CURSOR_USER, 'workspaceStorage');
 
-/** `file:///d%3A/Sevenfold/auto` → `D:\Sevenfold\auto` */
+/** `file:///d%3A/Projects/app` → `D:\Projects\app` */
 export function fromFileUri(uri) {
   if (typeof uri !== 'string' || !uri.startsWith('file:///')) return null;
   let p = decodeURIComponent(uri.slice(8));

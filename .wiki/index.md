@@ -8,7 +8,7 @@ Remote control for Cursor's agent. Start at [overview](overview.md).
 * [Transcripts](concepts/transcripts.md) - Append-only JSONL; clients hold no authoritative state
 * [Host](concepts/host.md) - One process on 4331: HTTP, WebSocket, restart, supervisor
 * [Supervise](concepts/supervise.md) - Scheduled-task watchdog; health restart; not an agent shell
-* [Access](concepts/access.md) - Tailscale-only reachability, no Auto login, `.env` knobs
+* [Access](concepts/access.md) - Tailscale-only reachability, setup checklist, no Auto login
 * [Cursor window](concepts/cursor-window.md) - Typing, pressing, pickers, paste, over the debug port
 * [Desktop chats](concepts/desktop-chats.md) - Carry on a Cursor IDE chat from the phone
 * [Desktop bridge](concepts/desktop-bridge.md) - Named-pipe send, gate, outbox

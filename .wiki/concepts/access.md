@@ -1,29 +1,44 @@
 ---
 type: Concept
 title: Access and config
-description: Tailscale-only reachability, no Auto login, and the optional .env knobs.
+description: Tailscale-only reachability, no Auto login, setup checklist, and the optional .env knobs.
 tags: [access, tailscale, config, env]
 status: stable
 sources:
   - id: env
     resource: /.env.example
     title: Optional environment
+  - id: setup
+    resource: /scripts/setup.mjs
+    title: First-run checklist
+  - id: install
+    resource: /docs/install.md
+    title: Human install tutorial
   - id: readme
     resource: /README.md
     title: Run instructions
-generated: { by: agent, at: 2026-08-16T06:35:00Z }
+generated: { by: agent, at: 2026-08-17T05:40:00Z }
 ---
 
 # Access and config
 
 Access control is **Tailscale**. Auto has no login of its own. Open
 `http://<tailscale-ip>:4331/` (or whatever `AUTO_WEB_URL` is). Do not expose
-the port to the open internet.
+the port to the open internet, and do not enable Tailscale Funnel or Serve
+on 4331.
+
+The human walkthrough — what Tailscale is, CLI install, debug port, Telegram —
+is [docs/install.md](../../docs/install.md). `npm install` runs
+`scripts/setup.mjs --postinstall` (never fails the install). `npm run setup`
+is the same checklist and exits 1 when the Cursor agent CLI is missing.
 
 Credentials for Telegram come from `TELEGRAM_BOT_TOKEN` /
 `TELEGRAM_CHAT_ID`, or the `auth.json` the telegram-notify skill writes.
-Everything in `.env` is optional — copy `.env.example` when you want to set
-something explicitly.
+`TELEGRAM_CHAT_ID` is an allowlist. Everything in `.env` is optional — the
+setup script copies `.env.example` when `.env` is missing.
+
+Default `AUTO_POLICY=auto` approves tool calls without asking. That is a
+machine-wide remote control, not a product with accounts.
 
 ## Knobs that matter
 
@@ -41,6 +56,9 @@ something explicitly.
 A bot token allows **one** poller. A second host with the token splits
 messages at random. Develop with `npm run dev` (port **4340**, Telegram
 off). See [Telegram](telegram.md) and [supervise](supervise.md).
+
+The supported runtime is **Node 20+** via npm. Bun can import `node-pty`
+but the [supervisor](supervise.md) and scheduled task execute `node`.
 
 ## Related
 

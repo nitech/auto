@@ -5,7 +5,12 @@
   "license": "MIT",
   "type": "module",
   "description": "Auto — remote control for Cursor's agent, over web and Telegram",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
+    "postinstall": "node scripts/setup.mjs --postinstall",
+    "setup": "node scripts/setup.mjs",
     "start": "node src/server/index.mjs --host=0.0.0.0 --port=4331",
     "dev": "node src/server/index.mjs --host=127.0.0.1 --port=4340 --no-telegram",
     "supervise": "node scripts/supervise.mjs",

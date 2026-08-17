@@ -1,5 +1,8 @@
 # Directory Update Log
 
+## 2026-08-17
+* **Update**: First-run tutorial at `docs/install.md` (Tailscale, Cursor CLI, debug port). `npm install` runs `scripts/setup.mjs`. Access/overview depersonalised for a public clone.
+
 ## 2026-08-16
 * **Update**: Desktop prompt echoes are expected before the Cursor write and re-seeded after restart, so user messages stop appearing two or three times.
 * **Update**: Usage sheet shows tokens used / context max and estimated chat cost (summed from Cursor’s `usageData`).

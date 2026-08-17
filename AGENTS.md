@@ -5,15 +5,18 @@
 > but the content lives in `AGENTS.md`, the cross-tool convention for agent
 > instructions.
 
-Auto is Simon's always-on remote control for Cursor's agent: one host
+Auto is an always-on remote control for Cursor's agent: one host
 (`src/server/index.mjs`) serving a web app and a Telegram bot, driving
 `cursor-agent` sessions over ACP. Any session working in this repo — one of
 Auto's own sessions or a manual one — follows the rules below.
 
+These rules apply when this clone is the Auto host you are running. If you
+are only browsing the code, you can ignore the commit-and-push loop.
+
 ## Reporting back
 
 Finish every piece of work with a short bullet list of what changed — not
-prose. Simon reads these on a phone, often from Telegram. Lead with the
+prose. The operator reads these on a phone, often from Telegram. Lead with the
 outcome, one bullet per thing that actually changed, and say plainly what you
 did not do. Long explanations belong in the commit message or the wiki.
 
@@ -211,7 +214,7 @@ run. Switching repos only sticks if you call the session API — `cd`-ing and
 saying "now in repo X" reverts on the next message:
 
 ```powershell
-curl -s -X POST http://127.0.0.1:4331/api/session -H "Content-Type: application/json" -d '{\"folder\":\"D:\\Sevenfold\\auto\"}'
+curl -s -X POST http://127.0.0.1:4331/api/session -H "Content-Type: application/json" -d '{\"folder\":\"C:\\path\\to\\repo\"}'
 ```
 
 The `switch-repo` skill covers this, including reactivating an existing

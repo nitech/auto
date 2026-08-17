@@ -109,7 +109,7 @@ async function windowStatus() {
     console.log(
       '\nCursor was started without its debugging port, so the bridge above is the only way\n' +
         'in. To have both, quit Cursor and start it like this:\n\n' +
-        '  & "$env:LOCALAPPDATA\\Programs\\cursor\\Cursor.exe" --remote-debugging-port=9222 "D:\\Sevenfold\\auto"',
+        '  & "$env:LOCALAPPDATA\\Programs\\cursor\\Cursor.exe" --remote-debugging-port=9222 "C:\\path\\to\\project"',
     );
     return false;
   }

@@ -14,7 +14,7 @@ reverts on the next message.
 ```powershell
 # Point the active session at a folder. Reuses a session already on that
 # folder, creates one if there isn't, and makes it active:
-curl -s -X POST http://127.0.0.1:4331/api/session -H "Content-Type: application/json" -d '{\"folder\":\"D:\\Sevenfold\\auto\"}'
+curl -s -X POST http://127.0.0.1:4331/api/session -H "Content-Type: application/json" -d '{\"folder\":\"C:\\path\\to\\repo\"}'
 ```
 
 To reactivate an existing session without touching its folder, switch by id

@@ -14,12 +14,12 @@ sources:
   - id: host
     resource: /src/server/index.mjs
     title: Host process
-generated: { by: agent, at: 2026-08-16T06:35:00Z }
+generated: { by: agent, at: 2026-08-17T05:40:00Z }
 ---
 
 # Auto
 
-Auto is Simon's always-on remote control for Cursor's agent. One process
+Auto is an always-on remote control for Cursor's agent. One process
 (`src/server/index.mjs` on port 4331) serves a web app and a Telegram bot,
 and drives conversations that live either in the Cursor desktop app or in a
 `cursor-agent acp` child.
@@ -58,6 +58,8 @@ again — that closes every window. Only then does it fall back to ACP.
 ## Standing rules
 
 - [Access](concepts/access.md) is Tailscale; Auto has no login of its own.
+  First clone: [docs/install.md](../docs/install.md). `npm run setup` is the
+  checklist.
 - One Telegram poller. A second host with the bot token splits messages.
   Develop with `npm run dev` (port 4340, Telegram off).
 - Never host Auto in a Cursor agent background shell — those get killed.
