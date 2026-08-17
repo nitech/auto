@@ -3,13 +3,17 @@
   <!--
     Full-bleed field so iOS and Android can apply their own mask. The mark
     stays inside the inner 80% (maskable safe zone). A capital A drawn as two
-    rounded strokes, its crossbar replaced by a dot in the app accent — the
-    agent sitting inside Auto's frame. Strokes are sized to survive a 16×16
-    tab. Geometry is shared with scripts/raster-icon.mjs.
+    rounded strokes — outer join, feet, and inner apex all round — with its
+    crossbar replaced by a dot in the app accent. The second path fills the
+    sharp inner V that stroke-linejoin leaves behind with a circular fillet
+    matching the outer join radius. Geometry is shared with scripts/raster-icon.mjs.
   -->
   <rect width="512" height="512" fill="#0b0d12"/>
   <path d="M140 372 L256 132 L372 372"
         fill="none" stroke="#dfe3ea" stroke-width="68"
         stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Fillet: triangle of the sharp inner tip minus the arc that replaces it (r=36). -->
+  <path d="M223.59 277.19 L256 210.13 L288.41 277.19 A36 36 0 0 0 223.59 277.19 Z"
+        fill="#dfe3ea"/>
   <circle cx="256" cy="356" r="32" fill="#6ea8ff"/>
 </svg>

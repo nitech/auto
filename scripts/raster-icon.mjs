@@ -20,6 +20,9 @@ export const APEX = [256, 132];
 export const FOOT_L = [140, 372];
 export const FOOT_R = [372, 372];
 export const STROKE_W = 68;
+/** Radius of the circular fillet that rounds the inner apex of the A.
+ *  Matched to the outer join (half the stroke) so both ends of the chevron read round. */
+export const FILLET_R = 36;
 export const DOT_C = [256, 356];
 export const DOT_R = 32;
 export const SRC = 512;
@@ -82,8 +85,7 @@ function disc(dx, dy, r) {
 
 /**
  * Coverage of a round-capped stroke from (x1,y1) to (x2,y2): distance to the
- * segment against half the stroke width, with the same 1px edge ramp. Two
- * capsules sharing an endpoint give the round join at the apex for free.
+ * segment against half the stroke width, with the same 1px edge ramp.
  */
 function capsule(px, py, x1, y1, x2, y2, halfW) {
   const vx = x2 - x1;
@@ -97,10 +99,100 @@ function capsule(px, py, x1, y1, x2, y2, halfW) {
   return 0.5 - d;
 }
 
+/** Signed distance to a half-plane: positive on the normal side. */
+function halfPlane(px, py, ox, oy, nx, ny) {
+  return (px - ox) * nx + (py - oy) * ny;
+}
+
+/**
+ * Coverage of the circular fillet that rounds the sharp inner apex left by
+ * two overlapping capsules. Fills the triangle (sharp tip → left/right
+ * tangents) outside the fillet circle — same path as in icon.svg.
+ */
+function fillet(px, py, ax, ay, lx, ly, rx, ry, halfW, filletR) {
+  const vLx = lx - ax;
+  const vLy = ly - ay;
+  const vRx = rx - ax;
+  const vRy = ry - ay;
+  const lenL = Math.hypot(vLx, vLy);
+  const lenR = Math.hypot(vRx, vRy);
+  const uLx = vLx / lenL;
+  const uLy = vLy / lenL;
+  const uRx = vRx / lenR;
+  const uRy = vRy / lenR;
+  // Inward normals (into the V / hole).
+  const nLx = uLy;
+  const nLy = -uLx;
+  const nRx = -uRy;
+  const nRy = uRx;
+  const sinHalf = Math.abs(uLx); // bisector is (0,1); |uL × bisector|
+  if (sinHalf < 1e-6) return 0;
+  const dC = (halfW + filletR) / sinHalf;
+  // Bisector of the two legs, pointing into the angle (down for this A).
+  const bx = uLx + uRx;
+  const by = uLy + uRy;
+  const bLen = Math.hypot(bx, by);
+  const cx = ax + (bx / bLen) * dC;
+  const cy = ay + (by / bLen) * dC;
+  const tipDist = halfW / sinHalf;
+  const tipX = ax + (bx / bLen) * tipDist;
+  const tipY = ay + (by / bLen) * tipDist;
+  const tlX = cx - nLx * filletR;
+  const tlY = cy - nLy * filletR;
+  const trX = cx - nRx * filletR;
+  const trY = cy - nRy * filletR;
+
+  // Inside the sharp-tip triangle (tip, TL, TR): on the tip side of TL→TR,
+  // on the right of tip→TL, on the left of tip→TR.
+  const e0x = trX - tlX;
+  const e0y = trY - tlY;
+  const e0len = Math.hypot(e0x, e0y) || 1;
+  // Normal of TL→TR pointing toward tip.
+  let n0x = -e0y / e0len;
+  let n0y = e0x / e0len;
+  if (halfPlane(tipX, tipY, tlX, tlY, n0x, n0y) < 0) {
+    n0x = -n0x;
+    n0y = -n0y;
+  }
+  const e1x = tlX - tipX;
+  const e1y = tlY - tipY;
+  const e1len = Math.hypot(e1x, e1y) || 1;
+  let n1x = -e1y / e1len;
+  let n1y = e1x / e1len;
+  if (halfPlane(trX, trY, tipX, tipY, n1x, n1y) < 0) {
+    n1x = -n1x;
+    n1y = -n1y;
+  }
+  const e2x = tipX - trX;
+  const e2y = tipY - trY;
+  const e2len = Math.hypot(e2x, e2y) || 1;
+  let n2x = -e2y / e2len;
+  let n2y = e2x / e2len;
+  if (halfPlane(tlX, tlY, trX, trY, n2x, n2y) < 0) {
+    n2x = -n2x;
+    n2y = -n2y;
+  }
+
+  // Positive on the inside of each edge → depth inside the triangle.
+  const depthTri = Math.min(
+    halfPlane(px, py, tlX, tlY, n0x, n0y),
+    halfPlane(px, py, tipX, tipY, n1x, n1y),
+    halfPlane(px, py, trX, trY, n2x, n2y),
+  );
+  // Positive outside the fillet circle.
+  const outsideCirc = Math.hypot(px - cx, py - cy) - filletR;
+  // SDF of (triangle ∩ outside-circle): negative inside the add region.
+  const sd = Math.max(-depthTri, -outsideCirc);
+  if (sd <= -0.5) return 1;
+  if (sd >= 0.5) return 0;
+  return 0.5 - sd;
+}
+
 function raster(size) {
   const px = Buffer.alloc(size * size * 4);
   const s = size / SRC;
   const halfW = (STROKE_W / 2) * s;
+  const filletR = FILLET_R * s;
   const [ax, ay] = [APEX[0] * s, APEX[1] * s];
   const [lx, ly] = [FOOT_L[0] * s, FOOT_L[1] * s];
   const [rx, ry] = [FOOT_R[0] * s, FOOT_R[1] * s];
@@ -119,6 +211,7 @@ function raster(size) {
       const a = Math.max(
         capsule(sx, sy, ax, ay, lx, ly, halfW),
         capsule(sx, sy, ax, ay, rx, ry, halfW),
+        fillet(sx, sy, ax, ay, lx, ly, rx, ry, halfW, filletR),
       );
       blend(px, i, HEX.stroke, a);
       blend(px, i, HEX.dot, disc(sx - dcx, sy - dcy, dotR));
