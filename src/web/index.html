@@ -18,10 +18,11 @@
   /* Wins over a cached style.css. iOS reports ~80px of bottom inset on a Home
      Screen app; the layout viewport already ends above the home bar / keyboard. */
   html[data-standalone] #composer { padding-bottom: 8px !important; }
-  /* Mode/model must stay ≥16px with no CSS zoom — see style.css. Cached sheets
-     that still use zoom: 0.75 would zoom the whole PWA on tap. */
+  /* Mode/model draw at 12px in the installed PWA, where maximum-scale=1 makes
+     focus-zoom impossible — see style.css. A cached sheet must not resurrect
+     the old zoom: 0.75 trick. */
   html[data-standalone] .composer-controls select {
-    font-size: 16px !important;
+    font-size: 12px !important;
     zoom: normal !important;
   }
 </style>
@@ -73,8 +74,16 @@
         <span class="brand-name">Auto</span>
         <span class="brand-host" id="host-label">…</span>
       </span>
-      <button id="new-session" class="icon" title="New session">+</button>
-      <button id="rail-close" class="icon" title="Close sessions" aria-label="Close sessions">×</button>
+      <button id="new-session" class="icon" title="New session" aria-label="New session">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 12h14"/><path d="M12 5v14"/>
+        </svg>
+      </button>
+      <button id="rail-close" class="icon" title="Close sessions" aria-label="Close sessions">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+        </svg>
+      </button>
     </div>
     <div id="session-list"></div>
     <div class="rail-foot">

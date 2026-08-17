@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-17
+* **Update**: Mode/model chips draw at a true 12px in the installed PWA (maximum-scale=1 makes focus-zoom impossible there; the 16px base stays for Safari tabs), and the mode chip's background takes a tint of the mode colour. The rail's new-session and close buttons are inline SVGs instead of text glyphs.
 * **Update**: Transcript loading overlay shows the Auto A mark (breathing) instead of a spinner.
 * **Update**: Session rail shows this machine's hostname (or a nick from Settings → Host); stored in `state/host.json`.
 * **Update**: iOS Home Screen no longer zooms when tapping mode/model — dropped CSS `zoom` on those chips (WebKit still focus-zoomed the scaled size) and locked `maximum-scale=1` in standalone.

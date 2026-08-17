@@ -1783,8 +1783,19 @@ if (existsSync(SRC)) {
     fail('Home Screen PWA must lock scale so iOS cannot zoom the page on picker tap');
     failed = true;
   }
-  if (!html.includes('zoom: normal') || !/composer-controls select[\s\S]*font-size:\s*16px\s*!important/.test(html)) {
-    fail('standalone inline CSS must keep pickers at 16px without zoom (beats a cached sheet)');
+  if (!html.includes('zoom: normal') || !/composer-controls select[\s\S]*font-size:\s*12px\s*!important/.test(html)) {
+    fail('standalone inline CSS must pin pickers at 12px without zoom (beats a cached sheet)');
+    failed = true;
+  }
+  const standaloneAt = css.indexOf('html[data-standalone] .composer-controls select');
+  const standaloneBlock = standaloneAt < 0 ? '' : css.slice(standaloneAt, css.indexOf('}', standaloneAt) + 1);
+  if (!/font-size:\s*12px/.test(standaloneBlock)) {
+    fail('the installed PWA must draw pickers at 12px — maximum-scale=1 makes focus-zoom impossible there');
+    failed = true;
+  }
+  const modeChip = css.slice(css.indexOf('#mode,'), css.indexOf('#mode option'));
+  if (!/background:\s*color-mix\(in srgb, var\(--mode-color\)/.test(modeChip)) {
+    fail('the mode chip background must follow the mode colour');
     failed = true;
   }
   if (!failed) ok('v2 web: composer mode colours');

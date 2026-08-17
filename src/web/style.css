@@ -548,6 +548,8 @@ select {
 .chip.error { color: var(--red); border-color: var(--error-border); }
 
 button.icon {
+  display: inline-grid;
+  place-items: center;
   background: none;
   border: 1px solid transparent;
   color: var(--muted);
@@ -1160,10 +1162,10 @@ html[data-standalone] #composer {
  * Mode and model sit under the text they govern, as Cursor's chat box has
  * them. A chip background shows where each picker starts and stops.
  *
- * Font must stay at least 16px: iOS zooms the page into any form control
- * smaller than that and never zooms back out. Do not use CSS `zoom` to make
- * them look smaller — WebKit's focus-zoom uses the scaled size, so 16px at
- * zoom 0.75 still triggers the page zoom on an iPhone Home Screen app.
+ * The base font must stay at least 16px: iOS Safari zooms the page into any
+ * form control smaller than that and never zooms back out. Do not use CSS
+ * `zoom` to fake a smaller chip — WebKit's focus-zoom uses the scaled size,
+ * so 16px at zoom 0.75 still triggers the page zoom.
  */
 .composer-controls {
   display: flex;
@@ -1184,16 +1186,35 @@ html[data-standalone] #composer {
   min-width: 0;
 }
 
+/*
+ * Installed as a Home Screen app the viewport is locked with maximum-scale=1
+ * (index.html), and a standalone PWA honours it — focus-zoom cannot happen,
+ * so the chips can draw at the 12px Cursor gives them. Safari ignores that
+ * lock in a plain tab, which is why the 16px base above stays the guard.
+ */
+html[data-standalone] .composer-controls select {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
 .composer-controls select:hover {
   background: var(--bg);
   border-color: var(--line);
   color: var(--text);
 }
 
-/* The mode word is the hue, not the model word beside it. Hover keeps it. */
+/* The mode chip carries its mode's hue — word and a tint of background,
+   the way Cursor colours its own picker. The model chip stays neutral. */
 #mode,
 #mode:hover {
   color: var(--mode-color);
+  background: color-mix(in srgb, var(--mode-color) 14%, var(--bg-3));
+  border-color: color-mix(in srgb, var(--mode-color) 40%, transparent);
+}
+
+#mode:hover {
+  background: color-mix(in srgb, var(--mode-color) 22%, var(--bg-3));
 }
 
 #mode option[value='agent'] { color: var(--mode-agent); }

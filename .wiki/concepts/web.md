@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-17T14:50:00Z }
+generated: { by: agent, at: 2026-08-17T15:05:00Z }
 ---
 
 # Web app
@@ -108,17 +108,17 @@ were typing and restores it when you come back. An idle send appears in
 the stream at once — it used to wait until Cursor's window had taken it.
 
 Mode and model are chips under the text: a slight background and rounded
-edges so a thumb can see where each picker starts. Their font is **16px** —
-iOS zooms the page into anything smaller and never zooms back out. An older
-trick of `zoom: 0.75` to draw them smaller still triggered focus-zoom on a
-Home Screen app (WebKit uses the scaled size), so the chips stay a true
-16px. Installed as a PWA, the viewport also sets `maximum-scale=1` so a tap
-cannot leave the page zoomed.
+edges so a thumb can see where each picker starts. Their base font is
+**16px** — iOS Safari zooms the page into anything smaller and never zooms
+back out, and an older `zoom: 0.75` trick still triggered it (WebKit uses
+the scaled size). The installed PWA is different: there the viewport sets
+`maximum-scale=1`, which a Home Screen app honours, so focus-zoom is
+impossible and the chips draw at a true 12px, the size Cursor gives them.
 
 Mode is Agent, Plan, Debug, Multitask, or Ask — the same five Cursor
-lists. The ring around the box, the send button, and the mode word all
-take that mode's colour (blue, amber, red, purple, green), so a glance
-says which one is in force. An ACP catalog that only names three does
+lists. The ring around the box, the send button, and the mode chip itself —
+word and a tint of background — all take that mode's colour (blue, amber,
+red, purple, green), so a glance says which one is in force. An ACP catalog that only names three does
 not drop Debug or Multitask from the picker. The model chip is keyed by
 model id; after a desktop switch Auto keeps that id (and Cursor's label
 as the name) so the control does not go blank. Catalog names that are
