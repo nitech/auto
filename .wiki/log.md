@@ -1,6 +1,8 @@
 # Directory Update Log
 
 ## 2026-08-17
+* **Update**: Setup treats `agent status` `Not logged in` as a fail (it used to match `/logged in/` and go green). CLI present but unsigned-in is why the model picker stayed empty.
+* **Update**: Usage sheet "Model" is the last-sent id in `composerData` (`default` for Auto-select — Cursor does not store which model it routed to). Account "By model" is cycle-wide billed `modelIntent`, not this turn.
 * **Update**: Picking Kimi K3 from the phone no longer fails — agent slugs (`kimi-k3`) match Cursor's menu words (`Kimi K3`), and `reasoning=max` is the Max badge.
 * **Update**: iOS Home Screen composer still had a strip under it — 8px padding, shell sized to the visual viewport; css/js URLs are now fingerprinted from file mtime so the installed app redownloads them.
 * **Update**: Web app is actually installable on the Home Screen — Apple meta + PNG touch icon, 192/512 manifest icons, SVG favicon, and a Settings hint (Share → Add to Home Screen on iPhone).

@@ -88,6 +88,8 @@ Auto setup
   ✓ copied .env.example → .env
 ```
 
+The CLI being installed is not enough. Until `agent login` has succeeded, setup reports `CLI found, not logged in` and `npm run setup` exits 1. `agent status` prints `Not logged in` in that case — that is a fail, not a pass.
+
 Fix anything with `✗`, then:
 
 ```powershell
@@ -212,7 +214,8 @@ Use `npm install` and `node`. If you run the setup script under Bun it will warn
 | Symptom | Likely cause |
 | --- | --- |
 | `npm run setup` says CLI not found | Step 4; new terminal after the installer |
-| `agent status` not logged in | `agent login` |
+| `agent status` says `Not logged in`, or setup says `CLI found, not logged in` | `agent login` — then `npm run setup` again |
+| Model picker empty, host logs `Authentication required` | Same: the CLI is present but not signed in |
 | Phone cannot open `100.x:4331` | Tailscale not on both devices, or Windows Firewall (step 5) |
 | Host dies when a Cursor chat ends | Auto was started in an agent background shell — use supervise / the scheduled task |
 | Desktop send sits in the outbox | Cursor was started without the debug port — step 6 |

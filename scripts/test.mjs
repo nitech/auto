@@ -73,7 +73,7 @@ if (existsSync(SRC)) {
 
 // 1g. First-run checklist — the rows a stranger sees after npm install.
 {
-  const { collectChecks, ensureEnvFile } = await import('./setup.mjs');
+  const { collectChecks, ensureEnvFile, agentCliLoggedIn } = await import('./setup.mjs');
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
   if (pkg.scripts?.postinstall !== 'node scripts/setup.mjs --postinstall') {
     fail('package.json postinstall should run scripts/setup.mjs --postinstall');
@@ -81,10 +81,29 @@ if (existsSync(SRC)) {
   if (pkg.scripts?.setup !== 'node scripts/setup.mjs') {
     fail('package.json setup should run scripts/setup.mjs');
   }
+  // `Not logged in` contains "logged in" — that used to pass the checklist.
+  if (agentCliLoggedIn('Not logged in')) fail('setup must treat "Not logged in" as unsigned-in');
+  if (agentCliLoggedIn('\x1b[31mNot logged in\x1b[39m')) {
+    fail('setup must treat a coloured "Not logged in" as unsigned-in');
+  }
+  if (agentCliLoggedIn('Authentication required')) {
+    fail('setup must treat "Authentication required" as unsigned-in');
+  }
+  if (agentCliLoggedIn('')) fail('setup must not treat empty agent status as signed-in');
+  if (!agentCliLoggedIn('✓ Logged in as nitech@gmail.com')) {
+    fail('setup must accept "Logged in as …"');
+  }
+  if (!agentCliLoggedIn('\x1b[32m✓\x1b[39m Logged in as nitech@gmail.com')) {
+    fail('setup must accept a coloured "Logged in as …"');
+  }
+  if (!agentCliLoggedIn('Login successful!')) fail('setup must accept "Login successful!"');
   const checks = await collectChecks({ root: ROOT });
   const ids = checks.map((c) => c.id);
   for (const need of ['node', 'pty', 'agent', 'tailscale', 'env']) {
     if (!ids.includes(need)) fail(`setup checklist missing ${need}`);
+  }
+  if (checks.find((c) => c.id === 'agent')?.ok && !ids.includes('agent-login')) {
+    fail('setup must check agent login when the CLI is present');
   }
   const node = checks.find((c) => c.id === 'node');
   if (!node?.ok) fail(`setup should accept this Node, got ${node?.detail}`);

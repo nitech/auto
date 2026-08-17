@@ -17,7 +17,7 @@ sources:
   - id: readme
     resource: /README.md
     title: Run instructions
-generated: { by: agent, at: 2026-08-17T05:40:00Z }
+generated: { by: agent, at: 2026-08-17T10:35:00Z }
 ---
 
 # Access and config
@@ -30,7 +30,11 @@ on 4331.
 The human walkthrough — what Tailscale is, CLI install, debug port, Telegram —
 is [docs/install.md](../../docs/install.md). `npm install` runs
 `scripts/setup.mjs --postinstall` (never fails the install). `npm run setup`
-is the same checklist and exits 1 when the Cursor agent CLI is missing.
+is the same checklist and exits 1 when the Cursor agent CLI is missing **or
+not logged in**. The login row requires `Logged in as …` from `agent status`;
+`Not logged in` is a fail (it contains the words "logged in", which used to
+pass). Without that login, ACP start fails with `Authentication required` and
+the model picker stays empty.
 
 Credentials for Telegram come from `TELEGRAM_BOT_TOKEN` /
 `TELEGRAM_CHAT_ID`, or the `auth.json` the telegram-notify skill writes.

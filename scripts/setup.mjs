@@ -66,6 +66,31 @@ export function ensureEnvFile(root = ROOT) {
   return { path: dest, copied: true };
 }
 
+/** Strip ANSI so `agent status` colour codes do not hide the words. */
+function stripAnsi(text) {
+  return String(text || '').replace(/\x1b\[[0-9;]*m/g, '');
+}
+
+/**
+ * Whether `agent status` says the CLI is signed in.
+ *
+ * The CLI prints `Not logged in` when it is not. A `/logged in/i` match
+ * treated that as success, so setup went green and Auto then failed with
+ * `Authentication required` (empty model picker, no ACP session).
+ */
+export function agentCliLoggedIn(text) {
+  const s = stripAnsi(text);
+  if (/\bnot logged in\b/i.test(s)) return false;
+  if (/authentication required/i.test(s)) return false;
+  if (/\blogged in as\b/i.test(s)) return true;
+  if (/login successful/i.test(s)) return true;
+  return false;
+}
+
+function agentCliWho(text) {
+  return stripAnsi(text).match(/logged in as\s+(\S+)/i)?.[1] || null;
+}
+
 export async function collectChecks({ root = ROOT } = {}) {
   const checks = [];
 
@@ -118,6 +143,7 @@ export async function collectChecks({ root = ROOT } = {}) {
   });
 
   let agentOk = false;
+  let found = null;
   let agentDetail = 'Cursor agent CLI not found';
   let agentHint =
     process.platform === 'win32'
@@ -125,7 +151,7 @@ export async function collectChecks({ root = ROOT } = {}) {
       : 'Install from https://cursor.com/docs/cli/overview then run: agent login';
   try {
     const { resolveCursorAgent } = await import('../src/acp/resolve.mjs');
-    const found = resolveCursorAgent();
+    found = resolveCursorAgent();
     agentOk = Boolean(found?.command);
     agentDetail = agentOk
       ? `Cursor agent CLI (${found.via || 'found'})`
@@ -141,15 +167,23 @@ export async function collectChecks({ root = ROOT } = {}) {
     hint: agentOk ? null : agentHint,
   });
 
-  if (agentOk) {
-    const status = run('agent', ['status'], { timeout: 15_000 });
+  if (found) {
+    const status = run(found.command, [...found.args, 'status'], {
+      timeout: 15_000,
+      shell: found.shell,
+    });
     const text = `${status.stdout || ''}\n${status.stderr || ''}`;
-    const loggedIn = /logged in/i.test(text);
+    const loggedIn = agentCliLoggedIn(text);
+    const who = loggedIn ? agentCliWho(text) : null;
     checks.push({
       id: 'agent-login',
       required: true,
       ok: loggedIn,
-      detail: loggedIn ? 'CLI logged in' : 'CLI found, not logged in',
+      detail: loggedIn
+        ? who
+          ? `CLI logged in as ${who}`
+          : 'CLI logged in'
+        : 'CLI found, not logged in',
       hint: loggedIn ? null : 'Run: agent login',
     });
   }
