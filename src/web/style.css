@@ -1603,9 +1603,10 @@ html[data-standalone] .composer-controls select {
 
 /**
  * Under the header: Chat (always first, no ×) plus Browser and each shell.
- * Slim browser-style tabs. No rule under the strip — a line there always
- * cut through the active tab (overflow-x clips any cover). Separation is
- * the bar's background vs the panel. Scrolls sideways when tabs overflow.
+ * A baseline runs the full width; the active tab's own border climbs out of
+ * that line (left/top/right) and its bottom edge matches the panel so the
+ * rule does not cut through it. Drawn as a background gradient so overflow-x
+ * cannot clip a cover shadow. Scrolls sideways when tabs overflow.
  */
 /* No rule between the title bar and the tab strip — they read as one chrome. */
 #main:has(#view-tabs:not([hidden])) #topbar {
@@ -1621,7 +1622,10 @@ html[data-standalone] .composer-controls select {
   height: 28px;
   padding: 0 8px;
   border-bottom: none;
-  background: var(--bg-2);
+  /* Full-width baseline; active tab paints over the segment under itself. */
+  background:
+    linear-gradient(var(--line), var(--line)) left bottom / 100% 1px no-repeat,
+    var(--bg-2);
   overflow-x: auto;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
@@ -1638,7 +1642,8 @@ html[data-standalone] .composer-controls select {
   height: 26px;
   padding: 0 10px;
   border: 1px solid transparent;
-  border-bottom: none;
+  /* Transparent bottom lets the strip baseline show under inactive tabs. */
+  border-bottom: 1px solid transparent;
   border-radius: 6px 6px 0 0;
   background: transparent;
   color: var(--muted);
@@ -1657,7 +1662,8 @@ html[data-standalone] .composer-controls select {
 .view-tab.active {
   background: var(--bg);
   border-color: var(--line);
-  border-bottom: none;
+  /* Same colour as the panel — covers the baseline under this tab only. */
+  border-bottom-color: var(--bg);
   color: var(--text);
 }
 .view-tab-label {
