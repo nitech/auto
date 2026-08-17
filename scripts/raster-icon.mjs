@@ -19,10 +19,10 @@ export const DOT = '#e5a95a';
 export const APEX = [256, 132];
 export const FOOT_L = [140, 372];
 export const FOOT_R = [372, 372];
-export const STROKE_W = 68;
+export const STROKE_W = 56;
 /** Radius of the circular fillet that rounds the inner apex of the A.
  *  Matched to the outer join (half the stroke) so both ends of the chevron read round. */
-export const FILLET_R = 36;
+export const FILLET_R = 28;
 /** Dot on the baseline between the feet. */
 export const DOT_C = [256, 372];
 export const DOT_R = 32;

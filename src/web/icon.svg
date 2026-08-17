@@ -20,10 +20,10 @@
     }
   </style>
   <rect class="bg" width="512" height="512" fill="#0b0d12"/>
-  <path class="leg" d="M140 372 L256 132" fill="none" stroke="#dfe3ea" stroke-width="68" stroke-linecap="round"/>
-  <path class="leg" d="M372 372 L256 132" fill="none" stroke="#dfe3ea" stroke-width="68" stroke-linecap="round"/>
+  <path class="leg" d="M140 372 L256 132" fill="none" stroke="#dfe3ea" stroke-width="56" stroke-linecap="round"/>
+  <path class="leg" d="M372 372 L256 132" fill="none" stroke="#dfe3ea" stroke-width="56" stroke-linecap="round"/>
   <!-- Fillet pad: arc is the hole ceiling; top edge sits buried in the solid. -->
-  <path class="fillet" d="M223.59 277.19 A36 36 0 0 1 288.41 277.19 L295 155 L217 155 Z"
+  <path class="fillet" d="M230.79 248.5 A28 28 0 0 1 281.21 248.5 L295 155 L217 155 Z"
         fill="#dfe3ea"/>
   <circle class="dot" cx="256" cy="372" r="32" fill="#e5a95a"/>
 </svg>
