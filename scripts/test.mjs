@@ -1756,6 +1756,7 @@ if (existsSync(SRC)) {
 {
   const html = readFileSync(join(ROOT, 'src/web/index.html'), 'utf8');
   const js = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  const css = readFileSync(join(ROOT, 'src/web/style.css'), 'utf8');
   const manifest = JSON.parse(readFileSync(join(ROOT, 'src/web/manifest.webmanifest'), 'utf8'));
   const icon = readFileSync(join(ROOT, 'src/web/icon.svg'), 'utf8');
   let failed = false;
@@ -1815,6 +1816,27 @@ if (existsSync(SRC)) {
       fail(`${name} is not a PNG`);
       failed = true;
     }
+  }
+  if (!html.includes('dataset.standalone') && !html.includes("dataset.standalone = ''")) {
+    fail('standalone must be marked on <html> before first paint');
+    failed = true;
+  }
+  if (!html.includes('navigator.standalone') || !html.includes('--vv-height')) {
+    fail('an installed app must read the visual viewport before first paint');
+    failed = true;
+  }
+  if (!css.includes('html[data-standalone] #app') || !css.includes('--vv-height')) {
+    fail('installed Auto must size to the visual viewport, or 100dvh leaves a gap under the composer');
+    failed = true;
+  }
+  const topbarCss = css.slice(css.indexOf('#topbar {'), css.indexOf('#topbar-controls'));
+  if (!topbarCss.includes('safe-area-inset-top')) {
+    fail('the topbar must pad by safe-area-inset-top or it sits under the iOS status bar');
+    failed = true;
+  }
+  if (!css.includes('overflow: hidden') || !/html,\s*body \{[^}]*overflow:\s*hidden/.test(css)) {
+    fail('html/body must not scroll — a too-tall page clips the header on iOS');
+    failed = true;
   }
   if (!failed) ok('v2 web: Home Screen install (favicon, Apple tags, icons)');
 }

@@ -152,6 +152,7 @@
 html, body {
   margin: 0;
   height: 100%;
+  overflow: hidden;
   background: var(--bg);
   color: var(--text);
   font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
@@ -164,6 +165,20 @@ button, select, textarea { font: inherit; color: inherit; }
   display: grid;
   grid-template-columns: 264px 1fr;
   height: 100dvh;
+}
+
+/*
+ * iOS Home Screen: 100dvh is taller than the visible window, so the extra
+ * height shows as a gap under the composer and the top of the grid (the
+ * header) is clipped. Pin to the visual viewport instead. black-translucent
+ * also draws under the status bar — topbar / rail padding handles that.
+ */
+html[data-standalone] #app {
+  position: fixed;
+  top: var(--vv-top, 0px);
+  left: 0;
+  right: 0;
+  height: var(--vv-height, 100dvh);
 }
 
 /* Chat stays whole; browser/terminals take a column beside it. */
@@ -185,7 +200,7 @@ button, select, textarea { font: inherit; color: inherit; }
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 14px 10px;
+  padding: max(14px, env(safe-area-inset-top, 0px)) 14px 10px;
 }
 
 .brand {
@@ -418,7 +433,7 @@ button, select, textarea { font: inherit; color: inherit; }
   gap: 10px;
   width: 100%;
   margin: 0;
-  padding: 12px 16px;
+  padding: 12px 16px max(12px, env(safe-area-inset-bottom, 0px));
   background: none;
   border: 0;
   border-top: 1px solid var(--line);
@@ -453,7 +468,7 @@ button, select, textarea { font: inherit; color: inherit; }
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 16px;
+  padding: max(10px, env(safe-area-inset-top, 0px)) 16px 10px;
   border-bottom: 1px solid var(--line);
   background: var(--bg);
 }
@@ -2301,6 +2316,9 @@ pre:hover .copy,
     border-left: 0;
     animation: sheet-in 0.16s ease;
   }
+  html[data-standalone] .workspace-bar {
+    padding-top: max(6px, env(safe-area-inset-top, 0px));
+  }
   .workspace-tab {
     min-height: 40px;
     padding: 8px 12px;
@@ -2313,7 +2331,7 @@ pre:hover .copy,
     color: var(--text);
   }
 
-  #topbar { padding: 8px 10px; gap: 6px; }
+  #topbar { padding: max(8px, env(safe-area-inset-top, 0px)) 10px 8px; gap: 6px; }
   .usage-panel {
     /* Phone: edge-to-edge sheet from the bottom. */
     width: 100%;

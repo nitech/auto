@@ -15,7 +15,8 @@
 <link rel="stylesheet" href="/vendor/xterm.css" />
 <link rel="stylesheet" href="/style.css" />
 <script>
-  // Before first paint, so a light-theme phone never flashes a dark page.
+  // Before first paint, so a light-theme phone never flashes a dark page,
+  // and an installed app does not lay out at 100dvh (too tall on iOS).
   try {
     const pref = localStorage.getItem('auto.theme') || 'system';
     const light = pref === 'light'
@@ -23,6 +24,14 @@
     document.documentElement.dataset.theme = light ? 'light' : 'dark';
     const theme = document.querySelector('meta[name="theme-color"]');
     if (theme) theme.setAttribute('content', light ? '#ffffff' : '#0b0d12');
+    if (navigator.standalone || matchMedia('(display-mode: standalone)').matches) {
+      document.documentElement.dataset.standalone = '';
+    }
+    const vv = window.visualViewport;
+    if (vv) {
+      document.documentElement.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`);
+      document.documentElement.style.setProperty('--vv-height', `${Math.round(vv.height)}px`);
+    }
   } catch (_) {
     document.documentElement.dataset.theme = 'dark';
   }

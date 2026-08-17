@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-17
+* **Update**: iOS Home Screen layout — pin the shell to the visual viewport and pad the status-bar inset so the header is not clipped and the composer has no extra gap.
 * **Update**: Web app is actually installable on the Home Screen — Apple meta + PNG touch icon, 192/512 manifest icons, SVG favicon, and a Settings hint (Share → Add to Home Screen on iPhone).
 * **Update**: First-run tutorial at `docs/install.md` (Tailscale, Cursor CLI, debug port). `npm install` runs `scripts/setup.mjs`. Access/overview depersonalised for a public clone.
 
