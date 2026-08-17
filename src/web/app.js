@@ -2218,15 +2218,10 @@ function syncVisualViewport() {
   if (!vv) {
     root.style.removeProperty('--vv-top');
     root.style.removeProperty('--vv-height');
-    delete root.dataset.keyboard;
     return;
   }
   root.style.setProperty('--vv-top', `${Math.round(vv.offsetTop)}px`);
   root.style.setProperty('--vv-height', `${Math.round(vv.height)}px`);
-  // Home indicator / 100dvh mismatch is tens of pixels; a keyboard is hundreds.
-  const occluded = window.innerHeight - vv.height;
-  if (occluded > 120) root.dataset.keyboard = '';
-  else delete root.dataset.keyboard;
 }
 
 {

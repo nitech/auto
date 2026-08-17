@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-17T07:02:00Z }
+generated: { by: agent, at: 2026-08-17T07:16:00Z }
 ---
 
 # Web app
@@ -47,12 +47,13 @@ when Chrome offers one). Already running as the installed app hides that
 block.
 
 Installed on iOS, `black-translucent` draws under the status bar.
-Standalone marks `data-standalone` before first paint, fills `#app` with
-`inset: 0` (a keyboard then pins it to `--vv-height`), and the topbar /
-rail pad `safe-area-inset-top` so ☰ and the title sit below the Dynamic
-Island. Composer padding uses the home-indicator inset, capped at 34px —
-iOS otherwise reports ~80px there and the box floated a full field above
-the home bar.
+Standalone marks `data-standalone` before first paint and fills `#app`
+with `inset: 0`. The viewport asks for `interactive-widget=resizes-content`,
+so a keyboard already shrinks the layout — pinning again to
+`visualViewport` left a gap above the keys. Composer padding is a fixed
+12px, inlined in `index.html` with `!important`, because
+`env(safe-area-inset-bottom)` is ~80px on a Home Screen app (keyboard or
+not) and iOS caches `style.css`.
 
 Mode and model live beside the composer, as in Cursor; approval policy
 lives in the top bar (and in Settings on a narrow screen). Settings is a

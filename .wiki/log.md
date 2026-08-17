@@ -1,7 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-17
-* **Update**: iOS Home Screen composer sat a field too high — `safe-area-inset-bottom` is inflated there; cap it at 34px and fill the shell with `inset: 0` instead of a short visual viewport.
+* **Update**: iOS Home Screen composer still floated above the keyboard — `env(safe-area-inset-bottom)` stays ~80px with the keys up; use 12px, inline it in the HTML, and stop pinning to visualViewport.
 * **Update**: Web app is actually installable on the Home Screen — Apple meta + PNG touch icon, 192/512 manifest icons, SVG favicon, and a Settings hint (Share → Add to Home Screen on iPhone).
 * **Update**: First-run tutorial at `docs/install.md` (Tailscale, Cursor CLI, debug port). `npm install` runs `scripts/setup.mjs`. Access/overview depersonalised for a public clone.
 

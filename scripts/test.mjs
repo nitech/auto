@@ -1829,13 +1829,21 @@ if (existsSync(SRC)) {
     fail('installed Auto must fill the screen with inset: 0, not a too-short visual viewport');
     failed = true;
   }
-  if (!css.includes('data-keyboard') || !js.includes('dataset.keyboard')) {
-    fail('a keyboard must shrink the standalone shell to the visual viewport');
+  if (css.includes('data-keyboard') || js.includes('dataset.keyboard')) {
+    fail('do not pin the standalone shell to visualViewport — resizes-content already sits it on the keyboard');
+    failed = true;
+  }
+  if (!html.includes('html[data-standalone] #composer') || !html.includes('padding-bottom: 12px !important')) {
+    fail('standalone composer padding must live in index.html so a cached style.css cannot keep the 80px gap');
     failed = true;
   }
   const standaloneComposer = css.slice(css.indexOf('html[data-standalone] #composer'));
-  if (!standaloneComposer.includes('min(34px') || css.includes('calc(10px + env(safe-area-inset-bottom))')) {
-    fail('standalone composer padding must cap the iOS-inflated safe-area-inset-bottom');
+  if (!standaloneComposer.includes('padding-bottom: 12px') || /html\[data-standalone\] #composer[^}]*env\(safe-area-inset-bottom/.test(css)) {
+    fail('standalone composer must not use env(safe-area-inset-bottom) — iOS reports ~80px even with the keyboard up');
+    failed = true;
+  }
+  if (!html.includes('style.css?v=') || !html.includes('app.js?v=')) {
+    fail('css/js URLs must be cache-busted so an iOS Home Screen app picks up layout fixes');
     failed = true;
   }
   const topbarCss = css.slice(css.indexOf('#topbar {'), css.indexOf('#topbar-controls'));

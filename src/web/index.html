@@ -13,7 +13,12 @@
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
 <link rel="stylesheet" href="/vendor/xterm.css" />
-<link rel="stylesheet" href="/style.css" />
+<link rel="stylesheet" href="/style.css?v=ios3" />
+<style>
+  /* Wins over a cached style.css — iOS Home Screen keeps one. env(safe-area-inset-bottom)
+     is ~80px here (and stays that way with the keyboard up), which is the gap. */
+  html[data-standalone] #composer { padding-bottom: 12px !important; }
+</style>
 <script>
   // Before first paint, so a light-theme phone never flashes a dark page,
   // and an installed app does not lay out at 100dvh (too tall on iOS).
@@ -273,6 +278,6 @@
 </div>
 <script src="/vendor/xterm.js"></script>
 <script src="/vendor/addon-fit.js"></script>
-<script type="module" src="/app.js"></script>
+<script type="module" src="/app.js?v=ios3"></script>
 </body>
 </html>
