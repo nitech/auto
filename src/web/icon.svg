@@ -7,12 +7,23 @@
     the baseline between the feet. Legs are separate strokes so no join edge
     traces the old sharp V; the fillet pad closes through the solid so its
     only visible edge is the arc. Geometry is shared with scripts/raster-icon.mjs.
+    Follows the system theme in browsers that honour prefers-color-scheme in
+    SVG icons; the rest keep the dark tile. The PNGs stay dark — home-screen
+    icons do not theme.
   -->
-  <rect width="512" height="512" fill="#0b0d12"/>
-  <path d="M140 372 L256 132" fill="none" stroke="#dfe3ea" stroke-width="68" stroke-linecap="round"/>
-  <path d="M372 372 L256 132" fill="none" stroke="#dfe3ea" stroke-width="68" stroke-linecap="round"/>
+  <style>
+    @media (prefers-color-scheme: light) {
+      .bg { fill: #ffffff; }
+      .leg, .fillet { stroke: #131720; }
+      .fillet { fill: #131720; }
+      .dot { fill: #8a5a00; }
+    }
+  </style>
+  <rect class="bg" width="512" height="512" fill="#0b0d12"/>
+  <path class="leg" d="M140 372 L256 132" fill="none" stroke="#dfe3ea" stroke-width="68" stroke-linecap="round"/>
+  <path class="leg" d="M372 372 L256 132" fill="none" stroke="#dfe3ea" stroke-width="68" stroke-linecap="round"/>
   <!-- Fillet pad: arc is the hole ceiling; top edge sits buried in the solid. -->
-  <path d="M223.59 277.19 A36 36 0 0 1 288.41 277.19 L295 155 L217 155 Z"
+  <path class="fillet" d="M223.59 277.19 A36 36 0 0 1 288.41 277.19 L295 155 L217 155 Z"
         fill="#dfe3ea"/>
-  <circle cx="256" cy="372" r="32" fill="#e5a95a"/>
+  <circle class="dot" cx="256" cy="372" r="32" fill="#e5a95a"/>
 </svg>
