@@ -547,6 +547,16 @@ select {
 .chip.busy { color: var(--amber); border-color: var(--warn-border); }
 .chip.error { color: var(--red); border-color: var(--error-border); }
 
+/* Browser + terminal sit as one pair, tighter than the topbar's 10px gap. */
+.topbar-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.topbar-tools .icon {
+  padding-inline: 5px;
+}
+
 button.icon {
   display: inline-grid;
   place-items: center;
