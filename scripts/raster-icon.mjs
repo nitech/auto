@@ -23,8 +23,11 @@ export const STROKE_W = 68;
 /** Radius of the circular fillet that rounds the inner apex of the A.
  *  Matched to the outer join (half the stroke) so both ends of the chevron read round. */
 export const FILLET_R = 36;
-export const DOT_C = [256, 356];
+/** Dot centred in the hole: equal visible gutter to the side walls and the fillet arc. */
+export const DOT_C = [256, 301];
 export const DOT_R = 32;
+/** How far the fillet pad overlaps the capsules, to hide the AA seam on the old V. */
+export const FILLET_OVERLAP = 2;
 export const SRC = 512;
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -106,10 +109,11 @@ function halfPlane(px, py, ox, oy, nx, ny) {
 
 /**
  * Coverage of the circular fillet that rounds the sharp inner apex left by
- * two overlapping capsules. Fills the triangle (sharp tip → left/right
- * tangents) outside the fillet circle — same path as in icon.svg.
+ * two overlapping capsules. Fills the tip outside the fillet circle. The
+ * triangle is expanded by `overlap` into the capsules so AA on the old sharp
+ * V does not leave a dark seam.
  */
-function fillet(px, py, ax, ay, lx, ly, rx, ry, halfW, filletR) {
+function fillet(px, py, ax, ay, lx, ly, rx, ry, halfW, filletR, overlap) {
   const vLx = lx - ax;
   const vLy = ly - ay;
   const vRx = rx - ax;
@@ -174,11 +178,12 @@ function fillet(px, py, ax, ay, lx, ly, rx, ry, halfW, filletR) {
   }
 
   // Positive on the inside of each edge → depth inside the triangle.
+  // Expand by `overlap` so the pad overlaps the capsules and hides the seam.
   const depthTri = Math.min(
     halfPlane(px, py, tlX, tlY, n0x, n0y),
     halfPlane(px, py, tipX, tipY, n1x, n1y),
     halfPlane(px, py, trX, trY, n2x, n2y),
-  );
+  ) + overlap;
   // Positive outside the fillet circle.
   const outsideCirc = Math.hypot(px - cx, py - cy) - filletR;
   // SDF of (triangle ∩ outside-circle): negative inside the add region.
@@ -193,6 +198,7 @@ function raster(size) {
   const s = size / SRC;
   const halfW = (STROKE_W / 2) * s;
   const filletR = FILLET_R * s;
+  const overlap = FILLET_OVERLAP * s;
   const [ax, ay] = [APEX[0] * s, APEX[1] * s];
   const [lx, ly] = [FOOT_L[0] * s, FOOT_L[1] * s];
   const [rx, ry] = [FOOT_R[0] * s, FOOT_R[1] * s];
@@ -211,7 +217,7 @@ function raster(size) {
       const a = Math.max(
         capsule(sx, sy, ax, ay, lx, ly, halfW),
         capsule(sx, sy, ax, ay, rx, ry, halfW),
-        fillet(sx, sy, ax, ay, lx, ly, rx, ry, halfW, filletR),
+        fillet(sx, sy, ax, ay, lx, ly, rx, ry, halfW, filletR, overlap),
       );
       blend(px, i, HEX.stroke, a);
       blend(px, i, HEX.dot, disc(sx - dcx, sy - dcy, dotR));
