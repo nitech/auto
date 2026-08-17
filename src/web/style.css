@@ -1606,6 +1606,11 @@ html[data-standalone] .composer-controls select {
  * Slim browser-style tabs that sit on the bar and merge into the panel below
  * when active. Scrolls sideways when they overflow.
  */
+/* No rule between the title bar and the tab strip — they read as one chrome. */
+#main:has(#view-tabs:not([hidden])) #topbar {
+  border-bottom: none;
+}
+
 .view-tabs {
   display: flex;
   align-items: flex-end;
@@ -1633,7 +1638,7 @@ html[data-standalone] .composer-controls select {
   margin-bottom: -1px; /* sit on the bar rule; active covers it */
   padding: 0 10px;
   border: 1px solid transparent;
-  border-bottom-color: transparent;
+  border-bottom: none;
   border-radius: 6px 6px 0 0;
   background: transparent;
   color: var(--muted);
@@ -1641,6 +1646,8 @@ html[data-standalone] .composer-controls select {
   line-height: 1;
   cursor: pointer;
   white-space: nowrap;
+  position: relative;
+  z-index: 0;
 }
 .view-tab + .view-tab {
   margin-left: 1px;
@@ -1650,10 +1657,13 @@ html[data-standalone] .composer-controls select {
   background: color-mix(in srgb, var(--bg-3) 70%, transparent);
 }
 .view-tab.active {
+  z-index: 1;
   background: var(--bg);
   border-color: var(--line);
-  border-bottom-color: var(--bg);
+  border-bottom: none;
   color: var(--text);
+  /* Cover the strip's bottom rule so nothing runs under the active tab. */
+  box-shadow: 0 1px 0 var(--bg);
 }
 .view-tab-label {
   overflow: hidden;
