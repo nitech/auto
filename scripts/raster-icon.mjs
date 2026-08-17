@@ -18,12 +18,11 @@ export const RING = '#6ea8ff';
 export const PIP = '#4ad07f';
 export const CX = 256;
 export const CY = 256;
-export const RING_R = 156;
-export const RING_W = 44;
-export const GAP_DEG = 42;
-export const CORE_R = 52;
-export const PIP_R = 28;
-export const PIP_CY = 100;
+export const RING_R = 144;
+export const RING_W = 64;
+export const GAP_DEG = 50;
+export const PIP_R = 32;
+export const PIP_CY = 112;
 export const SRC = 512;
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -32,9 +31,7 @@ const WEB = join(ROOT, 'src', 'web');
 const HEX = {
   bg: [0x0b, 0x0d, 0x12],
   ring: [0x6e, 0xa8, 0xff],
-  coreHi: [0xd7, 0xe7, 0xff],
   pip: [0x4a, 0xd0, 0x7f],
-  pipHi: [0xd4, 0xff, 0xe4],
 };
 
 function crc32(buf) {
@@ -122,7 +119,6 @@ function raster(size) {
   const cap1y = cy + r * Math.sin(startA);
   const cap2x = cx + r * Math.cos(endA);
   const cap2y = cy + r * Math.sin(endA);
-  const coreR = CORE_R * s;
   const pipR = PIP_R * s;
   const pipCy = PIP_CY * s;
 
@@ -139,10 +135,7 @@ function raster(size) {
       a = Math.max(a, disc(x + 0.5 - cap1x, y + 0.5 - cap1y, capR));
       a = Math.max(a, disc(x + 0.5 - cap2x, y + 0.5 - cap2y, capR));
       blend(px, i, HEX.ring, a);
-      blend(px, i, HEX.ring, disc(dx, dy, coreR));
-      blend(px, i, HEX.coreHi, 0.35 * disc(x + 0.5 - 238 * s, y + 0.5 - 238 * s, 16 * s));
       blend(px, i, HEX.pip, disc(x + 0.5 - cx, y + 0.5 - pipCy, pipR));
-      blend(px, i, HEX.pipHi, 0.45 * disc(x + 0.5 - 248 * s, y + 0.5 - 92 * s, 10 * s));
     }
   }
   return px;
