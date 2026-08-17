@@ -2475,6 +2475,10 @@ if (existsSync(SRC)) {
       fail(`fallback should keep the title, got ${meta.title}`);
       failed = true;
     }
+    if (meta.model !== 'default[]') {
+      fail(`Auto-only fallback should still prefer Auto-select, got ${meta.model}`);
+      failed = true;
+    }
     const recs = await sessions.history(meta.id);
     const notice = recs.find((r) => r.kind === KIND.notice);
     if (!notice?.text?.includes('only in Auto') || !notice.text.includes(ROOT)) {
@@ -2484,6 +2488,7 @@ if (existsSync(SRC)) {
 
     sessions.cursor = {
       newChat: async () => ({ status: 'created', threadId: 'not-a-real-thread' }),
+      choose: async () => ({ status: 'already', picker: 'model', was: 'Auto' }),
     };
     const opened = await sessions.startInIde({ folder: ROOT, title: 'In Cursor' });
     if (opened.kind !== 'desktop' || opened.desktopThreadId !== 'not-a-real-thread') {
@@ -2494,10 +2499,15 @@ if (existsSync(SRC)) {
       fail(`an explicit title should stick, got ${opened.title} locked=${opened.titleLocked}`);
       failed = true;
     }
+    if (opened.model !== 'default[]') {
+      fail(`a new desktop chat should land on Auto-select, got ${opened.model}`);
+      failed = true;
+    }
     await sessions.stop(opened.id);
 
     sessions.cursor = {
       newChat: async () => ({ status: 'created', threadId: 'unnamed-fresh-thread' }),
+      choose: async () => ({ status: 'already', picker: 'model', was: 'Auto' }),
     };
     const unnamed = await sessions.startInIde({ folder: ROOT });
     if (unnamed.title !== 'Desktop chat' || unnamed.titleLocked) {
@@ -2509,6 +2519,7 @@ if (existsSync(SRC)) {
     await sessions.stop(unnamed.id);
 
     let attempts = 0;
+    let chose = null;
     sessions.cursor = {
       newChat: async () => {
         attempts += 1;
@@ -2517,6 +2528,10 @@ if (existsSync(SRC)) {
           : { status: 'created', threadId: 'opened-after-launch' };
       },
       ensureWindow: async () => ({ status: 'opened' }),
+      choose: async ({ picker, wanted }) => {
+        chose = { picker, wanted };
+        return { status: 'set', picker: 'model', was: 'Grok 4.6', now: 'Auto' };
+      },
     };
     const launched = await sessions.startInIde({ folder: ROOT, title: 'Opened a window' });
     if (launched.kind !== 'desktop' || launched.desktopThreadId !== 'opened-after-launch') {
@@ -2524,6 +2539,21 @@ if (existsSync(SRC)) {
       failed = true;
     }
     if (attempts !== 2) fail(`should retry the chat after opening a window, tried ${attempts}`);
+    if (chose?.picker !== 'model' || chose?.wanted !== 'Auto') {
+      fail(`a new chat must press Auto-select, got ${JSON.stringify(chose)}`);
+      failed = true;
+    }
+    if (launched.model !== 'default[]') {
+      fail(`switching onto Auto should store default[], got ${launched.model}`);
+      failed = true;
+    }
+    const switched = (await sessions.history(launched.id)).find(
+      (r) => r.kind === KIND.notice && /now Auto/.test(r.text || ''),
+    );
+    if (!switched) {
+      fail('changing off a inherited model should say so in the transcript');
+      failed = true;
+    }
     await sessions.stop(launched.id);
 
     if (!failed) ok('v2 core: new sessions start in the IDE, or say why they could not');

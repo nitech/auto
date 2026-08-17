@@ -11,7 +11,7 @@ sources:
   - id: sessions
     resource: /src/core/sessions.mjs
     title: Session attach / catch-up
-generated: { by: agent, at: 2026-08-16T06:35:00Z }
+generated: { by: agent, at: 2026-08-17T11:35:00Z }
 ---
 
 # Continuing Cursor desktop chats
@@ -26,11 +26,16 @@ interface, and that can change under us.
 
 A session started from the web or Telegram is a new chat in Cursor. Auto
 presses **New Agent** in a window that already has that folder, waits for a
-new thread id, and attaches. If no window has the folder, Auto asks Cursor
-for `--new-window`. If Cursor is not running, it starts it with
+new thread id, and attaches. The model picker is then set to **Auto**
+(Auto-select / `default[]`) — Cursor otherwise keeps whatever the last chat
+in that window used. If no window has the folder, Auto asks Cursor for
+`--new-window`. If Cursor is not running, it starts it with
 `--remote-debugging-port=9222`. If Cursor is already running *without* that
 port, Auto quits it and starts it again — that closes every window. If none
-of that works, Auto falls back to [ACP](acp.md) and writes a notice.
+of that works, Auto falls back to [ACP](acp.md) with the same Auto-select
+preference and writes a notice.
+
+Continuing an existing desktop thread does **not** change its model.
 
 ## Into the IDE, and back out
 

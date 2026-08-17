@@ -66,6 +66,67 @@ export function modelIdFor(wanted, cursorLabel, models = []) {
   return hit?.modelId || asked || String(cursorLabel || '') || null;
 }
 
+const modelKey = (s) =>
+  String(s || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+/**
+ * Badges Cursor's model menu would show for the options on an agent id.
+ *
+ * `reasoning=max` is the word "Max" on the Kimi K3 row; `fast=true` is "Fast".
+ * Effort and context stay out: "High" sits on several rows, and a 300k window
+ * is not a badge.
+ */
+function modelBadges(modelId) {
+  const inner = String(modelId || '').match(/\[([^\]]*)\]$/)?.[1];
+  if (!inner) return [];
+  const badges = [];
+  for (const part of inner.split(',')) {
+    const eq = part.indexOf('=');
+    if (eq < 0) continue;
+    const key = part.slice(0, eq).trim();
+    const value = part.slice(eq + 1).trim();
+    if (key === 'reasoning' && value && !/^(none|false)$/i.test(value)) {
+      badges.push(value.charAt(0).toUpperCase() + value.slice(1));
+    } else if (key === 'fast' && value === 'true') {
+      badges.push('Fast');
+    }
+  }
+  return badges;
+}
+
+/**
+ * The name Cursor's own menu would use for a model.
+ *
+ * The web and Telegram pickers carry the agent's model ids, which are not what
+ * a menu says: `kimi-k3[reasoning=max]` is the row "Kimi K3" and its "Max"
+ * badge, `default[]` is "Auto". A catalog name that is itself a slug
+ * (`kimi-k3`) is still that slug — matching hyphens to spaces is the menu's
+ * job. A plain name is passed through, so typing "Kimi K3" works as well as
+ * tapping it.
+ */
+export function cursorNameFor(wanted, models = []) {
+  const asked = String(wanted || '');
+  if (!asked) return asked;
+  if (asked === 'default[]') return 'Auto';
+
+  const list = models || [];
+  const stem = asked.replace(/\[.*$/, '');
+  const hit =
+    list.find((m) => m.modelId === asked) ||
+    list.find((m) => m.name === asked) ||
+    list.find((m) => String(m.modelId || '').replace(/\[.*$/, '') === stem);
+
+  const base = hit?.name || (asked.includes('[') ? stem : asked);
+  const extra = modelBadges(hit?.modelId || asked).filter(
+    (b) => !modelKey(base).split(' ').includes(modelKey(b)),
+  );
+  return extra.length ? `${base} ${extra.join(' ')}` : base;
+}
+
 export const STATUS = {
   idle: 'idle',
   busy: 'busy',
@@ -315,12 +376,14 @@ export class SessionManager extends EventEmitter {
       reason: err.message,
     }));
     if (opened.status === 'created' && opened.threadId) {
-      return this.attachDesktopThread({
+      const meta = await this.attachDesktopThread({
         threadId: opened.threadId,
         folder: dir,
         title,
         fresh: true,
       });
+      await this.#defaultToAutoSelect(meta.id);
+      return meta;
     }
 
     let ready = null;
@@ -338,12 +401,14 @@ export class SessionManager extends EventEmitter {
           reason: err.message,
         }));
         if (opened.status === 'created' && opened.threadId) {
-          return this.attachDesktopThread({
+          const meta = await this.attachDesktopThread({
             threadId: opened.threadId,
             folder: dir,
             title,
             fresh: true,
           });
+          await this.#defaultToAutoSelect(meta.id);
+          return meta;
         }
       }
     }
@@ -351,6 +416,8 @@ export class SessionManager extends EventEmitter {
     const meta = this.create({ folder: dir, title, policy, mode });
     this.setActive(meta.id);
     await this.transcripts.get(meta.id);
+    // Prefer Auto-select once the agent process starts (see ensureLive).
+    this.#update(meta.id, { model: 'default[]', modelName: this.modelName('default[]') });
     this.#record(meta.id, KIND.notice, { text: this.#whyNotInIde(dir, opened, ready) });
     this.emit('log', `started Auto-only session "${meta.title}" (${opened.status})`);
     return meta;
@@ -542,6 +609,7 @@ export class SessionManager extends EventEmitter {
     const info = await client.start();
 
     let session;
+    let resumed = false;
     if (meta.acpSessionId) {
       try {
         // Resuming makes the agent replay the whole conversation as updates.
@@ -550,6 +618,7 @@ export class SessionManager extends EventEmitter {
         runtime.replaying = true;
         session = await client.loadSession({ sessionId: meta.acpSessionId, cwd: meta.folder });
         session = { sessionId: meta.acpSessionId, ...(session || {}) };
+        resumed = true;
       } catch (err) {
         this.emit('log', `[${meta.title}] resume failed (${err.message}); starting fresh`);
         this.#record(id, KIND.error, {
@@ -576,7 +645,16 @@ export class SessionManager extends EventEmitter {
 
     // Model ids carry their options (`default[]`, `claude-opus-5[thinking=true]`),
     // so keep the id for switching and the name for showing.
-    const modelId = session.models?.currentModelId || null;
+    let modelId = session.models?.currentModelId || null;
+    // A new chat from Auto prefers Auto-select; apply it before the first prompt.
+    if (!resumed && meta.model && meta.model !== modelId) {
+      try {
+        await client.setModel({ sessionId: session.sessionId, modelId: meta.model });
+        modelId = meta.model;
+      } catch (err) {
+        this.emit('log', `[${meta.title}] preferred model ${meta.model} refused: ${err.message}`);
+      }
+    }
 
     this.#update(id, {
       acpSessionId: session.sessionId,
@@ -1010,8 +1088,12 @@ export class SessionManager extends EventEmitter {
    * chat was last *sent* with and only catches up on the next message, so the
    * word on the picker is what is trusted, and the outcome is written into the
    * transcript either way.
+   *
+   * @param {object} [opts]
+   * @param {boolean} [opts.quietAlready]  skip the notice when it was already set —
+   *   used when every new chat is put on Auto-select
    */
-  async #chooseInCursor(id, picker, wanted) {
+  async #chooseInCursor(id, picker, wanted, { quietAlready = false } = {}) {
     const meta = this.meta.get(id);
     const asked = picker === 'model' ? this.#cursorsNameFor(wanted) : String(wanted || '');
     const result = await this.cursor.choose({
@@ -1029,12 +1111,14 @@ export class SessionManager extends EventEmitter {
         // Storing the name as `model` left the <select> blank after a switch.
         this.#update(id, { model: this.#modelIdFor(wanted, now), modelName: now });
       }
-      this.#record(id, KIND.notice, {
-        text:
-          result.status === 'already'
-            ? `This chat was already on ${now}.`
-            : `Cursor's ${picker} for this chat is now ${now} (was ${result.was}).`,
-      });
+      if (!(quietAlready && result.status === 'already')) {
+        this.#record(id, KIND.notice, {
+          text:
+            result.status === 'already'
+              ? `This chat was already on ${now}.`
+              : `Cursor's ${picker} for this chat is now ${now} (was ${result.was}).`,
+        });
+      }
       // Changing the model can end a paused turn; anything still waiting was
       // taken out first so Cursor would not auto-send it. Say what was held.
       if (result.held?.length) {
@@ -1055,18 +1139,22 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
-   * The name Cursor's own menu would use for a model.
-   *
-   * The web and Telegram pickers carry the agent's model ids, which are not what
-   * a menu says: `claude-opus-5[thinking=true]` is offered as "Opus 5", and
-   * `default[]` as "Auto". A plain name is passed through untouched, so typing
-   * "Opus 5" works as well as tapping it.
+   * New chats inherit whatever model the last Cursor chat used. Put them on
+   * Auto-select instead — that is what "a new chat" should mean from the phone.
+   * Continuing an existing thread is attachDesktopThread without this step.
    */
+  async #defaultToAutoSelect(id) {
+    const meta = this.meta.get(id);
+    if (!meta) return false;
+    if (meta.kind === 'desktop') {
+      return this.#chooseInCursor(id, 'model', 'default[]', { quietAlready: true });
+    }
+    this.#update(id, { model: 'default[]', modelName: this.modelName('default[]') });
+    return true;
+  }
+
   #cursorsNameFor(wanted) {
-    const asked = String(wanted || '');
-    if (!asked.includes('[')) return asked;
-    if (asked === 'default[]') return 'Auto';
-    return this.catalog?.models?.find((m) => m.modelId === asked)?.name || asked.replace(/\[.*$/, '');
+    return cursorNameFor(wanted, this.catalog?.models);
   }
 
   #modelIdFor(wanted, cursorLabel) {
