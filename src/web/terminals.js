@@ -5,23 +5,23 @@
  * ordinary transcript records, so a terminal replays on reconnect exactly like
  * the rest of the session instead of starting blank.
  *
- * Lives in the shared workspace (right dock / full-screen sheet) — see
- * workspace.js — rather than carving a strip out of the chat column.
+ * Each shell is a tab under the header (see workspace.js), beside Chat and
+ * Browser — not a nested tab strip of its own.
  */
 
 import {
-  close as closeWorkspace,
+  clearTerminalTabs,
+  closeTerminal,
   isOpen,
   onTool,
-  show as showWorkspace,
-  toggle as toggleWorkspace,
+  openTerminal,
+  showChat,
 } from './workspace.js';
 
 const $ = (id) => document.getElementById(id);
 
 const els = {
   dock: $('terminals'),
-  tabs: $('term-tabs'),
   panes: $('term-panes'),
 };
 
@@ -53,26 +53,46 @@ export function retheme() {
   for (const p of panes.values()) p.term.options.theme = theme;
 }
 
+function requestNew() {
+  sendOp({ op: 'terminal.open', cols: 120, rows: 24 });
+}
+
 export function initTerminals(send) {
   sendOp = send;
 
   $('term-toggle').onclick = () => toggleDock();
-  $('term-new').onclick = () => sendOp({ op: 'terminal.open', cols: 120, rows: 24 });
 
   onTool('terminals', {
     onShow: () => {
-      if (!panes.size) sendOp({ op: 'terminal.open', cols: 120, rows: 24 });
       requestAnimationFrame(() => panes.get(activeId)?.fit());
     },
+    onSelect: (id) => activate(id),
+    onNew: () => requestNew(),
+    onClose: (id) => sendOp({ op: 'terminal.close', terminalId: id }),
   });
 
   window.addEventListener('resize', () => panes.get(activeId)?.fit());
 }
 
 export function toggleDock(force) {
-  if (force === false) closeWorkspace();
-  else if (force === true) showWorkspace('terminals');
-  else toggleWorkspace('terminals');
+  if (force === false) {
+    showChat();
+    return;
+  }
+  if (force === true || !panes.size) {
+    if (panes.size) {
+      const id = activeId || [...panes.keys()].at(-1);
+      openTerminal(id, panes.get(id)?.title);
+      activate(id);
+    } else requestNew();
+    return;
+  }
+  if (isOpen('terminals')) showChat();
+  else {
+    const id = activeId || [...panes.keys()].at(-1);
+    openTerminal(id, panes.get(id)?.title);
+    activate(id);
+  }
 }
 
 export function resetTerminals() {
@@ -80,24 +100,14 @@ export function resetTerminals() {
   panes.clear();
   early.clear();
   activeId = null;
-  els.tabs.innerHTML = '';
   els.panes.innerHTML = '';
-  if (isOpen('terminals')) closeWorkspace();
+  clearTerminalTabs();
 }
 
 export function openPane(desc) {
   if (!desc || panes.has(desc.terminalId)) return;
   const id = desc.terminalId;
-
-  const tab = document.createElement('button');
-  tab.className = 'term-tab';
-  tab.innerHTML = '<span class="t"></span><span class="x">×</span>';
-  tab.querySelector('.t').textContent = desc.title || 'shell';
-  tab.onclick = (e) => {
-    if (e.target.classList.contains('x')) sendOp({ op: 'terminal.close', terminalId: id });
-    else activate(id);
-  };
-  els.tabs.appendChild(tab);
+  const title = desc.title || 'shell';
 
   const host = document.createElement('div');
   host.className = 'term-pane';
@@ -125,13 +135,13 @@ export function openPane(desc) {
 
   term.onData((data) => sendOp({ op: 'terminal.input', terminalId: id, data }));
 
-  panes.set(id, { term, host, tab, fit });
+  panes.set(id, { term, host, fit, title });
 
   for (const chunk of early.get(id) || []) term.write(chunk);
   early.delete(id);
 
+  openTerminal(id, title);
   activate(id);
-  showWorkspace('terminals');
   requestAnimationFrame(fit);
 }
 
@@ -140,27 +150,25 @@ export function closePane(terminalId) {
   if (!pane) return;
   pane.term.dispose();
   pane.host.remove();
-  pane.tab.remove();
   panes.delete(terminalId);
-  if (activeId === terminalId) {
-    activeId = null;
-    const next = panes.keys().next();
-    if (!next.done) activate(next.value);
-    else if (isOpen('terminals')) closeWorkspace();
-  }
+  if (activeId === terminalId) activeId = null;
+  closeTerminal(terminalId);
+  const next = panes.keys().next();
+  if (!next.done && activeId == null) activate(next.value);
 }
 
 function activate(id) {
+  if (!panes.has(id)) return;
   activeId = id;
   for (const [key, pane] of panes) {
-    const on = key === id;
-    pane.host.classList.toggle('active', on);
-    pane.tab.classList.toggle('active', on);
+    pane.host.classList.toggle('active', key === id);
   }
   const pane = panes.get(id);
   if (pane) {
-    pane.fit();
-    pane.term.focus();
+    requestAnimationFrame(() => {
+      pane.fit();
+      pane.term.focus();
+    });
   }
 }
 

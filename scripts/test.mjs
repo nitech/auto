@@ -1647,37 +1647,45 @@ if (existsSync(SRC)) {
   if (!failed) ok('v2 web: remembers the open session');
 }
 
-// Browser and terminals must not stack strips on the chat column — they share
-// one workspace (right dock / phone sheet).
+// Browser and terminals open as tabs under the header (Chat first, closable tools).
 {
   const html = readFileSync(join(ROOT, 'src/web/index.html'), 'utf8');
   const css = readFileSync(join(ROOT, 'src/web/style.css'), 'utf8');
   const app = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  const ws = readFileSync(join(ROOT, 'src/web/workspace.js'), 'utf8');
   let failed = false;
-  if (!html.includes('id="workspace"') || !html.includes('id="ws-tab-browser"')) {
-    fail('browser and terminals need a shared workspace shell with tabs');
+  if (!html.includes('id="view-tabs"') || !html.includes('id="view-chat"')) {
+    fail('browser and terminals need Chat-first view tabs under the header');
+    failed = true;
+  }
+  if (html.includes('id="workspace"') || html.includes('id="ws-tab-browser"')) {
+    fail('the side workspace dock is retired — tools are header tabs');
     failed = true;
   }
   const mainAt = html.indexOf('id="main"');
   const mainEnd = html.indexOf('</main>', mainAt);
   const main = mainAt >= 0 && mainEnd >= 0 ? html.slice(mainAt, mainEnd) : '';
-  if (main.includes('id="browser"') || main.includes('id="terminals"')) {
-    fail('browser and terminals must live outside #main, not stacked on the chat');
+  if (!main.includes('id="browser"') || !main.includes('id="terminals"')) {
+    fail('browser and terminals must live inside #main as tabbed views');
     failed = true;
   }
-  if (!css.includes('#app.workspace-open') || !css.includes('minmax(360px, 44vw)')) {
-    fail('a wide screen must dock the workspace beside the chat');
+  if (!css.includes('.view-tabs') || !css.includes('overflow-x: auto')) {
+    fail('view tabs must scroll sideways when they overflow');
     failed = true;
   }
-  if (css.includes('height: min(52vh') || css.includes('height: min(42vh')) {
-    fail('fixed vh strips on the chat column are the awkward layout we left');
+  if (css.includes('minmax(360px, 44vw)') || css.includes('#app.workspace-open')) {
+    fail('the right-dock workspace layout must stay gone');
+    failed = true;
+  }
+  if (!ws.includes('closable: false') || !ws.includes("'Chat'")) {
+    fail('Chat must be the first tab and must not be closable');
     failed = true;
   }
   if (!app.includes("from './workspace.js'") || !app.includes('initWorkspace')) {
     fail('app.js must own the workspace lifecycle');
     failed = true;
   }
-  if (!failed) ok('v2 web: browser/terminals workspace dock');
+  if (!failed) ok('v2 web: browser/terminals as header tabs');
 }
 
 // Composer modes: Cursor's five, coloured the way the IDE colours them.

@@ -13,8 +13,8 @@ sources:
     title: Browser pane
   - id: workspace
     resource: /src/web/workspace.js
-    title: Shared workspace
-generated: { by: agent, at: 2026-08-15T19:10:00Z }
+    title: View tabs
+generated: { by: agent, at: 2026-08-17T18:05:00Z }
 ---
 
 # Browser
@@ -25,11 +25,10 @@ and keystrokes come back as input. The profile is
 `state/browser-profile`, so logins stick — which is the point of running
 the browser on this machine instead of in a container.
 
-On the web it lives in the shared [workspace](web.md) (right dock / phone
-sheet), not a strip above the chat.
-
-Frames are **never** written to a transcript. Nobody watching means nothing
-to encode: screencast stops when the last client detaches.
+On the web it opens as a tab under the header beside Chat (and any
+shells), not a side dock. Frames are **never** written to a transcript.
+Nobody watching means nothing to encode: screencast stops when the tab is
+left or closed.
 
 Headed by default, parked off-screen; `AUTO_BROWSER_HEADLESS=1` is there
 and trips more bot checks. Address bar: a URL is opened, anything else is

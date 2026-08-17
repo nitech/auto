@@ -1,116 +1,298 @@
 /**
- * Browser and terminals share one workspace.
+ * Chat / Browser / Terminal tabs under the header.
  *
- * On a wide screen it docks to the right of the chat; on a phone it covers
- * the screen the way Settings does. Only one tool is shown at a time — you
- * switch with the tab bar, you do not stack three panes in one column.
+ * Chat is always first and cannot be closed. Opening the browser or a shell
+ * adds a tab; × closes that tool and returns to Chat when it was the active
+ * one. The strip scrolls sideways when tabs outgrow the bar, and hides
+ * entirely while only Chat is open.
  */
 
 const $ = (id) => document.getElementById(id);
 
-/** @type {'browser' | 'terminals' | null} */
-let active = null;
+/** @type {'chat' | 'browser' | string} string = terminal id */
+let active = 'chat';
+let browserOpen = false;
+/** @type {Map<string, { title: string }>} */
+const terminals = new Map();
 
 const hooks = {
   browser: { onShow: null, onHide: null },
-  terminals: { onShow: null, onHide: null },
+  terminals: {
+    onShow: null,
+    onHide: null,
+    onSelect: null,
+    onNew: null,
+    onClose: null,
+  },
 };
 
 export function initWorkspace() {
-  $('workspace-hide').onclick = () => close();
-  $('ws-tab-browser').onclick = () => show('browser');
-  $('ws-tab-terminals').onclick = () => show('terminals');
+  paint();
+  showPanels();
 }
 
 /**
- * Register lifecycle hooks for a tool. `onShow` runs whenever that tool
- * becomes the visible one (including the first open); `onHide` when it
- * leaves the screen (closed or switched away).
+ * Register lifecycle hooks for a tool.
+ * Terminals may also supply `onSelect(id)`, `onNew()`, and `onClose(id)`.
  */
-export function onTool(tool, { onShow, onHide } = {}) {
+export function onTool(tool, next = {}) {
   if (!hooks[tool]) return;
-  hooks[tool].onShow = onShow || null;
-  hooks[tool].onHide = onHide || null;
+  Object.assign(hooks[tool], next);
 }
 
-export function show(tool) {
-  if (tool !== 'browser' && tool !== 'terminals') return;
-
-  const ws = $('workspace');
-  const app = $('app');
-  const prev = active;
-  const opening = ws.hidden;
-
-  ws.hidden = false;
-  app.classList.add('workspace-open');
-  app.dataset.workspace = tool;
-
-  // A phone rail sitting over the chat would cover the workspace too.
-  app.classList.remove('rail-open');
-  const scrim = $('rail-scrim');
-  if (scrim) scrim.hidden = true;
-
-  $('browser').hidden = tool !== 'browser';
-  $('terminals').hidden = tool !== 'terminals';
-
-  paintTabs(tool);
-  paintToggles(tool);
-
-  if (prev && prev !== tool) hooks[prev].onHide?.();
-  active = tool;
-  if (prev !== tool || opening) hooks[tool].onShow?.({ opening, switched: prev && prev !== tool });
+export function showChat() {
+  select('chat');
 }
 
-export function close() {
-  const ws = $('workspace');
-  if (ws.hidden && !active) return;
-  const prev = active;
-  active = null;
-  ws.hidden = true;
-  const app = $('app');
-  app.classList.remove('workspace-open');
-  delete app.dataset.workspace;
-  $('browser').hidden = true;
-  $('terminals').hidden = true;
-  paintTabs(null);
-  paintToggles(null);
-  if (prev) hooks[prev].onHide?.();
+export function openBrowser() {
+  browserOpen = true;
+  select('browser');
 }
 
-/** Open the tool, or close the workspace if it is already showing that tool. */
-export function toggle(tool) {
-  if (active === tool && !$('workspace').hidden) close();
-  else show(tool);
+export function closeBrowser() {
+  if (!browserOpen) return;
+  browserOpen = false;
+  if (active === 'browser') select('chat');
+  else paint();
+  paintToggles();
 }
 
+/** Icon: open or focus the browser; if already viewing it, go back to Chat. */
+export function toggleBrowser() {
+  if (active === 'browser') showChat();
+  else openBrowser();
+}
+
+export function openTerminal(id, title) {
+  if (!id) return;
+  const first = terminals.size === 0;
+  terminals.set(id, { title: title || 'shell' });
+  select(id);
+  if (first) hooks.terminals.onShow?.({ opening: true });
+}
+
+export function closeTerminal(id) {
+  if (!terminals.has(id)) return;
+  terminals.delete(id);
+  const wasActive = active === id;
+  if (terminals.size === 0) hooks.terminals.onHide?.();
+  if (wasActive) {
+    const next = terminals.keys().next();
+    if (!next.done) select(next.value);
+    else select('chat');
+  } else paint();
+  paintToggles();
+}
+
+export function selectTerminal(id) {
+  if (!terminals.has(id)) return;
+  select(id);
+}
+
+export function renameTerminal(id, title) {
+  const t = terminals.get(id);
+  if (!t) return;
+  t.title = title || t.title;
+  paint();
+}
+
+export function resetTools() {
+  const hadBrowser = browserOpen;
+  const hadTerms = terminals.size > 0;
+  browserOpen = false;
+  terminals.clear();
+  if (hadBrowser && active === 'browser') hooks.browser.onHide?.();
+  if (hadTerms) hooks.terminals.onHide?.();
+  active = 'chat';
+  paint();
+  paintToggles();
+  showPanels();
+}
+
+/** Drop every terminal tab; leave the browser tab alone. */
+export function clearTerminalTabs() {
+  if (!terminals.size) return;
+  const wasTerm = terminals.has(active);
+  terminals.clear();
+  hooks.terminals.onHide?.();
+  if (wasTerm) select('chat');
+  else paint();
+  paintToggles();
+}
+
+/** True when a tool view (not Chat) is showing. */
 export function isOpen(tool) {
-  if (tool) return active === tool && !$('workspace').hidden;
-  return Boolean(active) && !$('workspace').hidden;
+  if (tool === 'browser') return active === 'browser';
+  if (tool === 'terminals') return terminals.has(active);
+  if (tool) return active === tool;
+  return active !== 'chat';
 }
 
 export function currentTool() {
-  return active;
+  if (active === 'chat') return null;
+  if (active === 'browser') return 'browser';
+  return 'terminals';
 }
 
-function paintTabs(tool) {
-  for (const id of ['browser', 'terminals']) {
-    const tab = $(`ws-tab-${id}`);
-    if (!tab) continue;
-    const on = tool === id;
-    tab.classList.toggle('active', on);
-    tab.setAttribute('aria-selected', on ? 'true' : 'false');
+export function hasOpenTools() {
+  return browserOpen || terminals.size > 0;
+}
+
+/** Leave the tool view (tabs stay open). */
+export function close() {
+  showChat();
+}
+
+/** @deprecated Prefer toggleBrowser / openTerminal. */
+export function show(tool) {
+  if (tool === 'browser') openBrowser();
+  else if (tool === 'terminals') {
+    if (terminals.size) select([...terminals.keys()].at(-1));
+    else hooks.terminals.onNew?.();
   }
 }
 
-function paintToggles(tool) {
-  for (const [id, name] of [
-    ['browser-toggle', 'browser'],
-    ['term-toggle', 'terminals'],
-  ]) {
-    const btn = $(id);
-    if (!btn) continue;
-    const on = tool === name;
-    btn.classList.toggle('active', on);
-    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+/** @deprecated */
+export function toggle(tool) {
+  if (tool === 'browser') toggleBrowser();
+  else if (tool === 'terminals') {
+    if (terminals.has(active)) showChat();
+    else if (terminals.size) select([...terminals.keys()].at(-1));
+    else hooks.terminals.onNew?.();
   }
+}
+
+function select(view) {
+  const prev = active;
+  if (prev === view) {
+    paint();
+    paintToggles();
+    return;
+  }
+
+  if (prev === 'browser') hooks.browser.onHide?.();
+
+  active = view;
+  showPanels();
+  paint();
+  paintToggles();
+
+  if (view === 'browser') hooks.browser.onShow?.({ opening: true });
+  if (view !== 'chat' && view !== 'browser' && terminals.has(view)) {
+    hooks.terminals.onSelect?.(view);
+  }
+}
+
+function showPanels() {
+  const chat = active === 'chat';
+  const browser = active === 'browser';
+  const term = !chat && !browser;
+
+  $('view-chat').hidden = !chat;
+  $('browser').hidden = !browser;
+  $('terminals').hidden = !term;
+
+  const app = $('app');
+  if (chat) {
+    app.classList.remove('tool-view');
+    delete app.dataset.view;
+  } else {
+    app.classList.add('tool-view');
+    app.dataset.view = browser ? 'browser' : 'terminals';
+  }
+}
+
+function paint() {
+  const bar = $('view-tabs');
+  if (!bar) return;
+
+  const showBar = browserOpen || terminals.size > 0;
+  bar.hidden = !showBar;
+  if (!showBar) {
+    bar.innerHTML = '';
+    return;
+  }
+
+  const bits = [];
+  bits.push(tabHtml('chat', 'Chat', { closable: false, on: active === 'chat' }));
+  if (browserOpen) {
+    bits.push(tabHtml('browser', 'Browser', { closable: true, on: active === 'browser' }));
+  }
+  for (const [id, meta] of terminals) {
+    bits.push(
+      tabHtml(`term:${id}`, meta.title || 'shell', {
+        closable: true,
+        on: active === id,
+        terminalId: id,
+      }),
+    );
+  }
+  bits.push(
+    `<button type="button" class="view-tab-new icon" id="view-tab-new-term" title="New terminal" aria-label="New terminal">+</button>`,
+  );
+  bar.innerHTML = bits.join('');
+
+  bar.querySelectorAll('.view-tab').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      const closeBtn = e.target.closest('.view-tab-x');
+      const key = el.dataset.tab;
+      if (closeBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (key === 'browser') closeBrowser();
+        else if (el.dataset.terminalId) hooks.terminals.onClose?.(el.dataset.terminalId);
+        return;
+      }
+      if (key === 'chat') showChat();
+      else if (key === 'browser') openBrowser();
+      else if (el.dataset.terminalId) select(el.dataset.terminalId);
+    });
+  });
+
+  const neu = $('view-tab-new-term');
+  if (neu) neu.onclick = () => hooks.terminals.onNew?.();
+
+  bar.querySelector('.view-tab.active')?.scrollIntoView({
+    inline: 'nearest',
+    block: 'nearest',
+  });
+}
+
+function tabHtml(key, label, { closable, on, terminalId } = {}) {
+  const tid = terminalId ? ` data-terminal-id="${escapeAttr(terminalId)}"` : '';
+  const x = closable
+    ? `<span class="view-tab-x" title="Close" aria-label="Close">×</span>`
+    : '';
+  return `<button type="button" class="view-tab${on ? ' active' : ''}" role="tab"
+    data-tab="${escapeAttr(key)}"${tid}
+    aria-selected="${on ? 'true' : 'false'}">
+    <span class="view-tab-label">${escapeHtml(label)}</span>${x}
+  </button>`;
+}
+
+function paintToggles() {
+  const browserBtn = $('browser-toggle');
+  if (browserBtn) {
+    const on = active === 'browser';
+    browserBtn.classList.toggle('active', on);
+    browserBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  const termBtn = $('term-toggle');
+  if (termBtn) {
+    const on = terminals.has(active);
+    termBtn.classList.toggle('active', on);
+    termBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function escapeAttr(s) {
+  return escapeHtml(s).replace(/'/g, '&#39;');
 }

@@ -179,9 +179,16 @@ html[data-standalone] #app {
   height: 100dvh;
 }
 
-/* Chat stays whole; browser/terminals take a column beside it. */
-#app.workspace-open {
-  grid-template-columns: 264px 1fr minmax(360px, 44vw);
+/* Chat stays whole; tool views replace it via tabs under the header. */
+#view-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+#view-chat[hidden] {
+  display: none;
 }
 
 /* ------------------------------------------------------------------ rail */
@@ -1592,62 +1599,67 @@ html[data-standalone] .composer-controls select {
   background: var(--sunken);
 }
 
-/* ----------------------------------------------------------- workspace */
+/* ----------------------------------------------------------- view tabs */
 
 /**
- * Browser and terminals share one place. Wide: a column to the right of the
- * chat. Narrow: a full-screen sheet. Only one tool is visible at a time —
- * stacking both on the chat column was the awkward split.
+ * Under the header: Chat (always first, no ×) plus Browser and each shell.
+ * Hidden while only Chat is open. Scrolls sideways when tabs overflow.
  */
-#workspace[hidden] {
-  display: none;
-}
-
-#workspace {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  border-left: 1px solid var(--line);
-  background: var(--bg);
-}
-
-.workspace-bar {
+.view-tabs {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: 4px;
+  flex: none;
+  min-width: 0;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--line);
   background: var(--bg-2);
-  flex: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
+.view-tabs::-webkit-scrollbar { display: none; }
+.view-tabs[hidden] { display: none; }
 
-.workspace-tabs {
-  display: flex;
-  gap: 4px;
-  flex: 1;
-  min-width: 0;
-}
-
-.workspace-tab {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 7px;
+.view-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  max-width: 160px;
   padding: 5px 10px;
-  font-size: 12.5px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--muted);
+  font-size: 12.5px;
   cursor: pointer;
+  white-space: nowrap;
 }
-
-.workspace-tab:hover {
+.view-tab:hover {
   color: var(--text);
   border-color: var(--line-2);
 }
-
-.workspace-tab.active {
+.view-tab.active {
   background: var(--bg-3);
   border-color: var(--line-2);
   color: var(--text);
+}
+.view-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.view-tab-x {
+  flex: none;
+  opacity: 0.45;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 1px;
+}
+.view-tab-x:hover { opacity: 1; color: var(--red); }
+.view-tab-new {
+  flex: none;
+  margin-left: 2px;
 }
 
 button.icon.active {
@@ -1779,46 +1791,6 @@ button.icon.active {
 }
 
 /* ----------------------------------------------------------- terminals */
-
-.term-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--line);
-  background: var(--bg-2);
-}
-
-#term-tabs {
-  display: flex;
-  gap: 4px;
-  flex: 1;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.term-tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border-radius: 7px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--fg-dim);
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.term-tab.active {
-  background: var(--bg-3);
-  border-color: var(--line-2);
-  color: var(--fg);
-}
-
-.term-tab .x { opacity: 0.5; }
-.term-tab .x:hover { opacity: 1; color: var(--red); }
 
 #term-panes {
   flex: 1;
@@ -2371,31 +2343,14 @@ pre:hover .copy,
      mistake to offer, so the queue's buttons are thumb-sized here. */
   .queued-act { width: 36px; height: 36px; font-size: 15px; }
 
-  /* Phone: the workspace covers everything, like Settings — a split leaves
-     no room for a remote browser or a shell. */
-  #app.workspace-open {
-    grid-template-columns: 1fr;
+  .view-tab {
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 13.5px;
   }
-  #workspace {
-    position: fixed;
-    inset: 0;
-    z-index: 25;
-    border-left: 0;
-    animation: sheet-in 0.16s ease;
-  }
-  html[data-standalone] .workspace-bar {
-    padding-top: max(6px, env(safe-area-inset-top, 0px));
-  }
-  .workspace-tab {
-    min-height: 40px;
-    padding: 8px 12px;
-    font-size: 14px;
-  }
-  #workspace-hide {
-    min-width: 40px;
-    min-height: 40px;
-    font-size: 20px;
-    color: var(--text);
+  .view-tab-new {
+    min-width: 36px;
+    min-height: 36px;
   }
 
   #topbar { padding: max(8px, env(safe-area-inset-top, 0px)) 10px 8px; gap: 6px; }

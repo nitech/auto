@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-17T17:50:00Z }
+generated: { by: agent, at: 2026-08-17T18:05:00Z }
 ---
 
 # Web app
@@ -83,11 +83,11 @@ meta also asks for `interactive-widget=resizes-content` where supported.
 - Diffs, thinking (folded when the block ends, timed from the record so a
   replay says "Thought for 8s" rather than staying "Thinking"), permission
   and question cards, [terminals](terminals.md), [browser](browser.md).
-  Those two share one **workspace**: a column to the right of the chat on a
-  wide screen, a full-screen sheet on a phone — not strips stacked on the
-  transcript. Tabs switch between them; only one is visible at a time.
-  Topbar icons open either tool at every width (including the phone); the
-  workspace itself is still fullscreen on a narrow screen.
+  Those two open as **tabs under the header**: Chat is always first and
+  cannot be closed; Browser and each shell get an ×. The strip scrolls
+  sideways when tabs overflow, and hides while only Chat is open. Topbar
+  icons open or focus a tool; Escape returns to Chat without closing the
+  tab.
   A http(s) URL in the chat is a link — markdown `[text](url)` and a bare
   address both. User bubbles too. Images you attach show as thumbnails in
   the bubble (and inside the composer before send); tap one for a full-screen

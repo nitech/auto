@@ -18,7 +18,7 @@ import {
 import { lineDiff, collapseContext, diffStats } from './diff.js';
 import { renderMarkdown, linkify } from './markdown.js';
 import { initBrowser, onFrame, onStatus } from './browser.js';
-import { initWorkspace, close as closeWorkspace, isOpen as workspaceIsOpen } from './workspace.js';
+import { initWorkspace, isOpen as workspaceIsOpen, showChat } from './workspace.js';
 import {
   activityCopy,
   classifyTool,
@@ -2709,13 +2709,13 @@ $('install-app').onclick = async () => {
 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  // Innermost first: the dialogs sit over the sheet, which sits over the
-  // workspace, which sits over the rail.
+  // Innermost first: the dialogs sit over the sheet, which sits over a
+  // tool view, which sits over the rail.
   if (!$('lightbox').hidden) closeLightbox();
   else if (!els.usageSheet.hidden) setUsageSheet(false);
   else if (!$('newbie').hidden) setNewbie(false);
   else if (!els.sheet.hidden) setSheet(false);
-  else if (workspaceIsOpen()) closeWorkspace();
+  else if (workspaceIsOpen()) showChat();
   else if (els.app.classList.contains('rail-open')) setRail(false);
 });
 

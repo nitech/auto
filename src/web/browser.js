@@ -5,16 +5,15 @@
  * and keystrokes back. Coordinates are scaled from the displayed image to the
  * real viewport, so a tap on a phone lands where you aimed it.
  *
- * Lives in the shared workspace (right dock / full-screen sheet) — see
- * workspace.js — rather than carving a strip out of the chat column.
+ * Opens as a tab under the header (see workspace.js).
  */
 
 import {
-  close as closeWorkspace,
+  closeBrowser,
   isOpen as workspaceIsOpen,
   onTool,
-  toggle as toggleWorkspace,
-  show as showWorkspace,
+  toggleBrowser,
+  openBrowser,
 } from './workspace.js';
 
 const $ = (id) => document.getElementById(id);
@@ -67,7 +66,6 @@ export function initBrowser(send) {
     { passive: false },
   );
 
-  // Touch drag scrolls the page rather than the panel.
   let touch = null;
   els.frame.addEventListener(
     'touchstart',
@@ -100,7 +98,6 @@ export function initBrowser(send) {
     touch = null;
   });
 
-  // A hidden input carries typing, so phone keyboards work on the page.
   els.keys.addEventListener('input', () => {
     const text = els.keys.value;
     if (text) sendOp({ op: 'browser.type', text });
@@ -114,8 +111,6 @@ export function initBrowser(send) {
     }
   });
 
-  // The panel's size is only known after layout, and changes on rotate or
-  // resize, so let the observer own the viewport rather than guessing once.
   const view = els.frame.parentElement;
   let debounce = null;
   new ResizeObserver(() => {
@@ -126,9 +121,9 @@ export function initBrowser(send) {
 }
 
 export function toggle(force) {
-  if (force === false) closeWorkspace();
-  else if (force === true) showWorkspace('browser');
-  else toggleWorkspace('browser');
+  if (force === false) closeBrowser();
+  else if (force === true) openBrowser();
+  else toggleBrowser();
 }
 
 function attach() {

@@ -142,6 +142,10 @@
       </span>
     </header>
 
+    <!-- Chat is always first; browser and each shell open as closable tabs. -->
+    <nav id="view-tabs" class="view-tabs" hidden role="tablist" aria-label="Views"></nav>
+
+    <div id="view-chat">
     <div class="scroller">
       <!-- Visible before JS runs: a long transcript takes a few seconds to
           replay, and an empty pane reads as the app having frozen. Same A
@@ -195,22 +199,9 @@
       </div>
       <input id="file" type="file" accept="image/*" multiple hidden />
     </footer>
-  </main>
-
-  <!-- Browser and terminals share one place: a right dock on a wide screen,
-       a full-screen sheet on a phone. Only one tool is visible at a time. -->
-  <aside id="workspace" hidden>
-    <div class="workspace-bar">
-      <div class="workspace-tabs" role="tablist" aria-label="Workspace">
-        <button type="button" id="ws-tab-browser" class="workspace-tab" role="tab"
-                aria-selected="false" aria-controls="browser">Browser</button>
-        <button type="button" id="ws-tab-terminals" class="workspace-tab" role="tab"
-                aria-selected="false" aria-controls="terminals">Terminals</button>
-      </div>
-      <button id="workspace-hide" class="icon" title="Close workspace" aria-label="Close workspace">×</button>
     </div>
 
-    <section id="browser" hidden role="tabpanel" aria-labelledby="ws-tab-browser">
+    <section id="browser" hidden role="tabpanel" aria-label="Browser">
       <div class="browser-bar">
         <button id="browser-back" class="icon" title="Back">‹</button>
         <button id="browser-forward" class="icon" title="Forward">›</button>
@@ -226,14 +217,10 @@
       </div>
     </section>
 
-    <section id="terminals" hidden role="tabpanel" aria-labelledby="ws-tab-terminals">
-      <div class="term-bar">
-        <div id="term-tabs"></div>
-        <button id="term-new" class="icon" title="New terminal">+</button>
-      </div>
+    <section id="terminals" hidden role="tabpanel" aria-label="Terminals">
       <div id="term-panes"></div>
     </section>
-  </aside>
+  </main>
 </div>
 
 <!-- Everything that is not the conversation. Tapping the backdrop closes it. -->
