@@ -107,6 +107,8 @@ const state = {
   /** latest usage snapshot for the dial / dialog */
   usage: null,
   usageTimer: null,
+  /** this machine: OS hostname, optional nick, label for the rail */
+  host: { hostname: '', nick: null, label: '' },
 };
 
 // ------------------------------------------------------------------ helpers
@@ -1803,7 +1805,13 @@ function connect() {
     if (msg.type === 'hello') {
       state.sessions = msg.sessions;
       if (msg.chats) state.chats = msg.chats;
+      if (msg.host) applyHost(msg.host);
       renderRail();
+      return;
+    }
+
+    if (msg.type === 'host') {
+      if (msg.host) applyHost(msg.host);
       return;
     }
 
@@ -2577,7 +2585,30 @@ function setSheet(open) {
   if (!open) return;
   $('rename').value = state.sessionId ? els.title.textContent : '';
   $('sheet-folder').textContent = els.folder.textContent;
+  $('host-nick').value = state.host.nick || '';
+  $('host-nick').placeholder = state.host.hostname || 'Display name';
+  $('sheet-hostname').textContent = state.host.hostname
+    ? `hostname · ${state.host.hostname}`
+    : '';
   $('sheet-conn').textContent = `${els.connLabel.textContent} · ${location.host}`;
+}
+
+/** Rail brand + Settings Host both read from this. */
+function applyHost(host) {
+  state.host = {
+    hostname: host.hostname || '',
+    nick: host.nick || null,
+    label: host.label || host.nick || host.hostname || '',
+  };
+  const el = $('host-label');
+  if (el) el.textContent = state.host.label || '…';
+  if (!els.sheet.hidden) {
+    $('host-nick').value = state.host.nick || '';
+    $('host-nick').placeholder = state.host.hostname || 'Display name';
+    $('sheet-hostname').textContent = state.host.hostname
+      ? `hostname · ${state.host.hostname}`
+      : '';
+  }
 }
 
 /**
@@ -2640,6 +2671,20 @@ $('rename-save').onclick = () => {
   els.title.textContent = title;
   setSheet(false);
 };
+
+$('host-nick-save').onclick = () => {
+  const nick = $('host-nick').value.trim();
+  sendOp({ op: 'host.setNick', nick });
+  // Optimistic: the broadcast confirms; empty nick falls back to hostname.
+  applyHost({
+    hostname: state.host.hostname,
+    nick: nick || null,
+    label: nick || state.host.hostname,
+  });
+};
+$('host-nick').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('host-nick-save').click();
+});
 
 $('sheet-sync').onclick = () => sendOp({ op: 'sessions.sync' });
 

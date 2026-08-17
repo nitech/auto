@@ -69,7 +69,10 @@
         <path d="M223.59 277.19 A36 36 0 0 1 288.41 277.19 L295 155 L217 155 Z" fill="currentColor"/>
         <circle cx="256" cy="372" r="32" fill="var(--usage-accent)"/>
       </svg>
-      <span class="brand">Auto</span>
+      <span class="brand">
+        <span class="brand-name">Auto</span>
+        <span class="brand-host" id="host-label">…</span>
+      </span>
       <button id="new-session" class="icon" title="New session">+</button>
       <button id="rail-close" class="icon" title="Close sessions" aria-label="Close sessions">×</button>
     </div>
@@ -247,6 +250,11 @@
 
     <section class="sheet-block">
       <h2>Host</h2>
+      <div class="sheet-row">
+        <input id="host-nick" type="text" placeholder="Display name" aria-label="Host display name" autocomplete="off" />
+        <button id="host-nick-save">Save</button>
+      </div>
+      <div class="sheet-note mono" id="sheet-hostname"></div>
       <div class="sheet-row">
         <button id="sheet-sync">Refresh sessions</button>
         <button id="restart" class="danger">Restart Auto</button>

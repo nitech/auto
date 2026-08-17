@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { SessionManager, POLICY, STATUS } from '../core/sessions.mjs';
 import { BrowserHost } from '../core/browser.mjs';
+import { HostIdentity } from '../core/host-identity.mjs';
 import { TelegramBridge } from '../core/telegram.mjs';
 import { listProjects, workspaceIdFor, foldersByWorkspaceId } from '../core/projects.mjs';
 import { desktopChats, recentDesktopChats } from '../core/desktop-chats.mjs';
@@ -51,13 +52,17 @@ const PORT = Number(arg('port', process.env.AUTO_PORT || '4331')) || 4331;
 const HOST = arg('host', '0.0.0.0');
 const DEFAULT_FOLDER = arg('folder', ROOT);
 
+const STATE_DIR = join(ROOT, 'state');
+const hostIdentity = new HostIdentity(STATE_DIR);
+
 const sessions = new SessionManager({
-  stateDir: join(ROOT, 'state'),
+  stateDir: STATE_DIR,
   defaultFolder: DEFAULT_FOLDER,
   defaultPolicy: process.env.AUTO_POLICY || POLICY.auto,
 }).init();
 
 console.log(`[auto] approvals default to "${sessions.defaultPolicy}"`);
+console.log(`[auto] host is "${hostIdentity.label()}"`);
 
 sessions.on('log', (m) => console.log(`[sessions] ${m}`));
 
@@ -66,7 +71,7 @@ sessions.on('log', (m) => console.log(`[sessions] ${m}`));
  * watching, and never into a transcript, because a video stream is the one
  * thing here that is genuinely worthless to replay.
  */
-const browser = new BrowserHost({ stateDir: join(ROOT, 'state') });
+const browser = new BrowserHost({ stateDir: STATE_DIR });
 browser.on('log', (m) => console.log(`[browser] ${m}`));
 
 /**
@@ -76,7 +81,7 @@ browser.on('log', (m) => console.log(`[browser] ${m}`));
  */
 const telegram = new TelegramBridge({
   sessions,
-  stateDir: join(ROOT, 'state'),
+  stateDir: STATE_DIR,
   webUrl: process.env.AUTO_WEB_URL || `http://127.0.0.1:${PORT}`,
   restart: (opts) => restartHost(opts),
 });
@@ -592,6 +597,7 @@ async function route(req, res) {
       watching: sessions.watchingCount(),
       activeId: sessions.activeId,
       telegram: telegram.running,
+      ...hostIdentity.snapshot(),
     });
   }
 
@@ -682,6 +688,7 @@ wss.on('connection', async (ws, req) => {
     activeId: sessions.activeId,
     policies: Object.values(POLICY),
     chats: recentChats(),
+    host: hostIdentity.snapshot(),
   });
   // A client says which chat it was in, in the URL, because the first thing
   // this socket does is replay and there is no room for a question first. A
@@ -768,6 +775,12 @@ async function restartHost({ reason = 'requested', maxWaitMs = 180_000 } = {}) {
 }
 
 OPS['host.restart'] = (_ws, _state, msg) => restartHost({ reason: msg.reason || 'web' });
+
+OPS['host.setNick'] = (_ws, _state, msg) => {
+  const host = hostIdentity.setNick(msg.nick);
+  broadcast({ type: 'host', host });
+  return host;
+};
 
 /** Announce the return, so a restart requested from a phone visibly completes. */
 function announceRestart() {

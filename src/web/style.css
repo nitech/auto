@@ -202,10 +202,27 @@ html[data-standalone] #app {
 }
 
 .brand {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.15;
+}
+
+.brand-name {
   font-weight: 650;
   letter-spacing: -0.01em;
   font-size: 16px;
-  flex: 1;
+}
+
+.brand-host {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* The favicon's A mark, glyph only — currentColor and the usage amber, so it

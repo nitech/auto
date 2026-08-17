@@ -1825,7 +1825,50 @@ if (existsSync(SRC)) {
     fail('opening settings must close the rail');
     failed = true;
   }
+  if (!html.includes('id="host-label"') || !html.includes('id="host-nick"') || !html.includes('id="host-nick-save"')) {
+    fail('the rail must show the host label, and Settings must edit its nick');
+    failed = true;
+  }
+  if (!js.includes('host.setNick') || !js.includes('applyHost') || !js.includes('msg.type === \'host\'')) {
+    fail('the web must apply host identity from hello and host.setNick');
+    failed = true;
+  }
   if (!failed) ok('v2 web: settings in the rail, full screen');
+}
+
+// Host identity: OS hostname on the rail, optional nick in state/host.json.
+{
+  const tmp = mkdtempSync(join(tmpdir(), 'auto-host-'));
+  try {
+    const { HostIdentity } = await import('../src/core/host-identity.mjs');
+    const a = new HostIdentity(tmp);
+    if (!a.hostname || a.label() !== a.hostname) {
+      fail(`host identity should default the label to the OS hostname, got ${a.label()}`);
+    }
+    if (a.snapshot().nick !== null) fail('host identity nick should be null when unset');
+    const set = a.setNick('  Office PC  ');
+    if (set.nick !== 'Office PC' || set.label !== 'Office PC') {
+      fail(`host.setNick should trim and become the label, got ${JSON.stringify(set)}`);
+    }
+    if (!existsSync(join(tmp, 'host.json'))) fail('host.setNick must persist state/host.json');
+    const b = new HostIdentity(tmp);
+    if (b.nick !== 'Office PC' || b.label() !== 'Office PC') {
+      fail('host identity must reload the nick from disk');
+    }
+    b.setNick('   ');
+    if (b.nick !== '' || b.label() !== b.hostname) {
+      fail('clearing the nick must fall back to the OS hostname');
+    }
+    const server = readFileSync(join(ROOT, 'src/server/index.mjs'), 'utf8');
+    if (!server.includes('HostIdentity') || !server.includes('host.setNick') || !server.includes('host: hostIdentity.snapshot()')) {
+      fail('the host must send identity on hello and accept host.setNick');
+    }
+    ok('v2 core: host identity nick + hostname');
+  } catch (e) {
+    fail(`host identity: ${e.message}`);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 // Home Screen install: iOS needs Apple meta + a PNG touch icon; Android wants

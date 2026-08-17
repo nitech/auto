@@ -8,10 +8,13 @@ sources:
   - id: server
     resource: /src/server/index.mjs
     title: Host
+  - id: identity
+    resource: /src/core/host-identity.mjs
+    title: Hostname and nick
   - id: supervise
     resource: /scripts/supervise.mjs
     title: Supervisor
-generated: { by: agent, at: 2026-08-17T07:28:00Z }
+generated: { by: agent, at: 2026-08-17T14:15:00Z }
 ---
 
 # Host
@@ -25,11 +28,18 @@ How the process stays alive across crashes and reboots is
 [supervise](supervise.md). Do not host Auto in a Cursor agent background
 shell.
 
+## Identity
+
+The OS hostname rides on `hello` and `/api/health`. An optional nick in
+`state/host.json` (Settings → Host, or `host.setNick`) replaces it on the
+[web](web.md) rail. Clearing the nick falls back to the hostname. All
+clients see the same label.
+
 ## HTTP
 
 | Path | What |
 | --- | --- |
-| `GET /api/health` | `ok`, session counts, `activeId`, whether Telegram is polling |
+| `GET /api/health` | `ok`, session counts, `activeId`, Telegram, `hostname` / `nick` / `label` |
 | `GET /api/session` | Sessions plus `activeId` |
 | `GET /api/projects` | Folders as Cursor sees them, plus Auto's |
 | `GET /api/desktop-chats?folder=` | That folder's desktop chats |
@@ -46,14 +56,16 @@ one it saw. Other assets revalidate with an ETag.
 
 Clients send `{ op, … }`. The host replies with JSON of a stable shape
 (deflate above 2 KB — a phone replay depends on it). Hello includes
-sessions, recent desktop chats, and approval policies. The handshake URL
-may carry `session` and `fromSeq`; a named live session is attached even
-with no `fromSeq` (a refresh). An archived or unknown id falls through to
-the active session. Attach then replays the transcript from `fromSeq`.
+sessions, recent desktop chats, approval policies, and host identity.
+The handshake URL may carry `session` and `fromSeq`; a named live
+session is attached even with no `fromSeq` (a refresh). An archived or
+unknown id falls through to the active session. Attach then replays the
+transcript from `fromSeq`.
 
 Ops include `prompt`, `cancel`, `queue.*`, `permission`, `question.answer`,
 `plan.build`, `session.create` / `archive` / `rename` / `mode` / `model` /
-`policy`, `desktop.continue`, `terminal.*`, `browser.*`.
+`policy`, `desktop.continue`, `terminal.*`, `browser.*`, `host.setNick`,
+`host.restart`.
 
 ## Restart
 
