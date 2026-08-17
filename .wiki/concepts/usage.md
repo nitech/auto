@@ -17,7 +17,7 @@ sources:
   - id: web
     resource: /src/web/app.js
     title: Dial and usage sheet
-generated: { by: agent, at: 2026-08-16T19:10:00Z }
+generated: { by: agent, at: 2026-08-17T08:10:00Z }
 ---
 
 # Usage dial and account quotas
@@ -36,9 +36,21 @@ From `composerData:<threadId>` in Cursor's `state.vscdb`:
   store the window on `modelConfig.selectedModels[0].parameters`; default /
   Auto often does not, so Auto assumes **200k** (and marks it assumed) unless
   Max Mode is on
+- **Model** — `modelConfig.modelName` (or `selectedModels[0].modelId`). This is
+  the model the chat was last *sent* with, not a live read of the picker.
+  Auto-select is stored as `default`; Cursor does **not** write the backend
+  model it routed to into this field (or into bubble `modelInfo`, which is
+  usually `default` too). A named id such as `grok-4.6` means that model was
+  last sent — and the IDE picker usually says the same. The web dropdown can
+  still read Auto-select on a desktop chat whose picker is a named model,
+  because Auto only records `model` after a change made through Auto
 - `usageData.*.costInCents` — summed across every model key Cursor wrote
   (not only `default`), shown as estimated cost for this chat; often empty
 - bubble `tokenCount`s summed when present; usually zero on recent builds
+
+The IDE chat chrome does not show last-sent model separately from the picker.
+The picker is what the *next* send will use; the database catches up after a
+send. See [Cursor window](cursor-window.md).
 
 ACP-only sessions have no `composerData`; the dial still opens the account
 sheet and says context fill is desktop-only.
@@ -55,7 +67,15 @@ Same Connect RPC the settings page uses, with the JWT at
 | Included usage | `includedSpend / limit` |
 | On-demand | `GetHardLimit.noUsageBasedAllowed` + spend-limit fields |
 | Plan / reset | `GetPlanInfo` + billing cycle timestamps |
-| By model | `GetAggregatedUsageEvents` |
+| By model | `GetAggregatedUsageEvents` (`modelIntent`) |
+
+`autoModelSelectedDisplayMessage` / `namedModelSelectedDisplayMessage` are
+quota sentences ("You've used 10% of your included total usage"), not the
+name of the model Auto-select picked.
+
+**By model** is this billing cycle, account-wide — not this chat. `default` is
+the Auto-select pool; named rows (`cursor-grok-4.6-high`, …) are those models
+whether you picked them or Auto did. Cursor does not label which.
 
 Cached about a minute on the host. Web op: `usage.get` → `{ type: 'usage', session, account }`.
 

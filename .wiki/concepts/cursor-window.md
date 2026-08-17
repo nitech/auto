@@ -17,7 +17,7 @@ sources:
   - id: clipboard
     resource: /src/core/clipboard.mjs
     title: Image paste via clipboard
-generated: { by: agent, at: 2026-08-16T06:35:00Z }
+generated: { by: agent, at: 2026-08-17T07:20:00Z }
 ---
 
 # The Cursor window
@@ -72,6 +72,12 @@ they are*. Models are a `role=menu`; modes are the @-mention popover. An
 item is named by its own text, never its subtree — or "Opus 5" holding a
 "High" badge reads as "Opus 5 HighEdit". A variant is the row then the
 badge on it.
+
+The phone picker sends agent ids (`kimi-k3[reasoning=max]`), not menu
+words. The catalog often names that row `kimi-k3` too. Hyphens are spaces
+(`kimi-k3` is "Kimi K3"), a slug can omit a prefix the menu adds
+(`grok-4.6` is "Cursor Grok 4.6"), and `reasoning=max` / `fast=true` are
+the Max and Fast badges. `effort=high` is not — High sits on several rows.
 
 Nothing is believed from the click: Cursor's stored record keeps the model
 a chat was last *sent* with, so the word on the picker is the proof, and

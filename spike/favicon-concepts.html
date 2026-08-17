@@ -1,0 +1,149 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Auto — favicon concepts</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 40px 32px 64px;
+    font: 15px/1.5 ui-sans-serif, system-ui, sans-serif;
+    background: #0b0d12; color: #dfe3ea;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 8px; }
+  p { color: #8b93a4; margin: 0 0 36px; max-width: 46em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 28px; }
+  .card { margin: 0; }
+  .card .big {
+    display: block; width: 100%; aspect-ratio: 1; border-radius: 18px;
+    border: 1px solid #232936;
+  }
+  .card h2 { font-size: 15px; font-weight: 600; margin: 12px 0 2px; }
+  .card .why { color: #8b93a4; font-size: 13px; margin: 0 0 12px; }
+  .sizes { display: flex; align-items: end; gap: 14px; }
+  .sizes img { display: block; }
+  .tab {
+    display: inline-flex; align-items: center; gap: 8px; margin-top: 10px;
+    background: #171b24; border: 1px solid #232936;
+    border-radius: 9px 9px 0 0; padding: 7px 12px;
+  }
+  .tab span { color: #8b93a4; font-size: 12px; }
+</style>
+
+<h1>Favicon concepts</h1>
+<p>
+  Five directions drawn from what Auto is — an always-on remote control for
+  Cursor's agent, driven from a phone — not from the old ring. Each card shows
+  the mark at 180, then 64 / 32 / 16, then in a fake tab. Nothing is wired up.
+</p>
+
+<div class="grid">
+
+  <figure class="card">
+    <svg class="big" viewBox="0 0 512 512" role="img" aria-label="A: phone remote">
+      <rect width="512" height="512" fill="#0b0d12"/>
+      <!-- phone outline -->
+      <rect x="166" y="96" width="180" height="320" rx="34" fill="none" stroke="#6ea8ff" stroke-width="30"/>
+      <!-- live dot on the screen -->
+      <circle cx="256" cy="232" r="34" fill="#4ad07f"/>
+      <!-- home bar -->
+      <rect x="216" y="368" width="80" height="14" rx="7" fill="#6ea8ff"/>
+    </svg>
+    <h2>A · The remote</h2>
+    <p class="why">Auto is a phone that drives the agent. The green dot is the live session on its screen.</p>
+    <div class="sizes">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Crect x='166' y='96' width='180' height='320' rx='34' fill='none' stroke='%236ea8ff' stroke-width='30'/%3E%3Ccircle cx='256' cy='232' r='34' fill='%234ad07f'/%3E%3Crect x='216' y='368' width='80' height='14' rx='7' fill='%236ea8ff'/%3E%3C/svg%3E" width="64" height="64" alt="">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Crect x='166' y='96' width='180' height='320' rx='34' fill='none' stroke='%236ea8ff' stroke-width='30'/%3E%3Ccircle cx='256' cy='232' r='34' fill='%234ad07f'/%3E%3Crect x='216' y='368' width='80' height='14' rx='7' fill='%236ea8ff'/%3E%3C/svg%3E" width="32" height="32" alt="">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Crect x='166' y='96' width='180' height='320' rx='34' fill='none' stroke='%236ea8ff' stroke-width='30'/%3E%3Ccircle cx='256' cy='232' r='34' fill='%234ad07f'/%3E%3Crect x='216' y='368' width='80' height='14' rx='7' fill='%236ea8ff'/%3E%3C/svg%3E" width="16" height="16" alt="">
+    </div>
+    <div class="tab">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Crect x='166' y='96' width='180' height='320' rx='34' fill='none' stroke='%236ea8ff' stroke-width='30'/%3E%3Ccircle cx='256' cy='232' r='34' fill='%234ad07f'/%3E%3Crect x='216' y='368' width='80' height='14' rx='7' fill='%236ea8ff'/%3E%3C/svg%3E" width="16" height="16" alt="">
+      <span>Auto</span>
+    </div>
+  </figure>
+
+  <figure class="card">
+    <svg class="big" viewBox="0 0 512 512" role="img" aria-label="B: broadcast">
+      <rect width="512" height="512" fill="#0b0d12"/>
+      <!-- two arcs, phone → agent -->
+      <path d="M188 324a96 96 0 0 1 136 0" fill="none" stroke="#6ea8ff" stroke-width="34" stroke-linecap="round"/>
+      <path d="M132 268a176 176 0 0 1 248 0" fill="none" stroke="#6ea8ff" stroke-width="34" stroke-linecap="round" opacity=".45"/>
+      <!-- the handset -->
+      <circle cx="256" cy="356" r="40" fill="#4ad07f"/>
+    </svg>
+    <h2>B · Broadcast</h2>
+    <p class="why">One tap on the phone reaches the agent. The dot is the handset; the arcs are the signal out.</p>
+    <div class="sizes">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Cpath d='M188 324a96 96 0 0 1 136 0' fill='none' stroke='%236ea8ff' stroke-width='34' stroke-linecap='round'/%3E%3Cpath d='M132 268a176 176 0 0 1 248 0' fill='none' stroke='%236ea8ff' stroke-width='34' stroke-linecap='round' opacity='.45'/%3E%3Ccircle cx='256' cy='356' r='40' fill='%234ad07f'/%3E%3C/svg%3E" width="64" height="64" alt="">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Cpath d='M188 324a96 96 0 0 1 136 0' fill='none' stroke='%236ea8ff' stroke-width='34' stroke-linecap='round'/%3E%3Cpath d='M132 268a176 176 0 0 1 248 0' fill='none' stroke='%236ea8ff' stroke-width='34' stroke-linecap='round' opacity='.45'/%3E%3Ccircle cx='256' cy='356' r='40' fill='%234ad07f'/%3E%3C/svg%3E" width="32" height="32" alt="">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Cpath d='M188 324a96 96 0 0 1 136 0' fill='none' stroke='%236ea8ff' stroke-width='34' stroke-linecap='round'/%3E%3Cpath d='M132 268a176 176 0 0 1 248 0' fill='none' stroke='%236ea8ff' stroke-width='34' stroke-linecap='round' opacity='.45'/%3E%3Ccircle cx='256' cy='356' r='40' fill='%234ad07f'/%3E%3C/svg%3E" width="16" height="16" alt="">
+    </div>
+    <div class="tab">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Cpath d='M188 324a96 96 0 0 1 136 0' fill='none' stroke='%236ea8ff' stroke-width='34' stroke-linecap='round'/%3E%3Cpath d='M132 268a176 176 0 0 1 248 0' fill='none' stroke='%236ea8ff' stroke-width='34' stroke-linecap='round' opacity='.45'/%3E%3Ccircle cx='256' cy='356' r='40' fill='%234ad07f'/%3E%3C/svg%3E" width="16" height="16" alt="">
+      <span>Auto</span>
+    </div>
+  </figure>
+
+  <figure class="card">
+    <svg class="big" viewBox="0 0 512 512" role="img" aria-label="C: hand off">
+      <rect width="512" height="512" fill="#0b0d12"/>
+      <!-- two rounded squares: phone and IDE -->
+      <rect x="96" y="150" width="150" height="212" rx="30" fill="none" stroke="#6ea8ff" stroke-width="30"/>
+      <rect x="266" y="150" width="150" height="212" rx="30" fill="none" stroke="#6ea8ff" stroke-width="30" opacity=".4"/>
+      <!-- the live session passed across -->
+      <circle cx="256" cy="256" r="42" fill="#4ad07f"/>
+    </svg>
+    <h2>C · Hand off</h2>
+    <p class="why">The same chat, on the phone and in the IDE. The dot is the one session moving between them.</p>
+    <div class="sizes">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Crect x='96' y='150' width='150' height='212' rx='30' fill='none' stroke='%236ea8ff' stroke-width='30'/%3E%3Crect x='266' y='150' width='150' height='212' rx='30' fill='none' stroke='%236ea8ff' stroke-width='30' opacity='.4'/%3E%3Ccircle cx='256' cy='256' r='42' fill='%234ad07f'/%3E%3C/svg%3E" width="64" height="64" alt="">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Crect x='96' y='150' width='150' height='212' rx='30' fill='none' stroke='%236ea8ff' stroke-width='30'/%3E%3Crect x='266' y='150' width='150' height='212' rx='30' fill='none' stroke='%236ea8ff' stroke-width='30' opacity='.4'/%3E%3Ccircle cx='256' cy='256' r='42' fill='%234ad07f'/%3E%3C/svg%3E" width="32" height="32" alt="">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Crect x='96' y='150' width='150' height='212' rx='30' fill='none' stroke='%236ea8ff' stroke-width='30'/%3E%3Crect x='266' y='150' width='150' height='212' rx='30' fill='none' stroke='%236ea8ff' stroke-width='30' opacity='.4'/%3E%3Ccircle cx='256' cy='256' r='42' fill='%234ad07f'/%3E%3C/svg%3E" width="16" height="16" alt="">
+    </div>
+    <div class="tab">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Crect x='96' y='150' width='150' height='212' rx='30' fill='none' stroke='%236ea8ff' stroke-width='30'/%3E%3Crect x='266' y='150' width='150' height='212' rx='30' fill='none' stroke='%236ea8ff' stroke-width='30' opacity='.4'/%3E%3Ccircle cx='256' cy='256' r='42' fill='%234ad07f'/%3E%3C/svg%3E" width="16" height="16" alt="">
+      <span>Auto</span>
+    </div>
+  </figure>
+
+  <figure class="card">
+    <svg class="big" viewBox="0 0 512 512" role="img" aria-label="D: prompt">
+      <rect width="512" height="512" fill="#0b0d12"/>
+      <!-- a terminal prompt, waiting -->
+      <path d="M150 190 L246 256 L150 322" fill="none" stroke="#6ea8ff" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="272" y="300" width="96" height="34" rx="17" fill="#4ad07f"/>
+    </svg>
+    <h2>D · Prompt</h2>
+    <p class="why">Auto's whole job is getting your words to the agent. A chevron and a live cursor.</p>
+    <div class="sizes">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Cpath d='M150 190 L246 256 L150 322' fill='none' stroke='%236ea8ff' stroke-width='36' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='272' y='300' width='96' height='34' rx='17' fill='%234ad07f'/%3E%3C/svg%3E" width="64" height="64" alt="">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Cpath d='M150 190 L246 256 L150 322' fill='none' stroke='%236ea8ff' stroke-width='36' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='272' y='300' width='96' height='34' rx='17' fill='%234ad07f'/%3E%3C/svg%3E" width="32" height="32" alt="">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Cpath d='M150 190 L246 256 L150 322' fill='none' stroke='%236ea8ff' stroke-width='36' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='272' y='300' width='96' height='34' rx='17' fill='%234ad07f'/%3E%3C/svg%3E" width="16" height="16" alt="">
+    </div>
+    <div class="tab">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Cpath d='M150 190 L246 256 L150 322' fill='none' stroke='%236ea8ff' stroke-width='36' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='272' y='300' width='96' height='34' rx='17' fill='%234ad07f'/%3E%3C/svg%3E" width="16" height="16" alt="">
+      <span>Auto</span>
+    </div>
+  </figure>
+
+  <figure class="card">
+    <svg class="big" viewBox="0 0 512 512" role="img" aria-label="E: relay">
+      <rect width="512" height="512" fill="#0b0d12"/>
+      <!-- phone dot, link, agent dot -->
+      <circle cx="150" cy="256" r="46" fill="#6ea8ff"/>
+      <circle cx="362" cy="256" r="46" fill="#6ea8ff" opacity=".4"/>
+      <rect x="196" y="240" width="120" height="32" rx="16" fill="#6ea8ff"/>
+      <circle cx="256" cy="256" r="26" fill="#4ad07f"/>
+    </svg>
+    <h2>E · Relay</h2>
+    <p class="why">The host sits between phone and agent. The green pip is the live turn passing through.</p>
+    <div class="sizes">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Ccircle cx='150' cy='256' r='46' fill='%236ea8ff'/%3E%3Ccircle cx='362' cy='256' r='46' fill='%236ea8ff' opacity='.4'/%3E%3Crect x='196' y='240' width='120' height='32' rx='16' fill='%236ea8ff'/%3E%3Ccircle cx='256' cy='256' r='26' fill='%234ad07f'/%3E%3C/svg%3E" width="64" height="64" alt="">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Ccircle cx='150' cy='256' r='46' fill='%236ea8ff'/%3E%3Ccircle cx='362' cy='256' r='46' fill='%236ea8ff' opacity='.4'/%3E%3Crect x='196' y='240' width='120' height='32' rx='16' fill='%236ea8ff'/%3E%3Ccircle cx='256' cy='256' r='26' fill='%234ad07f'/%3E%3C/svg%3E" width="32" height="32" alt="">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Ccircle cx='150' cy='256' r='46' fill='%236ea8ff'/%3E%3Ccircle cx='362' cy='256' r='46' fill='%236ea8ff' opacity='.4'/%3E%3Crect x='196' y='240' width='120' height='32' rx='16' fill='%236ea8ff'/%3E%3Ccircle cx='256' cy='256' r='26' fill='%234ad07f'/%3E%3C/svg%3E" width="16" height="16" alt="">
+    </div>
+    <div class="tab">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%230b0d12'/%3E%3Ccircle cx='150' cy='256' r='46' fill='%236ea8ff'/%3E%3Ccircle cx='362' cy='256' r='46' fill='%236ea8ff' opacity='.4'/%3E%3Crect x='196' y='240' width='120' height='32' rx='16' fill='%236ea8ff'/%3E%3Ccircle cx='256' cy='256' r='26' fill='%234ad07f'/%3E%3C/svg%3E" width="16" height="16" alt="">
+      <span>Auto</span>
+    </div>
+  </figure>
+
+</div>

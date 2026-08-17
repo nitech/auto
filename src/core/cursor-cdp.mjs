@@ -387,7 +387,13 @@ export class CursorWindow {
 /** How close two rows have to be to count as the same one. */
 const SAME_ROW_PX = 12;
 
-const plain = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+/** Hyphens in an agent id (`kimi-k3`) are the spaces in Cursor's menu (`Kimi K3`). */
+const plain = (s) =>
+  String(s || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 
 /**
  * Which menu item does this name mean, and what has to be pressed to get it?
@@ -399,6 +405,10 @@ const plain = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
  * name matching several rows is refused outright. Choosing the wrong model is
  * not the sort of mistake that announces itself.
  *
+ * Agent ids use hyphens (`kimi-k3`) where the menu uses spaces (`Kimi K3`), and
+ * a catalog slug can omit a prefix the menu adds (`grok-4.6` vs "Cursor Grok
+ * 4.6"). Those are the same name.
+ *
  * @param {{ label: string, x: number, y: number }[]} items
  * @param {string} wanted
  * @returns {{ item?: object, press: object[], reason?: string }}
@@ -406,6 +416,8 @@ const plain = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
 export function pickItem(items, wanted) {
   const want = plain(wanted);
   const at = (item) => ({ x: item.x, y: item.y });
+  const onRow = (row, rest) =>
+    items.filter((item) => plain(item.label) === rest && Math.abs(item.y - row.y) <= SAME_ROW_PX);
 
   const exact = items.filter((item) => plain(item.label) === want);
   if (exact.length === 1) return { item: exact[0], press: [at(exact[0])] };
@@ -419,14 +431,37 @@ export function pickItem(items, wanted) {
     .sort((a, b) => plain(b.label).length - plain(a.label).length);
   for (const row of starts) {
     const rest = want.slice(plain(row.label).length).trim();
-    const onRow = items.filter(
-      (item) => plain(item.label) === rest && Math.abs(item.y - row.y) <= SAME_ROW_PX,
-    );
-    if (onRow.length === 1) return { item: onRow[0], press: [at(row), at(onRow[0])] };
-    if (onRow.length > 1) return { press: [], reason: `"${rest}" is on that row more than once` };
+    const badges = onRow(row, rest);
+    if (badges.length === 1) return { item: badges[0], press: [at(row), at(badges[0])] };
+    if (badges.length > 1) return { press: [], reason: `"${rest}" is on that row more than once` };
   }
   if (starts.length) {
-    return { press: [], reason: `"${wanted.slice(plain(starts[0].label).length).trim()}" is not on that row` };
+    const rest = want.slice(plain(starts[0].label).length).trim();
+    return { press: [], reason: `"${rest}" is not on that row` };
+  }
+
+  // `grok-4.6` vs "Cursor Grok 4.6": the request's leading words are the tail
+  // of a row. Two words at least, or a trailing version number would match.
+  const wantParts = want.split(' ').filter(Boolean);
+  const tails = [];
+  for (const item of items) {
+    const label = plain(item.label);
+    const limit = Math.min(label.split(' ').length, wantParts.length);
+    for (let n = limit; n >= 2; n--) {
+      const prefix = wantParts.slice(0, n).join(' ');
+      if (label !== prefix && label.endsWith(` ${prefix}`)) {
+        tails.push({ item, rest: wantParts.slice(n).join(' '), score: prefix.length });
+        break;
+      }
+    }
+  }
+  tails.sort((a, b) => b.score - a.score);
+  const best = tails.filter((t) => t.score === tails[0]?.score);
+  if (best.length === 1) {
+    const { item, rest } = best[0];
+    if (!rest) return { item, press: [at(item)] };
+    const badges = onRow(item, rest);
+    if (badges.length === 1) return { item: badges[0], press: [at(item), at(badges[0])] };
   }
 
   const loose = items.filter((item) => plain(item.label).startsWith(want));
@@ -1204,7 +1239,8 @@ export class CursorCdp {
     if (!at) return { status: 'no-picker', reason: `this window has no ${which} picker` };
 
     // Asking for what it is already on is not a mistake and not work either.
-    if (wanted && flatten(at.label).toLowerCase() === flatten(wanted).toLowerCase()) {
+    // `kimi-k3` and "Kimi K3" are the same name once hyphens are spaces.
+    if (wanted && plain(at.label) === plain(wanted)) {
       return { status: 'already', picker: which, was: at.label };
     }
 
