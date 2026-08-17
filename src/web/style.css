@@ -500,15 +500,14 @@ html[data-standalone] #app {
 
 /* The title outranks the pickers: it keeps a floor of its own so a long model
    name cannot squeeze it to nothing, which is what used to happen. */
-.titles {
-  flex: 1 1 auto;
-  min-width: 96px;
-  overflow: hidden;
+.titles { flex: 1 1 auto; min-width: 96px; overflow: hidden; }
+
+.titles-path {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  min-width: 0;
 }
-.titles-text { min-width: 0; overflow: hidden; }
 
 #topbar-controls { display: flex; gap: 8px; min-width: 0; }
 #topbar-controls select { flex: 0 1 auto; min-width: 0; max-width: 148px; }
@@ -523,7 +522,8 @@ html[data-standalone] #app {
 }
 
 #session-folder {
-  display: block;
+  flex: 1;
+  min-width: 0;
   font-size: 11.5px;
   color: var(--faint);
   font-family: var(--mono);
