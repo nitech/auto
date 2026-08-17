@@ -8,7 +8,7 @@ sources:
   - id: telegram
     resource: /src/core/telegram.mjs
     title: Telegram bridge
-generated: { by: agent, at: 2026-08-16T06:35:00Z }
+generated: { by: agent, at: 2026-08-17T11:30:00Z }
 ---
 
 # Telegram
@@ -21,6 +21,7 @@ rule live under [access](access.md).
 | | Telegram | Web |
 | --- | --- | --- |
 | Role | What is running | What it printed |
+| Your prompts | Shown (from web or Cursor; not duplicated when typed here) | Full transcript |
 | Command output | Command line; exit code on failure | Full stream in the transcript |
 | Folded card | Still shows last lines + exit code | Same expectation |
 | Turn clock | Edited message ends with Worked/Thought for | Working… then the same label |
@@ -31,8 +32,13 @@ Quoting a full build log in Telegram buries the reply it came with — that
 is why command bodies stay on the web. Tool grouping follows
 [tool lanes](tool-lanes.md).
 
-A turn unfolds in one edited message. Photos are downloaded and sent with
-the prompt (desktop: pasted into the window; ACP: image blocks).
+A turn unfolds in one edited message. A failed first send is retried so a
+blip does not leave the phone with a blank turn. Photos are downloaded and
+sent with the prompt (desktop: pasted into the window; ACP: image blocks).
+
+Prompts typed on the web or in Cursor are posted into the Telegram chat so
+the phone stays in the same conversation. Prompts typed in Telegram are
+already there, so they are not pasted back.
 
 ## Commands
 

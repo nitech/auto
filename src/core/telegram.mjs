@@ -25,6 +25,9 @@ const EDIT_MS = 1800;
 /** Cursor's current modes, in the order the IDE lists them. */
 const SESSION_MODES = ['agent', 'plan', 'debug', 'multitask', 'ask'];
 
+/** Same shape the session uses for echo matching — trim and collapse space. */
+const echoKey = (text) => String(text || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
 export function loadTelegramAuth() {
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
   const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
@@ -191,6 +194,8 @@ export class TelegramBridge extends EventEmitter {
     this.asks = new Map();
     /** toolCallId -> latest plan fields, so View Plan sends what we have now */
     this.plans = new Map();
+    /** Recent prompts typed in this Telegram chat — skip mirroring their user_message. */
+    this.ownPrompts = [];
   }
 
   get enabled() {
@@ -246,10 +251,40 @@ export class TelegramBridge extends EventEmitter {
       disable_web_page_preview: true,
       ...extra,
     }).catch((err) => {
-      // "message is not modified" is normal when nothing changed.
-      if (!/not modified/i.test(err.message)) this.emit('log', `edit failed: ${err.message}`);
+      // "message is not modified" is normal when nothing changed — treat as ok
+      // so callers can mark the text rendered and move on.
+      if (/not modified/i.test(err.message)) return { ok: true, notModified: true };
+      this.emit('log', `edit failed: ${err.message}`);
       return null;
     });
+  }
+
+  /**
+   * Words we just posted into the active session from this chat.
+   *
+   * Telegram already shows what you typed here. The same prompt lands in the
+   * transcript as a user_message (and again when Cursor echoes the bubble), so
+   * without this list the bot would paste your own message back at you.
+   */
+  #noteOwnPrompt(text) {
+    const key = echoKey(text);
+    if (!key) return;
+    const now = Date.now();
+    this.ownPrompts = [...(this.ownPrompts || []), { key, at: now }].filter(
+      (e) => now - e.at < 120_000,
+    );
+  }
+
+  /** Consume one matching own-prompt, if any — later identical words from the web still show. */
+  #consumeOwnPrompt(text) {
+    const key = echoKey(text);
+    if (!key || !this.ownPrompts?.length) return false;
+    const now = Date.now();
+    this.ownPrompts = this.ownPrompts.filter((e) => now - e.at < 120_000);
+    const i = this.ownPrompts.findIndex((e) => e.key === key);
+    if (i < 0) return false;
+    this.ownPrompts.splice(i, 1);
+    return true;
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -338,6 +373,8 @@ export class TelegramBridge extends EventEmitter {
     // stop us reading the very button press that unblocks it. A queued send
     // resolves at once, and that is the only word a phone gets that the
     // message did not vanish — it must not also land in the transcript.
+    // Remember the words so the transcript's user_message is not mirrored back.
+    this.#noteOwnPrompt(text);
     Promise.resolve()
       .then(() => this.sessions.prompt(id, { text, images }))
       .then((res) => {
@@ -350,6 +387,9 @@ export class TelegramBridge extends EventEmitter {
         );
       })
       .catch((err) => {
+        // Prompt never reached the transcript — drop the echo skip so a later
+        // identical send from the web is not swallowed.
+        this.#consumeOwnPrompt(text);
         const busy = /already working/i.test(err.message);
         this.send(busy ? 'Still working — /stop to interrupt.' : `⚠️ ${esc(err.message)}`);
       });
@@ -807,7 +847,7 @@ export class TelegramBridge extends EventEmitter {
     this.sessions.on('record', ({ sessionId, record }) => {
       // Only mirror the session Telegram is looking at; the web can watch the rest.
       if (sessionId !== this.sessions.activeId) return;
-      this.#onRecord(sessionId, record).catch((err) =>
+      this.onRecord(sessionId, record).catch((err) =>
         this.emit('log', `render failed: ${err.message}`),
       );
     });
@@ -851,22 +891,42 @@ export class TelegramBridge extends EventEmitter {
     const text = this.#compose(turn);
     if (text === turn.rendered) return;
     turn.sending = true;
-    turn.rendered = text;
     try {
-      if (turn.messageId) await this.edit(turn.messageId, text);
-      else {
+      // Only mark rendered after Telegram accepts the text. A failed first
+      // send used to set rendered anyway, so later flushes with the same body
+      // early-returned and the whole turn never reached the phone.
+      if (turn.messageId) {
+        const edited = await this.edit(turn.messageId, text);
+        if (edited) turn.rendered = text;
+      } else {
         const sent = await this.send(text);
-        turn.messageId = sent?.message_id || null;
+        if (sent?.message_id) {
+          turn.messageId = sent.message_id;
+          turn.rendered = text;
+        }
       }
     } finally {
       turn.sending = false;
     }
   }
 
-  async #onRecord(sessionId, rec) {
+  async onRecord(sessionId, rec) {
     const turn = this.#turn(sessionId);
 
     switch (rec.kind) {
+      case 'user_message': {
+        // Already on the phone if it was typed here; web / Cursor still need a copy.
+        if (this.#consumeOwnPrompt(rec.text)) break;
+        const bits = [];
+        if (rec.text?.trim()) bits.push(esc(rec.text));
+        if (rec.images) {
+          bits.push(`📷 ${rec.images} image${rec.images === 1 ? '' : 's'}`);
+        }
+        if (!bits.length) break;
+        await this.send(bits.join('\n'));
+        break;
+      }
+
       case 'turn_start':
         turn.messageId = null;
         turn.text = '';
@@ -945,7 +1005,13 @@ export class TelegramBridge extends EventEmitter {
             worked: turn.tools.size > 0,
           }).label;
         }
-        await this.#flush(sessionId);
+        // A blip on the last send used to leave the phone with nothing for the
+        // whole turn — retry a couple of times while the body is still here.
+        for (let attempt = 0; attempt < 3; attempt++) {
+          await this.#flush(sessionId);
+          if (turn.rendered === this.#compose(turn)) break;
+          await new Promise((r) => setTimeout(r, 400));
+        }
         break;
 
       // A question, spelled out, with buttons for each option. A card can hold

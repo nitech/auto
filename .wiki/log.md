@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-17
+* **Update**: Telegram posts prompts typed on the web or in Cursor (without echoing ones typed in Telegram), and retries a turn whose first send failed.
 * **Update**: `npm run supervise` runs the setup checklist, flags a missing `agent login` in red, and prints the Tailscale URL (and local port) in colour once the host is up.
 * **Update**: Setup treats `agent status` `Not logged in` as a fail (it used to match `/logged in/` and go green). CLI present but unsigned-in is why the model picker stayed empty.
 * **Update**: Usage sheet "Model" is the last-sent id in `composerData` (`default` for Auto-select — Cursor does not store which model it routed to). Account "By model" is cycle-wide billed `modelIntent`, not this turn.

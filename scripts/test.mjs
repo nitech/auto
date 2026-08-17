@@ -4041,6 +4041,77 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1h. Telegram mirrors web/Cursor prompts, skips its own echo, and retries a
+// turn whose first send failed.
+{
+  const dir = mkdtempSync(join(tmpdir(), 'auto-tg-mirror-'));
+  try {
+    const { TelegramBridge } = await import('../src/core/telegram.mjs');
+    let failed = false;
+
+    const fakeSessions = {
+      activeId: 's1',
+      on() {},
+      get: () => ({ id: 's1', title: 't', folder: ROOT, mode: 'agent', policy: 'ask' }),
+      list: () => [{ id: 's1', title: 't', folder: ROOT, active: true }],
+      prompt: async () => ({ status: 'submitted' }),
+    };
+
+    const bridge = new TelegramBridge({
+      sessions: fakeSessions,
+      stateDir: dir,
+      auth: { token: 'test', chatId: 1 },
+    });
+    const sent = [];
+    let sendFails = 0;
+    bridge.send = async (text) => {
+      if (sendFails > 0) {
+        sendFails -= 1;
+        return null;
+      }
+      sent.push(String(text));
+      return { message_id: sent.length };
+    };
+    bridge.edit = async (_id, text) => {
+      sent.push(`edit:${text}`);
+      return { ok: true };
+    };
+
+    await bridge.onRecord('s1', { kind: 'user_message', text: 'from the web' });
+    if (!sent.some((t) => t.includes('from the web'))) {
+      fail('a prompt typed on the web must appear on Telegram');
+      failed = true;
+    }
+
+    sent.length = 0;
+    await bridge.handleUpdate({
+      update_id: 10,
+      message: { chat: { id: 1 }, text: 'typed on the phone' },
+    });
+    await bridge.onRecord('s1', { kind: 'user_message', text: 'typed on the phone' });
+    if (sent.some((t) => t === 'typed on the phone')) {
+      fail('Telegram must not paste your own message back at you');
+      failed = true;
+    }
+
+    sent.length = 0;
+    sendFails = 1;
+    await bridge.onRecord('s1', { kind: 'turn_start', ts: Date.now() });
+    await bridge.onRecord('s1', { kind: 'agent_delta', text: 'hello from Auto' });
+    await bridge.onRecord('s1', { kind: 'turn_end', ts: Date.now() + 1000, durationMs: 1000 });
+    if (!sent.some((t) => t.includes('hello from Auto'))) {
+      fail('a turn whose first send fails must still reach Telegram on retry');
+      failed = true;
+    }
+
+    if (!failed) ok('v2 telegram: mirrors web prompts and retries failed sends');
+  } catch (e) {
+    fail(`v2 telegram mirror: ${e.message}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // 2. The agent CLI the whole host depends on must be resolvable.
 try {
   const { resolveCursorAgent } = await import('../src/acp/resolve.mjs');
