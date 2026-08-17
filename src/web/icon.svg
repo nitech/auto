@@ -2,13 +2,14 @@
   <title>Auto</title>
   <!--
     Full-bleed field so iOS and Android can apply their own mask. The mark
-    stays inside the inner 80% (maskable safe zone). An open ring with a live
-    pip at 12 o'clock — Auto is the always-on remote; the circuit closes when
-    it is up. Stroke and pip are sized to survive a 16×16 tab. Geometry is
-    shared with scripts/raster-icon.mjs.
+    stays inside the inner 80% (maskable safe zone). A capital A drawn as two
+    rounded strokes, its crossbar replaced by a dot in the app accent — the
+    agent sitting inside Auto's frame. Strokes are sized to survive a 16×16
+    tab. Geometry is shared with scripts/raster-icon.mjs.
   -->
   <rect width="512" height="512" fill="#0b0d12"/>
-  <path d="M318.22 122.97A144 144 0 1 1 193.78 122.97"
-        fill="none" stroke="#6ea8ff" stroke-width="64" stroke-linecap="round"/>
-  <circle cx="256" cy="112" r="32" fill="#4ad07f"/>
+  <path d="M140 372 L256 132 L372 372"
+        fill="none" stroke="#dfe3ea" stroke-width="68"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="256" cy="356" r="32" fill="#6ea8ff"/>
 </svg>
