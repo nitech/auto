@@ -3,11 +3,10 @@
   <!--
     Full-bleed field so iOS and Android can apply their own mask. The mark
     stays inside the inner 80% (maskable safe zone). A capital A as two round-
-    capped strokes, inner apex filleted to match the outer join, crossbar a
-    dot centred in the hole with equal clearance to the walls and the arc.
-    Legs are separate strokes so no join edge traces the old sharp V; the
-    fillet pad closes through the solid so its only visible edge is the arc.
-    Geometry is shared with scripts/raster-icon.mjs.
+    capped strokes, inner apex filleted to match the outer join, the dot on
+    the baseline between the feet. Legs are separate strokes so no join edge
+    traces the old sharp V; the fillet pad closes through the solid so its
+    only visible edge is the arc. Geometry is shared with scripts/raster-icon.mjs.
   -->
   <rect width="512" height="512" fill="#0b0d12"/>
   <path d="M140 372 L256 132" fill="none" stroke="#dfe3ea" stroke-width="68" stroke-linecap="round"/>
@@ -15,5 +14,5 @@
   <!-- Fillet pad: arc is the hole ceiling; top edge sits buried in the solid. -->
   <path d="M223.59 277.19 A36 36 0 0 1 288.41 277.19 L295 155 L217 155 Z"
         fill="#dfe3ea"/>
-  <circle cx="256" cy="301" r="32" fill="#6ea8ff"/>
+  <circle cx="256" cy="372" r="32" fill="#6ea8ff"/>
 </svg>

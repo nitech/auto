@@ -23,8 +23,8 @@ export const STROKE_W = 68;
 /** Radius of the circular fillet that rounds the inner apex of the A.
  *  Matched to the outer join (half the stroke) so both ends of the chevron read round. */
 export const FILLET_R = 36;
-/** Dot centred in the hole: equal visible gutter to the side walls and the fillet arc. */
-export const DOT_C = [256, 301];
+/** Dot on the baseline between the feet. */
+export const DOT_C = [256, 372];
 export const DOT_R = 32;
 /** How far the fillet pad overlaps the capsules, to hide the AA seam on the old V. */
 export const FILLET_OVERLAP = 2;
