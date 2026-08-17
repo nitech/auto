@@ -1670,8 +1670,11 @@ function applyMeta(meta) {
   // A session that has never run has no model yet; leave the picker as-is.
   if (meta.model) selectModel(meta.model, meta.modelName);
   setBusy(meta.status === 'busy');
-  els.status.textContent = meta.status === 'busy' ? 'working' : meta.status || 'idle';
-  els.status.className = `chip ${meta.status === 'busy' ? 'busy' : meta.status === 'error' ? 'error' : ''}`;
+  const label = meta.status === 'busy' ? 'working' : meta.status || 'idle';
+  const kind = meta.status === 'busy' ? 'busy' : meta.status === 'error' ? 'error' : 'idle';
+  els.status.className = `dot ${kind}`;
+  els.status.title = label;
+  els.status.setAttribute('aria-label', label);
 }
 
 /**

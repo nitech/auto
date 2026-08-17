@@ -108,8 +108,11 @@
     <header id="topbar">
       <button id="rail-toggle" class="icon" title="Sessions" aria-label="Sessions">☰</button>
       <div class="titles">
-        <h1 id="session-title">—</h1>
-        <span id="session-folder"></span>
+        <span id="status" class="dot idle" title="idle" role="status" aria-label="idle"></span>
+        <div class="titles-text">
+          <h1 id="session-title">—</h1>
+          <span id="session-folder"></span>
+        </div>
       </div>
       <!-- The policy picker lives here on a wide screen and in the sheet on a
           narrow one. app.js moves this very element, so there is only ever one.
@@ -122,7 +125,6 @@
           <option value="auto">Auto-approve</option>
         </select>
       </span>
-      <span id="status" class="chip">idle</span>
       <!-- Paths from Lucide (ISC): https://lucide.dev — app-window, square-terminal -->
       <span class="topbar-tools">
         <button id="browser-toggle" class="icon" title="Browser" aria-label="Browser" aria-pressed="false">
