@@ -1603,8 +1603,9 @@ html[data-standalone] .composer-controls select {
 
 /**
  * Under the header: Chat (always first, no ×) plus Browser and each shell.
- * Slim browser-style tabs that sit on the bar and merge into the panel below
- * when active. Scrolls sideways when they overflow.
+ * Slim browser-style tabs. No rule under the strip — a line there always
+ * cut through the active tab (overflow-x clips any cover). Separation is
+ * the bar's background vs the panel. Scrolls sideways when tabs overflow.
  */
 /* No rule between the title bar and the tab strip — they read as one chrome. */
 #main:has(#view-tabs:not([hidden])) #topbar {
@@ -1619,7 +1620,7 @@ html[data-standalone] .composer-controls select {
   min-width: 0;
   height: 28px;
   padding: 0 8px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: none;
   background: var(--bg-2);
   overflow-x: auto;
   scrollbar-width: none;
@@ -1635,7 +1636,6 @@ html[data-standalone] .composer-controls select {
   flex: 0 0 auto;
   max-width: 140px;
   height: 26px;
-  margin-bottom: -1px; /* sit on the bar rule; active covers it */
   padding: 0 10px;
   border: 1px solid transparent;
   border-bottom: none;
@@ -1646,8 +1646,6 @@ html[data-standalone] .composer-controls select {
   line-height: 1;
   cursor: pointer;
   white-space: nowrap;
-  position: relative;
-  z-index: 0;
 }
 .view-tab + .view-tab {
   margin-left: 1px;
@@ -1657,13 +1655,10 @@ html[data-standalone] .composer-controls select {
   background: color-mix(in srgb, var(--bg-3) 70%, transparent);
 }
 .view-tab.active {
-  z-index: 1;
   background: var(--bg);
   border-color: var(--line);
   border-bottom: none;
   color: var(--text);
-  /* Cover the strip's bottom rule so nothing runs under the active tab. */
-  box-shadow: 0 1px 0 var(--bg);
 }
 .view-tab-label {
   overflow: hidden;
