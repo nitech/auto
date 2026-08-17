@@ -1798,6 +1798,18 @@ function attach(sessionId) {
   sendOp({ op: 'attach', sessionId, fromSeq: 0 });
 }
 
+/** Rail header + Settings Host both read from this. */
+function setConn(kind, label) {
+  els.conn.className = kind === 'ok' ? 'dot ok'
+    : kind === 'error' ? 'dot error'
+    : 'dot';
+  els.connLabel.textContent = label;
+  els.conn.title = label;
+  if (!els.sheet.hidden) {
+    $('sheet-conn').textContent = `${label} · ${location.host}`;
+  }
+}
+
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   // Say what is already on screen. The host replays the moment it accepts the
@@ -1819,14 +1831,10 @@ function connect() {
   const ws = new WebSocket(`${proto}://${location.host}/${query ? `?${query}` : ''}`);
   state.ws = ws;
 
-  ws.onopen = () => {
-    els.conn.className = 'dot ok';
-    els.connLabel.textContent = 'connected';
-  };
+  ws.onopen = () => setConn('ok', 'Connected');
 
   ws.onclose = () => {
-    els.conn.className = 'dot error';
-    els.connLabel.textContent = 'reconnecting…';
+    setConn('error', 'Reconnecting…');
     setTimeout(connect, 1000);
   };
 
@@ -1947,7 +1955,7 @@ function connect() {
     }
 
     if (msg.type === 'host.restarting') {
-      els.connLabel.textContent = 'restarting';
+      setConn('', 'Restarting…');
       return;
     }
 

@@ -72,6 +72,10 @@
       </svg>
       <span class="brand">
         <span class="brand-name">Auto</span>
+        <span class="rail-status" role="status" aria-live="polite">
+          <span id="conn" class="dot"></span>
+          <span id="conn-label">Connecting…</span>
+        </span>
         <span class="brand-host" id="host-label">…</span>
       </span>
       <button id="new-session" class="icon" title="New session" aria-label="New session">
@@ -87,9 +91,6 @@
     </div>
     <div id="session-list"></div>
     <div class="rail-foot">
-      <div class="rail-status">
-        <span id="conn" class="dot"></span><span id="conn-label">connecting</span>
-      </div>
       <button type="button" id="sheet-open" class="rail-settings" title="Settings" aria-label="Settings">
         <!-- Cog path adapted from Lucide (ISC): https://lucide.dev -->
         <svg class="gear" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
