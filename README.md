@@ -18,7 +18,7 @@ Default `AUTO_POLICY=auto` lets the agent run commands without asking. On a shar
 
 ## Install (you already have Cursor)
 
-Windows-first. You need the Cursor **app**; the **agent CLI** is separate and the setup script will tell you if it is missing.
+Windows-first. You need the Cursor **app** started with its debug port, and the **agent CLI** (the setup script will tell you if the CLI is missing).
 
 ```powershell
 git clone https://github.com/nitech/auto.git
@@ -26,6 +26,14 @@ cd auto
 npm install          # also prints a setup checklist
 npm run supervise    # runs the checklist again, then keeps Auto up
 ```
+
+Start Cursor with `--remote-debugging-port=9222`. Without that, Auto cannot type into the IDE. If Cursor is already running *without* the port, Auto will quit it and start it again — that closes every window, so quit it yourself first if you have unsaved work.
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\cursor\Cursor.exe" --remote-debugging-port=9222
+```
+
+`npm run bridge` should say `debug port … listening`.
 
 `npm run setup` is the same checklist without starting the host — useful after installing Tailscale or the CLI. `npm run supervise` will tell you in colour if `agent login` is still required, and prints the Tailscale URL once Auto is up.
 
