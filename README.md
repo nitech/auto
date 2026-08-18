@@ -1,4 +1,6 @@
-![Auto — Cursor, phone web, and Telegram in the same chat](docs/auto.gif)
+<video src="docs/auto.mp4" controls muted loop playsinline>
+  <a href="docs/auto.mp4">Auto — Cursor, phone web, and Telegram in the same chat</a>
+</video>
 
 # <img src="src/web/icon.svg" width="40" height="40" alt=""> Auto
 
