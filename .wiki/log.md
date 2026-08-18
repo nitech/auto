@@ -1,5 +1,8 @@
 # Directory Update Log
 
+## 2026-08-18
+* **Update**: Markdown-only edits skip `npm test`; skill `SKILL.md` and any non-markdown file still run the suite.
+
 ## 2026-08-17
 * **Update**: Mode/model chips scale as one group (no overlap); still ~75% with a 16px font so iOS Safari does not focus-zoom.
 * **Update**: Mode/model chips draw at ~75% size via `transform: scale(0.75)` while keeping a 16px font so iOS Safari does not focus-zoom; Home Screen PWA still uses true 12px.

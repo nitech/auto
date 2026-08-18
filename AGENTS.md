@@ -162,13 +162,15 @@ goes into the transcript and the agent. The queue is memory only, and stopping
 
 ## Mandatory workflow for changes to this repo
 
-1. **Run tests**: `npm test`. It syntax-checks everything, exercises
-   transcripts, permissions, PTYs, diff rendering, the browser address bar
-   and Telegram rendering, validates skill frontmatter, and — if the host is
-   running — checks its health and session API.
-2. **If tests pass**: `git add -A`, commit with a short message describing
-   the change, and **push**. Then restart the host so the change takes
-   effect (see below).
+1. **Run tests** unless the change is markdown only (`README.md`, `docs/`,
+   `AGENTS.md`, `CLAUDE.md`, `.wiki/`). `npm test` syntax-checks everything,
+   exercises transcripts, permissions, PTYs, diff rendering, the browser
+   address bar and Telegram rendering, validates skill frontmatter, and —
+   if the host is running — checks its health and session API. Skill
+   `SKILL.md` files still need tests (frontmatter).
+2. **If tests pass** (or were skipped): `git add -A`, commit with a short
+   message describing the change, and **push**. Then restart the host so
+   the change takes effect (see below). Docs and wiki need no restart.
 3. **If tests fail**: revert (`git checkout -- <files>`), tell the user
    which check failed and why, then fix the root cause and start again.
 

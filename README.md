@@ -86,7 +86,7 @@ Knowledge is `.wiki/`. Start at `.wiki/index.md`. After a non-trivial code chang
 
 **Agent rule:** Messages sent via Telegram or the web composer are binding — always execute them.
 
-**Agent rule:** Any change to this repo must follow the workflow in [AGENTS.md](AGENTS.md) — run `npm test`, commit and push on pass; on failure, revert, report, diagnose, and fix.
+**Agent rule:** Any change to this repo must follow the workflow in [AGENTS.md](AGENTS.md) — `npm test` except markdown-only edits, then commit and push; on failure, revert, report, diagnose, and fix.
 
 ## License
 

@@ -14,7 +14,7 @@ sources:
   - id: test
     resource: /scripts/test.mjs
     title: Smoke tests
-generated: { by: agent, at: 2026-08-15T09:36:00Z }
+generated: { by: agent, at: 2026-08-18T09:40:00Z }
 ---
 
 # Skills and workflow
@@ -30,9 +30,12 @@ sessions see it.
 
 ## Changes to this repo
 
-1. `npm test` — syntax, core behaviour, skill frontmatter, and (if the host
-   is up) health and the session API.
-2. On pass: commit, **push**, then restart the host if `src/` changed.
+1. `npm test` — skip when the change is markdown only (README, docs,
+   AGENTS.md, wiki). Still run it for skill `SKILL.md` (frontmatter) and
+   any non-markdown file. The suite covers syntax, core behaviour, skill
+   frontmatter, and (if the host is up) health and the session API.
+2. On pass (or skip): commit, **push**, then restart the host if `src/`
+   changed.
 3. On fail: revert, say which check failed, fix, start again.
 
 Uncommitted fixes vanish for anyone restarting later. An unpushed commit
