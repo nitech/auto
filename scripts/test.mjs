@@ -1365,6 +1365,22 @@ if (existsSync(SRC)) {
       picking = fail('Auto has no badge to strip') ?? true;
     }
 
+    // Grok's row bundles two badge words into one press ("High Fast"), not
+    // two separate ones. Either word on its own must still find that badge.
+    const grok = [
+      { label: 'Cursor Grok 4.6', x: 1, y: 10 },
+      { label: 'High Fast', x: 9, y: 10 },
+    ];
+    if (pickItem(grok, 'grok-4.6 Fast').press.length !== 2) {
+      picking = fail('grok-4.6 Fast should press the row then the combined badge') ?? true;
+    }
+    if (pickItem(grok, 'grok-4.6 High').item !== grok[1]) {
+      picking = fail('grok-4.6 High should also land on the combined High Fast badge') ?? true;
+    }
+    if (pickItem(grok, 'grok-4.6 Max').item) {
+      picking = fail('a word not on the badge is not a match') ?? true;
+    }
+
     // Cursor's Auto-on menu hides named models until search is typed.
     const autoOn = new FakeWindow(
       { threadId: THREAD, hasComposer: true },

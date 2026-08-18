@@ -17,7 +17,7 @@ sources:
   - id: clipboard
     resource: /src/core/clipboard.mjs
     title: Image paste via clipboard
-generated: { by: agent, at: 2026-08-18T11:10:00Z }
+generated: { by: agent, at: 2026-08-18T11:35:00Z }
 ---
 
 # The Cursor window
@@ -70,10 +70,14 @@ The pickers beside the chat box ignore a dispatched click; they open only
 on input the window believes came from a mouse, so they are pressed *where
 they are*. Models are a `role=menu` (`data-testid="model-picker-menu"`);
 modes are the @-mention popover. A model row is named from
-`model-item-*` minus Edit and the badge, because "Composer" and "2.5"
+`model-item-*` minus Edit and the badges, because "Composer" and "2.5"
 live in separate children. Mode items are still own-text, never the
 subtree — or "Opus 5" holding a "High" badge reads as "Opus 5 HighEdit".
-A variant is the row then the badge on it.
+A variant is the row then the badge on it — except a badge can itself hold
+more than one word: Grok's row says "High Fast" in a single span, one
+press for both, not two. Reading it as one word only left "Fast" glued to
+the next row's "New" tag into "FastNew" and Grok unreachable; either word
+in "High Fast" now finds that same press.
 
 The phone picker sends agent ids (`kimi-k3[reasoning=max]`), not menu
 words. The catalog often names that row `kimi-k3` too. Hyphens are spaces

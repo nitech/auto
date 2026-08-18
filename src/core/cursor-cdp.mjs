@@ -428,8 +428,20 @@ const plain = (s) =>
 export function pickItem(items, wanted) {
   const want = plain(wanted);
   const at = (item) => ({ x: item.x, y: item.y });
-  const onRow = (row, rest) =>
-    items.filter((item) => plain(item.label) === rest && Math.abs(item.y - row.y) <= SAME_ROW_PX);
+  // A badge can bundle more than one word in one press — Grok's row offers
+  // "High Fast" together, not separately — so "grok-4.6 Fast" has to find
+  // that badge by one of its words, not by the whole phrase matching.
+  const onRow = (row, rest) => {
+    const sameRow = items.filter((item) => item !== row && Math.abs(item.y - row.y) <= SAME_ROW_PX);
+    const exactBadge = sameRow.filter((item) => plain(item.label) === rest);
+    if (exactBadge.length) return exactBadge;
+    const restWords = rest.split(' ').filter(Boolean);
+    if (!restWords.length) return [];
+    return sameRow.filter((item) => {
+      const words = plain(item.label).split(' ').filter(Boolean);
+      return restWords.every((w) => words.includes(w));
+    });
+  };
 
   const exact = items.filter((item) => plain(item.label) === want);
   if (exact.length === 1) return { item: exact[0], press: [at(exact[0])] };

@@ -80,6 +80,8 @@ value as setup documentation is fine.
   When the chat is on Auto, that menu hides every named model behind a search
   box — Auto types the stem (`composer-2.5 Fast` → `composer 2.5`) into it,
   and only once the caret is actually there, or the query becomes a message.
+  A badge can also bundle more than one word in one press — Grok's row offers
+  "High Fast" together, not separately — so either word finds that same press.
   Nothing is believed from the click: Cursor's stored record keeps the model a
   chat was last *sent* with, so the word on the picker is the proof, and asking
   for what it is already on presses nothing.

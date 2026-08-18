@@ -546,11 +546,16 @@ ${HELPERS}
  *
  * The model picker is its own widget (`data-testid="model-picker-menu"`). A
  * row's name is split across children — "Composer" in a highlight, "2.5" next
- * to it, "Fast" as a badge, "Edit" as a nested menuitem — so walking every
+ * to it, badges after that, "Edit" as a nested menuitem — so walking every
  * text node produced names no person would use, and Auto's description
  * ("Balanced quality and speed…") read as a second model. Rows are taken from
- * `model-item-*` test ids, named by the words minus Edit and the badge, with
- * the badge still its own pressable thing.
+ * `model-item-*` test ids, named by the words minus Edit and the badges, with
+ * the badges still their own pressable thing.
+ *
+ * A badge element can hold more than one word — Grok's row says "High Fast"
+ * in a single span, not two. That is one press, not a press per word: reading
+ * it as one word only ("high" not matching, "fast" glued onto the next
+ * sibling's "New" tag into "FastNew") is what left Grok unreachable.
  *
  * Mode menus are still a bag of words: an item is named by the text belonging
  * to it and not to its children, so "Opus 5" holding "High" does not become
@@ -564,7 +569,8 @@ export const MENU_ITEMS = `(() => {
       .replace(/\\s+/g, ' ')
       .trim();
   const shortcut = /^(Ctrl|Alt|Shift|Cmd|⌘|⌥|⇧)[+\\-]?/i;
-  const badge = /^(fast|max|high|medium)$/i;
+  const badgeWord = /^(fast|max|high|medium)$/i;
+  const isBadge = (words) => words.length > 0 && words.every((w) => badgeWord.test(w));
   const at = (el) => {
     const rect = el.getBoundingClientRect();
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, w: rect.width, h: rect.height };
@@ -596,19 +602,26 @@ export const MENU_ITEMS = `(() => {
     }
     for (const selector of ${list(SELECTORS.modelItem)}) {
       for (const el of modelMenu.querySelectorAll(selector)) {
-        const raw = clean(el.textContent).replace(/\\s*Edit\\s*$/i, '');
-        const name = raw.replace(/\\s+(Fast|Max|High|Medium|Extra High)$/i, '').trim();
         const nameEl =
           [...el.querySelectorAll('*')].find((kid) =>
             /item-content-name/.test(String(kid.className?.baseVal ?? kid.className ?? '')),
           ) || el;
         const state = el.getAttribute('aria-checked') ?? el.getAttribute('aria-selected');
-        push(items, name, nameEl, { current: state === 'true' });
-        for (const kid of el.querySelectorAll('*')) {
-          if (kid.closest('[data-testid="parameter-edit-btn"]')) continue;
-          const word = clean(ownText(kid));
-          if (badge.test(word)) push(items, word, kid);
-        }
+        const badgeEls = [...el.querySelectorAll('*')].filter((kid) => {
+          if (kid.closest('[data-testid="parameter-edit-btn"], [data-testid="reset-parameters-btn"]')) return false;
+          return isBadge(clean(ownText(kid)).split(' ').filter(Boolean));
+        });
+        // A wrapper repeating its own child's words is not a second badge.
+        const leaf = badgeEls.filter((kid) => !badgeEls.some((o) => o !== kid && kid.contains(o)));
+
+        // The name is the row's words with every trailing badge word popped —
+        // however many elements Cursor split them across, and however many of
+        // them there are (Grok pops "Fast" then "High").
+        const words = clean(nameEl.textContent).split(' ').filter(Boolean);
+        while (words.length > 1 && badgeWord.test(words[words.length - 1])) words.pop();
+        push(items, words.join(' '), nameEl, { current: state === 'true' });
+
+        for (const kid of leaf) push(items, clean(ownText(kid)), kid);
       }
     }
     return { open: 1, items };

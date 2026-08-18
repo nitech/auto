@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-18
+* **Update**: Picking a model whose row bundles two badge words into one span (Grok's "High Fast") now works — either word finds that same press, instead of the row going unmatched and its badge text gluing onto the next row's "New" tag.
 * **Update**: Picking a named model from the phone works while Cursor is on Auto — the menu hides every other row until Auto types the name into its search box.
 * **Update**: Markdown-only edits skip `npm test`; skill `SKILL.md` and any non-markdown file still run the suite.
 
