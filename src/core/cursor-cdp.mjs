@@ -38,6 +38,8 @@ import {
   FACTS,
   FOCUS_COMPOSER,
   MENU_ITEMS,
+  MENU_SEARCH,
+  MENU_SEARCH_FOCUSED,
   NEW_AGENT,
   QUEUE,
   SELECTORS,
@@ -356,6 +358,16 @@ export class CursorWindow {
     return this.evaluate(MENU_ITEMS);
   }
 
+  /** Where the model menu's search box is, if that menu is open. */
+  menuSearch() {
+    return this.evaluate(MENU_SEARCH);
+  }
+
+  /** Whether the caret is in the model menu's search box, not the chat box. */
+  menuSearchFocused() {
+    return this.evaluate(MENU_SEARCH_FOCUSED);
+  }
+
   /** The same, by pressing the stop icon beside the chat box. */
   clickStopIcon() {
     return this.evaluate(`(() => {
@@ -468,6 +480,20 @@ export function pickItem(items, wanted) {
   if (loose.length === 1) return { item: loose[0], press: [at(loose[0])] };
 
   return { press: [], reason: `nothing in the menu is called "${wanted}"` };
+}
+
+/**
+ * What to type into the model menu's search box to bring a name into view.
+ *
+ * Auto hides every named model until the box has a query. The badge is not
+ * part of that query — "composer-2.5 Fast" is searched as "composer 2.5".
+ */
+export function menuSearchStem(wanted) {
+  const parts = plain(wanted).split(' ').filter(Boolean);
+  while (parts.length && /^(fast|max|high|medium)$/i.test(parts[parts.length - 1])) {
+    parts.pop();
+  }
+  return parts.join(' ');
 }
 
 /** Cursor's windows are the pages with a workbench in them. */
@@ -1248,7 +1274,7 @@ export class CursorCdp {
     const held = wanted ? await this.#holdQueue(window) : [];
 
     await window.mouseAt(at);
-    const menu = await this.#menuOpened(window);
+    let menu = await this.#menuOpened(window);
     if (!menu.items.length) {
       await this.#closeMenu(window);
       await this.#putBackQueue(window, held);
@@ -1261,7 +1287,19 @@ export class CursorCdp {
       return { status: 'ok', picker: which, was: at.label, options };
     }
 
-    const found = pickItem(menu.items, wanted);
+    let found = pickItem(menu.items, wanted);
+    // Named models are hidden while Auto is on; typing the stem into search
+    // brings the matching row in. Never type Auto — that is the toggle.
+    if (!found.item && which === 'model' && !/^auto$/i.test(plain(wanted))) {
+      const stem = menuSearchStem(wanted);
+      if (stem && (await this.#typeMenuSearch(window, stem))) {
+        menu = await this.#menuOpened(window, wanted);
+        found = pickItem(menu.items, wanted);
+        for (const label of menu.items.map((item) => item.label)) {
+          if (!options.includes(label)) options.push(label);
+        }
+      }
+    }
     if (!found.item) {
       await this.#closeMenu(window);
       await this.#putBackQueue(window, held);
@@ -1313,13 +1351,28 @@ export class CursorCdp {
     return [];
   }
 
+  /**
+   * Type into the model menu's search box, but only once the caret is actually
+   * there. insertText otherwise lands in the chat box, which is a message.
+   */
+  async #typeMenuSearch(window, stem) {
+    const at = await window.menuSearch();
+    if (!at) return false;
+    await window.mouseAt(at);
+    await wait(this.settleMs);
+    if (!(await window.menuSearchFocused())) return false;
+    await window.insertText(stem);
+    return true;
+  }
+
   /** Wait for a menu to appear, and say what is in it. */
-  async #menuOpened(window) {
+  async #menuOpened(window, matching) {
     let seen = { open: 0, items: [] };
     for (let look = 0; look < MENU_LOOKS; look += 1) {
       await wait(this.settleMs);
       seen = (await window.menuItems()) || seen;
-      if (seen.items.length) return seen;
+      if (!seen.items.length) continue;
+      if (!matching || pickItem(seen.items, matching).item) return seen;
     }
     return seen;
   }

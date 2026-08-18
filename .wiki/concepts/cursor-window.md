@@ -17,7 +17,7 @@ sources:
   - id: clipboard
     resource: /src/core/clipboard.mjs
     title: Image paste via clipboard
-generated: { by: agent, at: 2026-08-17T07:20:00Z }
+generated: { by: agent, at: 2026-08-18T11:10:00Z }
 ---
 
 # The Cursor window
@@ -68,16 +68,24 @@ new selectors.
 
 The pickers beside the chat box ignore a dispatched click; they open only
 on input the window believes came from a mouse, so they are pressed *where
-they are*. Models are a `role=menu`; modes are the @-mention popover. An
-item is named by its own text, never its subtree — or "Opus 5" holding a
-"High" badge reads as "Opus 5 HighEdit". A variant is the row then the
-badge on it.
+they are*. Models are a `role=menu` (`data-testid="model-picker-menu"`);
+modes are the @-mention popover. A model row is named from
+`model-item-*` minus Edit and the badge, because "Composer" and "2.5"
+live in separate children. Mode items are still own-text, never the
+subtree — or "Opus 5" holding a "High" badge reads as "Opus 5 HighEdit".
+A variant is the row then the badge on it.
 
 The phone picker sends agent ids (`kimi-k3[reasoning=max]`), not menu
 words. The catalog often names that row `kimi-k3` too. Hyphens are spaces
 (`kimi-k3` is "Kimi K3"), a slug can omit a prefix the menu adds
 (`grok-4.6` is "Cursor Grok 4.6"), and `reasoning=max` / `fast=true` are
 the Max and Fast badges. `effort=high` is not — High sits on several rows.
+
+When the chat is on Auto, Cursor's menu shows only that toggle and a
+search box — named models are hidden until the box has a query. Auto
+types the stem (`composer-2.5 Fast` → `composer 2.5`) into search, then
+presses the row. It does not type until the caret is in that box, or the
+query would land in the chat.
 
 Nothing is believed from the click: Cursor's stored record keeps the model
 a chat was last *sent* with, so the word on the picker is the proof, and

@@ -77,6 +77,9 @@ value as setup documentation is fine.
   each other (models are a `role=menu`, modes are the @-mention popover) and an
   item is named by its own text, never its subtree, or "Opus 5" holding a "High"
   badge reads as "Opus 5 HighEdit". A variant is the row then the badge on it.
+  When the chat is on Auto, that menu hides every named model behind a search
+  box — Auto types the stem (`composer-2.5 Fast` → `composer 2.5`) into it,
+  and only once the caret is actually there, or the query becomes a message.
   Nothing is believed from the click: Cursor's stored record keeps the model a
   chat was last *sent* with, so the word on the picker is the proof, and asking
   for what it is already on presses nothing.

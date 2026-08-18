@@ -84,14 +84,29 @@ export const SELECTORS = {
   modelName: ['.ui-model-picker__trigger-text'],
   modelButton: ['button[aria-haspopup="menu"]'],
   /**
+   * Cursor's model picker menu, as of the Auto-toggle redesign.
+   *
+   * When Auto is on, the named models are not listed — they appear once the
+   * search box is typed in. Rows are `data-testid="model-item-<id>"`.
+   */
+  modelMenu: ['[data-testid="model-picker-menu"]'],
+  modelSearch: [
+    '[data-component="menu-search-row"] input',
+    'input[placeholder="Search models"]',
+    'input[aria-label="Search menu items"]',
+  ],
+  autoToggle: ['[data-testid="auto-mode-toggle"]'],
+  modelItem: ['[data-testid^="model-item-"]'],
+  /**
    * A menu, once one is open.
    *
    * The two pickers do not agree on what a menu is: models open a proper
-   * `role=menu`, modes open the same popover Cursor uses for @-mentions. Both
-   * are listed, and neither is in the chat pane — they render near the root of
-   * the page, so a menu is looked for in the whole document.
+   * `role=menu` (the picker itself is `data-testid="model-picker-menu"`),
+   * modes open the same popover Cursor uses for @-mentions. Both are listed,
+   * and neither is in the chat pane — they render near the root of the page,
+   * so a menu is looked for in the whole document.
    */
-  menu: ['[role="menu"]', '.typeahead-popover'],
+  menu: ['[data-testid="model-picker-menu"]', '[role="menu"]', '.typeahead-popover'],
   /**
    * Things that look pressable and are not controls.
    *
@@ -529,13 +544,17 @@ ${HELPERS}
 /**
  * What the open menu offers, and where each of those things is.
  *
- * An item is named by the words belonging to it and not to its children. A model
- * row is written as its name with badges inside it — "Opus 5" holding a "High" —
- * so reading whole subtrees produced names no menu ever showed, like "Opus 5
- * HighEdit", and made "Auto" ambiguous with the wrapper repeating it. Taking
- * only an element's own text gives the row its name, each badge its own, and
- * every one of them a place to be pressed, which is what choosing a variant
- * needs. The keystroke printed next to a row is not an item.
+ * The model picker is its own widget (`data-testid="model-picker-menu"`). A
+ * row's name is split across children — "Composer" in a highlight, "2.5" next
+ * to it, "Fast" as a badge, "Edit" as a nested menuitem — so walking every
+ * text node produced names no person would use, and Auto's description
+ * ("Balanced quality and speed…") read as a second model. Rows are taken from
+ * `model-item-*` test ids, named by the words minus Edit and the badge, with
+ * the badge still its own pressable thing.
+ *
+ * Mode menus are still a bag of words: an item is named by the text belonging
+ * to it and not to its children, so "Opus 5" holding "High" does not become
+ * "Opus 5 HighEdit".
  */
 export const MENU_ITEMS = `(() => {
   const clean = (s) =>
@@ -545,6 +564,55 @@ export const MENU_ITEMS = `(() => {
       .replace(/\\s+/g, ' ')
       .trim();
   const shortcut = /^(Ctrl|Alt|Shift|Cmd|⌘|⌥|⇧)[+\\-]?/i;
+  const badge = /^(fast|max|high|medium)$/i;
+  const at = (el) => {
+    const rect = el.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, w: rect.width, h: rect.height };
+  };
+  const ownText = (el) =>
+    [...el.childNodes]
+      .filter((node) => node.nodeType === 3)
+      .map((node) => node.textContent)
+      .join(' ');
+  const push = (items, label, el, extra = {}) => {
+    const name = clean(label);
+    if (!name) return;
+    const pos = at(el);
+    if (!pos.w || !pos.h) return;
+    if (items.some((kept) => kept.label === name && Math.abs(kept.y - pos.y) < 2)) return;
+    items.push({ label: name, x: pos.x, y: pos.y, ...extra });
+  };
+
+  const modelMenu = ${list(SELECTORS.modelMenu)}
+    .map((s) => document.querySelector(s))
+    .find((el) => el && at(el).w && at(el).h);
+  if (modelMenu) {
+    const items = [];
+    const toggle = ${list(SELECTORS.autoToggle)}
+      .map((s) => modelMenu.querySelector(s))
+      .find(Boolean);
+    if (toggle) {
+      push(items, 'Auto', toggle, { current: toggle.getAttribute('aria-checked') === 'true' });
+    }
+    for (const selector of ${list(SELECTORS.modelItem)}) {
+      for (const el of modelMenu.querySelectorAll(selector)) {
+        const raw = clean(el.textContent).replace(/\\s*Edit\\s*$/i, '');
+        const name = raw.replace(/\\s+(Fast|Max|High|Medium|Extra High)$/i, '').trim();
+        const nameEl =
+          [...el.querySelectorAll('*')].find((kid) =>
+            /item-content-name/.test(String(kid.className?.baseVal ?? kid.className ?? '')),
+          ) || el;
+        const state = el.getAttribute('aria-checked') ?? el.getAttribute('aria-selected');
+        push(items, name, nameEl, { current: state === 'true' });
+        for (const kid of el.querySelectorAll('*')) {
+          if (kid.closest('[data-testid="parameter-edit-btn"]')) continue;
+          const word = clean(ownText(kid));
+          if (badge.test(word)) push(items, word, kid);
+        }
+      }
+    }
+    return { open: 1, items };
+  }
 
   const menus = ${list(SELECTORS.menu)}
     .flatMap((s) => [...document.querySelectorAll(s)])
@@ -556,16 +624,12 @@ export const MENU_ITEMS = `(() => {
   const items = [];
   for (const menu of menus) {
     for (const el of menu.querySelectorAll('*')) {
-      const own = [...el.childNodes]
-        .filter((node) => node.nodeType === 3)
-        .map((node) => node.textContent)
-        .join(' ');
-      const label = clean(own);
+      const label = clean(ownText(el));
       if (!label || label.length > 60 || shortcut.test(label)) continue;
-      const rect = el.getBoundingClientRect();
-      if (!rect.width || !rect.height) continue;
-      const x = rect.left + rect.width / 2;
-      const y = rect.top + rect.height / 2;
+      const pos = at(el);
+      if (!pos.w || !pos.h) continue;
+      const x = pos.x;
+      const y = pos.y;
       // The same words in the same place are one item however many elements
       // Cursor built it from.
       if (items.some((kept) => kept.label === label && Math.abs(kept.y - y) < 2)) continue;
@@ -578,6 +642,40 @@ export const MENU_ITEMS = `(() => {
     }
   }
   return { open: menus.length, items };
+})()`;
+
+/**
+ * Where the model menu's search box is, so a name that is not on the Auto
+ * card can be typed in — named models are hidden until the box has a query.
+ */
+export const MENU_SEARCH = `(() => {
+  const menu = ${list(SELECTORS.modelMenu)}
+    .map((s) => document.querySelector(s))
+    .find((el) => {
+      if (!el) return false;
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+  if (!menu) return null;
+  const el = ${list(SELECTORS.modelSearch)}
+    .map((s) => menu.querySelector(s))
+    .find(Boolean);
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+})()`;
+
+/** True once the model menu's search box, not the chat box, has the caret. */
+export const MENU_SEARCH_FOCUSED = `(() => {
+  const menu = ${list(SELECTORS.modelMenu)}
+    .map((s) => document.querySelector(s))
+    .find(Boolean);
+  if (!menu) return false;
+  const el = ${list(SELECTORS.modelSearch)}
+    .map((s) => menu.querySelector(s))
+    .find(Boolean);
+  return Boolean(el && document.activeElement === el);
 })()`;
 
 /**

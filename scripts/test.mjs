@@ -299,6 +299,7 @@ if (existsSync(SRC)) {
           hasNewAgent = false,
           nextThreadId = null,
           modelChangeEndsTurn = true,
+          hasMenuSearch = false,
         } = {},
       ) {
         this.takesPaste = takesPaste;
@@ -310,6 +311,10 @@ if (existsSync(SRC)) {
         this.hasNewAgent = hasNewAgent;
         this.nextThreadId = nextThreadId;
         this.modelChangeEndsTurn = modelChangeEndsTurn;
+        this.hasMenuSearch = hasMenuSearch;
+        this.menuQuery = '';
+        this.typedSearch = '';
+        this.searchFocused = false;
         this.given = facts;
         this.box = facts.composerText || '';
         this.submits = submits;
@@ -333,12 +338,36 @@ if (existsSync(SRC)) {
         return { label: this.pickers[which], x: which === 'mode' ? 10 : 60, y: 400 };
       }
       async menuItems() {
-        const items = this.openMenu ? this.menus[this.openMenu] || [] : [];
+        const all = this.openMenu ? this.menus[this.openMenu] || [] : [];
+        const q = String(this.menuQuery || '')
+          .replace(/[_-]+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toLowerCase();
+        const items = all.filter((i) => {
+          if (!i.needSearch) return true;
+          if (!q) return false;
+          const hay = String(i.needSearch)
+            .replace(/[_-]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+          return hay.includes(q);
+        });
         return { open: this.openMenu ? 1 : 0, items };
+      }
+      async menuSearch() {
+        if (this.openMenu !== 'model' || !this.hasMenuSearch) return null;
+        return { x: 70, y: 50 };
+      }
+      async menuSearchFocused() {
+        return this.searchFocused === true;
       }
       async pressEscape() {
         this.pressed.push('«escape»');
         this.openMenu = null;
+        this.searchFocused = false;
+        this.menuQuery = '';
       }
       /**
        * A real mouse press: on a picker it opens that menu, inside an open menu
@@ -354,6 +383,11 @@ if (existsSync(SRC)) {
       }
       async mouseAt({ x, y }) {
         this.clicks.push({ x, y });
+        if (this.openMenu === 'model' && this.hasMenuSearch && Math.abs(x - 70) < 1 && Math.abs(y - 50) < 1) {
+          this.pressed.push('«search»');
+          this.searchFocused = true;
+          return;
+        }
         const item = (this.menus[this.openMenu] || []).find(
           (i) => Math.abs(i.x - x) < 1 && Math.abs(i.y - y) < 1,
         );
@@ -431,6 +465,11 @@ if (existsSync(SRC)) {
         return this.box;
       }
       async insertText(text) {
+        if (this.openMenu && this.searchFocused) {
+          this.menuQuery += String(text);
+          this.typedSearch = this.menuQuery;
+          return;
+        }
         this.box += text;
       }
       async pressEnter() {
@@ -1128,7 +1167,7 @@ if (existsSync(SRC)) {
 
     // Setting a chat's model and mode: the menu is opened, one item is pressed,
     // and nothing is believed until the picker itself says something new.
-    const { pickItem } = await import('../src/core/cursor-cdp.mjs');
+    const { pickItem, menuSearchStem } = await import('../src/core/cursor-cdp.mjs');
     let picking = false;
     const withPickers = () =>
       new FakeWindow(
@@ -1307,6 +1346,68 @@ if (existsSync(SRC)) {
     }
     if (pickItem(slugs, 'grok-4.6 High').press.length !== 2) {
       picking = fail('grok-4.6 High should press the row then High') ?? true;
+    }
+
+    const composer = [
+      { label: 'Composer 2.5', x: 1, y: 10 },
+      { label: 'Fast', x: 9, y: 10 },
+    ];
+    if (pickItem(composer, 'composer-2.5').press.length !== 1) {
+      picking = fail('composer-2.5 should match the Composer 2.5 row') ?? true;
+    }
+    if (pickItem(composer, 'composer-2.5 Fast').press.length !== 2) {
+      picking = fail('composer-2.5 Fast should press the row then Fast') ?? true;
+    }
+    if (menuSearchStem('composer-2.5 Fast') !== 'composer 2.5') {
+      picking = fail(`search should drop the Fast badge, got ${JSON.stringify(menuSearchStem('composer-2.5 Fast'))}`) ?? true;
+    }
+    if (menuSearchStem('Auto') !== 'auto') {
+      picking = fail('Auto has no badge to strip') ?? true;
+    }
+
+    // Cursor's Auto-on menu hides named models until search is typed.
+    const autoOn = new FakeWindow(
+      { threadId: THREAD, hasComposer: true },
+      {
+        pickers: { model: 'Auto' },
+        hasMenuSearch: true,
+        menus: {
+          model: [
+            { label: 'Auto', x: 300, y: 90, becomes: 'Auto' },
+            { label: 'Composer 2.5', x: 300, y: 130, needSearch: 'Composer 2.5' },
+            { label: 'Fast', x: 380, y: 130, needSearch: 'Composer 2.5', becomes: 'Composer 2.5 Fast' },
+          ],
+        },
+      },
+    );
+    const fromAuto = await machine({ autoOn }).choose({
+      threadId: THREAD,
+      picker: 'model',
+      wanted: 'composer-2.5 Fast',
+    });
+    if (fromAuto.status !== 'set' || fromAuto.now !== 'Composer 2.5 Fast') {
+      picking = fail(`searching the Auto-on menu should find Composer: ${JSON.stringify(fromAuto)}`) ?? true;
+    }
+    if (!autoOn.pressed.includes('«search»') || autoOn.typedSearch !== 'composer 2.5') {
+      picking = fail(`should type the stem into search, pressed ${autoOn.pressed.join(',')} query=${autoOn.typedSearch}`) ?? true;
+    }
+    if (autoOn.box) picking = fail('search text must not land in the chat box') ?? true;
+
+    const stillAuto = new FakeWindow(
+      { threadId: THREAD, hasComposer: true },
+      {
+        pickers: { model: 'Auto' },
+        hasMenuSearch: true,
+        menus: { model: [{ label: 'Auto', x: 300, y: 90, becomes: 'Auto' }] },
+      },
+    );
+    const stay = await machine({ stillAuto }).choose({
+      threadId: THREAD,
+      picker: 'model',
+      wanted: 'Auto',
+    });
+    if (stay.status !== 'already') {
+      picking = fail(`already on Auto should not search: ${JSON.stringify(stay)}`) ?? true;
     }
 
     if (!picking) ok('v2 core: a chat’s model and mode can be set from its own menus');
