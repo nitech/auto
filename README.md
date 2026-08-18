@@ -1,4 +1,4 @@
-<video src="docs/auto.mp4" width="100%" controls></video>
+![Auto — Cursor, phone web, and Telegram in the same chat](docs/auto.gif)
 
 # <img src="src/web/icon.svg" width="40" height="40" alt=""> Auto
 
