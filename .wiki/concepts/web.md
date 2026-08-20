@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-20T16:25:00Z }
+generated: { by: agent, at: 2026-08-20T16:50:00Z }
 ---
 
 # Web app
@@ -58,9 +58,11 @@ keeping the first stylesheet it ever saw.
 Mode and model live beside the composer, as in Cursor; approval policy
 lives in the top bar (and in Settings on a narrow screen). Settings is a
 row at the bottom of the session rail — a gear and the word Settings —
-and opens a full-screen page. The rail header shows Auto, then a status
-dot beside this machine's name (OS hostname, or a nick set in Settings →
-Host). The dot is green when the WebSocket is up; words like Connected /
+and opens a full-screen page. The rail header shows the Auto A mark and
+this machine's name (OS hostname, or a nick set in Settings → Host), with
+a status dot beside it. The same label leads the browser tab title
+(`hostname · Auto`) so which PC this is stays visible in the chrome. The
+dot is green when the WebSocket is up; words like Connected /
 Reconnecting… stay on the dot's label and in Settings → Host.
 
 On a phone the session rail is a drawer. × on a row archives that session

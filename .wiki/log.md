@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-20
+* **Update**: Browser tab title leads with this machine's host label (`hostname · Auto`).
 * **Update**: Session-rail WebSocket status is a coloured dot left of the host name (no Connected / Reconnecting… text in the header).
 
 ## 2026-08-18

@@ -2632,7 +2632,8 @@ function setSheet(open) {
   $('sheet-conn').textContent = `${els.conn.title || '…'} · ${location.host}`;
 }
 
-/** Rail brand + Settings Host both read from this. */
+/** Rail brand + Settings Host both read from this. Tab title leads with the
+ *  host so a glance at the browser chrome shows which machine this is. */
 function applyHost(host) {
   state.host = {
     hostname: host.hostname || '',
@@ -2641,6 +2642,7 @@ function applyHost(host) {
   };
   const el = $('host-label');
   if (el) el.textContent = state.host.label || '…';
+  document.title = state.host.label ? `${state.host.label} · Auto` : 'Auto';
   if (!els.sheet.hidden) {
     $('host-nick').value = state.host.nick || '';
     $('host-nick').placeholder = state.host.hostname || 'Display name';

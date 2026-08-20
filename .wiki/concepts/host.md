@@ -14,7 +14,7 @@ sources:
   - id: supervise
     resource: /scripts/supervise.mjs
     title: Supervisor
-generated: { by: agent, at: 2026-08-17T14:15:00Z }
+generated: { by: agent, at: 2026-08-20T16:50:00Z }
 ---
 
 # Host
@@ -32,8 +32,9 @@ shell.
 
 The OS hostname rides on `hello` and `/api/health`. An optional nick in
 `state/host.json` (Settings → Host, or `host.setNick`) replaces it on the
-[web](web.md) rail. Clearing the nick falls back to the hostname. All
-clients see the same label.
+[web](web.md) rail and as the leading part of the browser tab title.
+Clearing the nick falls back to the hostname. All clients see the same
+label.
 
 ## HTTP
 

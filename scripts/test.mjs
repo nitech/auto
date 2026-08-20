@@ -1997,6 +1997,10 @@ if (existsSync(SRC)) {
     fail('the web must apply host identity from hello and host.setNick');
     failed = true;
   }
+  if (!js.includes('document.title') || !js.includes('${state.host.label} · Auto')) {
+    fail('the tab title must lead with the host label so which machine is clear');
+    failed = true;
+  }
   if (!failed) ok('v2 web: settings in the rail, full screen');
 }
 
