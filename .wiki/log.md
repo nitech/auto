@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-20
+* **Update**: Desktop attach no longer announces "lives in the Cursor desktop app" — that is the default; truncated catch-up still notes how many messages are shown.
 * **Update**: Full-window View Plan keeps Build + model picker in a sticky footer under the plan text.
 * **Update**: View Plan opens the plan markdown full-window (× / Escape), not inline in the card.
 * **Update**: View Plan on the web keeps the Created Plan card in the chat column — wide fences scroll inside instead of clipping mid-line on a phone; repo-path links render as code.

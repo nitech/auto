@@ -1341,11 +1341,13 @@ export class SessionManager extends EventEmitter {
 
     await this.transcripts.get(id);
     const hidden = Math.max(0, state.total - state.visited.length);
-    this.#record(id, KIND.notice, {
-      text:
-        `This chat lives in the Cursor desktop app — you are both in the same conversation.` +
-        (hidden ? ` Showing the last ${state.messages.length} messages.` : ''),
-    });
+    // Desktop is the default path — no need to announce it. Only note when
+    // older history was left out of the catch-up.
+    if (hidden) {
+      this.#record(id, KIND.notice, {
+        text: `Showing the last ${state.messages.length} messages.`,
+      });
+    }
     for (const message of state.messages) this.#recordDesktopMessage(id, message);
 
     // Everything read above is history, not news.

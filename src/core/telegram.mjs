@@ -524,11 +524,7 @@ export class TelegramBridge extends EventEmitter {
       case '/new': {
         const meta = await this.sessions.startInIde(arg ? { folder: arg } : {});
         this.sessions.setActive(meta.id);
-        const where =
-          meta.kind === 'desktop'
-            ? ' in the Cursor desktop app — same conversation on both ends.'
-            : '.';
-        return this.send(`Started <b>${esc(meta.title)}</b>${where}\n<code>${esc(meta.folder)}</code>`);
+        return this.send(`Started <b>${esc(meta.title)}</b>\n<code>${esc(meta.folder)}</code>`);
       }
 
       case '/stop': {
@@ -709,9 +705,7 @@ export class TelegramBridge extends EventEmitter {
       this.sessions.setActive(meta.id);
       await answer(`${existing ? 'Switched to' : 'Started'} ${meta.title}`);
       await this.send(
-        `${existing ? 'Now on' : 'Started'} <b>${esc(meta.title)}</b>` +
-          (!existing && meta.kind === 'desktop' ? ' in the Cursor desktop app' : '') +
-          `\n<code>${esc(meta.folder)}</code>`,
+        `${existing ? 'Now on' : 'Started'} <b>${esc(meta.title)}</b>\n<code>${esc(meta.folder)}</code>`,
       );
       return;
     }
@@ -724,10 +718,7 @@ export class TelegramBridge extends EventEmitter {
         });
         this.sessions.setActive(meta.id);
         await answer(`Continuing ${meta.title}`);
-        await this.send(
-          `Continuing <b>${esc(meta.title)}</b> in the Cursor desktop app.\n` +
-            'Same conversation on both ends — what you send here appears there.',
-        );
+        await this.send(`Continuing <b>${esc(meta.title)}</b>\n<code>${esc(meta.folder)}</code>`);
       } catch (err) {
         await answer(err.message.slice(0, 190));
         await this.send(`⚠️ ${esc(err.message)}`);

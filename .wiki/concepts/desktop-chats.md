@@ -11,7 +11,7 @@ sources:
   - id: sessions
     resource: /src/core/sessions.mjs
     title: Session attach / catch-up
-generated: { by: agent, at: 2026-08-17T11:35:00Z }
+generated: { by: agent, at: 2026-08-20T19:55:00Z }
 ---
 
 # Continuing Cursor desktop chats
@@ -34,6 +34,10 @@ in that window used. If no window has the folder, Auto asks Cursor for
 port, Auto quits it and starts it again — that closes every window. If none
 of that works, Auto falls back to [ACP](acp.md) with the same Auto-select
 preference and writes a notice.
+
+Desktop is the default path, so attaching does not announce that the chat
+lives in Cursor. A catch-up that leaves older history out still notes how
+many recent messages are shown.
 
 Continuing an existing desktop thread does **not** change its model.
 
