@@ -1,14 +1,17 @@
 /**
- * Fingerprint css/js/icon URLs in the web shell.
+ * Fingerprint css/js URLs in the web shell.
  *
  * iOS Home Screen apps ignore Cache-Control on a named file and keep the
- * stylesheet (and often the touch icon) they first downloaded. A new `?v=`
- * (size + mtime) is a new URL, so they fetch it. The host stamps this on the
- * way out — nothing to bump.
+ * stylesheet they first downloaded. A new `?v=` (size + mtime) is a new URL,
+ * so they fetch it. The host stamps this on the way out — nothing to bump.
+ *
+ * Icon URLs are deliberately *not* stamped. WebKit picks a site's icon from
+ * the plain declared path, and a query string is a way to be skipped — every
+ * site whose icon iOS renders full-bleed declares it clean.
  */
 import { statSync } from 'node:fs';
 
-const ASSET = /(href|src)="(\/(?:vendor\/)?[^"?]+?\.(?:css|js|svg|png))(?:\?v=[^"]*)?"/g;
+const ASSET = /(href|src)="(\/(?:vendor\/)?[^"?]+?\.(?:css|js))(?:\?v=[^"]*)?"/g;
 
 export function fileTag(absPath) {
   const st = statSync(absPath);

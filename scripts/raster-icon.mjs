@@ -245,10 +245,34 @@ function blend(px, i, rgb, a) {
   px[i + 3] = 255;
 }
 
+/** ICO wrapping a single PNG — every current browser reads that, Safari included. */
+function encodeIco(png, size) {
+  const dir = Buffer.alloc(22);
+  dir.writeUInt16LE(0, 0);
+  dir.writeUInt16LE(1, 2);
+  dir.writeUInt16LE(1, 4);
+  dir[6] = size >= 256 ? 0 : size;
+  dir[7] = size >= 256 ? 0 : size;
+  dir.writeUInt16LE(1, 10);
+  dir.writeUInt16LE(32, 12);
+  dir.writeUInt32LE(png.length, 14);
+  dir.writeUInt32LE(dir.length, 18);
+  return Buffer.concat([dir, png]);
+}
+
+/**
+ * `apple-touch-icon-precomposed.png` is the same art under the name older iOS
+ * probes first; both are also what iOS fetches from the root when a page
+ * declares no link at all. The 16/32 favicons and `favicon.ico` exist because
+ * WebKit does not treat an SVG favicon as a site icon everywhere.
+ */
 const targets = [
   { file: 'apple-touch-icon.png', size: 180 },
+  { file: 'apple-touch-icon-precomposed.png', size: 180 },
   { file: 'icon-192.png', size: 192 },
   { file: 'icon-512.png', size: 512 },
+  { file: 'favicon-32x32.png', size: 32 },
+  { file: 'favicon-16x16.png', size: 16 },
 ];
 
 for (const t of targets) {
@@ -256,3 +280,7 @@ for (const t of targets) {
   writeFileSync(join(WEB, t.file), buf);
   console.log(`wrote src/web/${t.file} (${t.size}×${t.size}, ${buf.length} bytes)`);
 }
+
+const ico = encodeIco(encodePng(32, 32, raster(32)), 32);
+writeFileSync(join(WEB, 'favicon.ico'), ico);
+console.log(`wrote src/web/favicon.ico (32×32, ${ico.length} bytes)`);

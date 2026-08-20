@@ -10,8 +10,15 @@
 <meta name="apple-mobile-web-app-title" content="Auto" />
 <title>Auto</title>
 <link rel="manifest" href="/manifest.webmanifest" />
+<!-- Icon paths stay clean (no ?v=): WebKit picks a site icon from the declared
+     path, and it renders a touch icon full-bleed in the share sheet only when
+     it actually chose one. The SVG is for desktop tabs; iOS wants raster. -->
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+<link rel="apple-touch-icon-precomposed" sizes="180x180" href="/apple-touch-icon-precomposed.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+<link rel="shortcut icon" href="/favicon.ico" />
 <link rel="stylesheet" href="/vendor/xterm.css" />
 <link rel="stylesheet" href="/style.css" />
 <style>

@@ -2056,6 +2056,16 @@ if (existsSync(SRC)) {
     fail('iOS Home Screen needs an apple-touch-icon PNG');
     failed = true;
   }
+  // WebKit renders a touch icon full-bleed in the share sheet only when it
+  // chose one: raster favicons and precomposed, all declared without a query.
+  if (!html.includes('apple-touch-icon-precomposed') || !html.includes('/favicon.ico')) {
+    fail('iOS also probes the precomposed touch icon and favicon.ico — declare both');
+    failed = true;
+  }
+  if (!html.includes('/favicon-32x32.png') || !html.includes('/favicon-16x16.png')) {
+    fail('WebKit does not take an SVG favicon as a site icon everywhere — ship raster favicons');
+    failed = true;
+  }
   if (!html.includes('apple-mobile-web-app-capable') || !html.includes('mobile-web-app-capable')) {
     fail('installed Auto must open standalone, not as a Safari tab');
     failed = true;
@@ -2090,7 +2100,14 @@ if (existsSync(SRC)) {
     fail('the PWA icon must be full-bleed so iOS/Android can mask it — no rounded rect');
     failed = true;
   }
-  const pngFiles = ['apple-touch-icon.png', 'icon-192.png', 'icon-512.png'];
+  const pngFiles = [
+    'apple-touch-icon.png',
+    'apple-touch-icon-precomposed.png',
+    'icon-192.png',
+    'icon-512.png',
+    'favicon-32x32.png',
+    'favicon-16x16.png',
+  ];
   const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
   for (const name of pngFiles) {
     const p = join(ROOT, 'src/web', name);
@@ -2102,6 +2119,17 @@ if (existsSync(SRC)) {
     const head = readFileSync(p).subarray(0, 4);
     if (!head.equals(pngMagic)) {
       fail(`${name} is not a PNG`);
+      failed = true;
+    }
+  }
+  const icoPath = join(ROOT, 'src/web/favicon.ico');
+  if (!existsSync(icoPath)) {
+    fail('missing favicon.ico — run node scripts/raster-icon.mjs');
+    failed = true;
+  } else {
+    const ico = readFileSync(icoPath);
+    if (ico.readUInt16LE(0) !== 0 || ico.readUInt16LE(2) !== 1 || ico.readUInt16LE(4) < 1) {
+      fail('favicon.ico is not an ICO');
       failed = true;
     }
   }
@@ -2151,12 +2179,14 @@ if (existsSync(SRC)) {
   const { stampHtml } = await import('../src/web/stamp.mjs');
   const out = stampHtml(
     '<link href="/style.css" /><script src="/app.js"></script><link href="/style.css?v=old" /><link href="/apple-touch-icon.png" /><link href="/icon.svg" />',
-    (p) => ({ '/style.css': 'aaa', '/app.js': 'bbb', '/apple-touch-icon.png': 'ccc', '/icon.svg': 'ddd' }[p] || 'x'),
+    (p) => ({ '/style.css': 'aaa', '/app.js': 'bbb' }[p] || 'x'),
   );
   if (!out.includes('/style.css?v=aaa') || !out.includes('/app.js?v=bbb') || out.includes('?v=old')) {
     fail(`stampHtml must rewrite css/js URLs with ?v=, got ${out}`);
-  } else if (!out.includes('/apple-touch-icon.png?v=ccc') || !out.includes('/icon.svg?v=ddd')) {
-    fail(`stampHtml must fingerprint touch icon URLs so Safari drops a stale mark, got ${out}`);
+  } else if (out.includes('/apple-touch-icon.png?v=') || out.includes('/icon.svg?v=')) {
+    // A query string is a way for WebKit to skip a site icon; the share sheet
+    // then draws a small favicon on white instead of the full-bleed mark.
+    fail(`icon URLs must stay clean, got ${out}`);
   } else {
     ok('v2 web: css/js URLs are fingerprinted from size+mtime');
   }

@@ -463,6 +463,7 @@ const CONTENT_TYPES = {
   '.webmanifest': 'application/manifest+json',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.ico': 'image/x-icon',
 };
 
 /** Third-party browser assets, served straight out of node_modules. */

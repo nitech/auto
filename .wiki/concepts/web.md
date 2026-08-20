@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-20T17:00:00Z }
+generated: { by: agent, at: 2026-08-20T17:40:00Z }
 ---
 
 # Web app
@@ -40,8 +40,17 @@ same id from the browser. Telegram `/switch` does not steal the tab.
 Open `http://<tailscale-ip>:4331/`. It is a PWA: `display: standalone`, an
 SVG tab icon, and PNG icons (180 / 192 / 512) so a phone can put it on the
 Home Screen. The A is scaled up inside a full-bleed dark tile so the mark
-fills more of the preview; Safari's share sheet still draws its own white
-matte around website icons — that frame is not ours to remove. iOS needs
+fills more of the preview.
+
+WebKit draws a site's icon full-bleed in the iOS share sheet only when it
+actually *chose* a touch icon; otherwise it centres a small favicon on a
+white card, which is what Auto used to show. So the icon block copies what
+sites that get this right declare: `apple-touch-icon` plus
+`apple-touch-icon-precomposed` (the name older iOS probes first), raster
+`favicon-32x32` / `favicon-16x16` and `favicon.ico` — WebKit does not take
+an SVG favicon as a site icon everywhere — and the SVG last, for desktop
+tabs. Every icon path is declared **clean**: `?v=` fingerprinting is for
+css/js only, because a query string is a way to be skipped. iOS needs
 `apple-mobile-web-app-capable` and
 `apple-touch-icon.png` or Add to Home Screen still works but opens as a
 Safari tab with a screenshot for an icon. Settings explains the path
