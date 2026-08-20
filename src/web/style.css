@@ -208,7 +208,7 @@ html[data-standalone] #app {
   padding: max(14px, env(safe-area-inset-top, 0px)) 14px 10px;
 }
 
-/* Auto + host stack is sized to the 22px mark — same height, no extra gap. */
+/* Logo is the brand; host name is the only text beside it. */
 .brand {
   display: flex;
   flex-direction: column;
@@ -220,25 +220,19 @@ html[data-standalone] #app {
 }
 
 .brand-name {
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  font-size: 13px;
-  padding: 0;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: none;
 }
 
 .brand-host {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
-  font-size: 9px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   padding: 0;
-  color: var(--faint);
+  color: var(--text);
 }
 
 .brand-host #host-label {
