@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-20T18:10:00Z }
+generated: { by: agent, at: 2026-08-20T20:30:00Z }
 ---
 
 # Web app
@@ -69,9 +69,13 @@ change is a new URL and the installed app downloads it instead of
 keeping the first stylesheet it ever saw.
 
 Mode and model live beside the composer, as in Cursor; approval policy
-lives in the top bar (and in Settings on a narrow screen). Settings is a
-row at the bottom of the session rail — a gear and the word Settings —
-and opens a full-screen page. The rail header shows the Auto A mark and
+lives in the top bar (and in Settings on a narrow screen). The topbar
+also has **New chat** — one tap starts an empty conversation in the open
+session's folder (`session.create`), without the project picker. Settings
+is a row at the bottom of the session rail — a gear and the word Settings —
+and opens a full-screen page. Above it sit the Browser and Terminals
+toggles (optional panes; once open, the view tabs switch between them).
+The rail header shows the Auto A mark and
 this machine's name (OS hostname, or a nick set in Settings → Host), with
 a status dot beside it. The same label leads the browser tab title
 (`hostname · Auto`) so which PC this is stays visible in the chrome. The
@@ -102,7 +106,7 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   and question cards, [terminals](terminals.md), [browser](browser.md).
   Those two open as **tabs under the header**: Chat is always first and
   cannot be closed; Browser and each shell get an ×. The strip scrolls
-  sideways when tabs overflow, and hides while only Chat is open. Topbar
+  sideways when tabs overflow, and hides while only Chat is open. Rail-foot
   icons open or focus a tool; Escape returns to Chat without closing the
   tab. Which tabs were open (and which was selected) is remembered per chat
   in the browser, so a refresh or switching back restores them — live shells

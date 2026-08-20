@@ -460,6 +460,25 @@ html[data-standalone] #app {
   border-top: 1px solid var(--line);
 }
 
+/* Optional panes: open from the rail, then use the view tabs. */
+.rail-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 10px 0;
+}
+
+.rail-tools .icon {
+  padding-inline: 8px;
+  min-width: 40px;
+  min-height: 36px;
+}
+
+.rail-tools .icon[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--bg-3);
+}
+
 .rail-settings {
   display: flex;
   align-items: center;
@@ -549,14 +568,9 @@ select {
   font-size: 12.5px;
 }
 
-/* Browser + terminal sit as one pair, tighter than the topbar's 10px gap. */
-.topbar-tools {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-.topbar-tools .icon {
-  padding-inline: 5px;
+#new-chat:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 button.icon {

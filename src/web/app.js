@@ -1747,6 +1747,29 @@ function applyMeta(meta) {
   els.status.className = `dot ${kind}`;
   els.status.title = label;
   els.status.setAttribute('aria-label', label);
+  paintNewChat();
+}
+
+/** Folder of the open chat — what a same-repo "New chat" should start in. */
+function currentFolder() {
+  const mine = state.sessions.find((s) => s.id === state.sessionId);
+  return String(mine?.folder || els.folder.textContent || '').trim();
+}
+
+/**
+ * Topbar New chat is only live when this tab is on a session that has a
+ * folder. No folder means nowhere to start the next empty conversation.
+ */
+function paintNewChat() {
+  const btn = $('new-chat');
+  if (!btn) return;
+  const folder = currentFolder();
+  btn.disabled = !folder;
+  const name = folder ? folder.split(/[/\\]/).filter(Boolean).pop() : '';
+  btn.title = folder
+    ? `New chat in ${name || 'this repo'}`
+    : 'Open a session to start a new chat';
+  btn.setAttribute('aria-label', btn.title);
 }
 
 /**
@@ -2024,6 +2047,7 @@ function connect() {
     if (msg.type === 'synced') {
       state.sessions = msg.sessions || state.sessions;
       renderRail();
+      paintNewChat();
       return;
     }
 
@@ -2485,6 +2509,13 @@ function createSession(folder) {
   sendOp({ op: 'session.create', folder: path });
 }
 
+/** Same-repo empty chat from the topbar — no project picker. */
+$('new-chat').onclick = () => {
+  const folder = currentFolder();
+  if (!folder) return;
+  createSession(folder);
+};
+
 $('new-session').onclick = () => {
   // The rail covers the screen on a phone; the dialog has to sit above it.
   setRail(false);
@@ -2887,10 +2918,21 @@ document.addEventListener('visibilitychange', () => {
 
 paintMode();
 syncSend();
+paintNewChat();
 initWorkspace();
 onViewsChange((snap) => rememberViews(state.sessionId, snap));
 initTerminals(sendOp);
 initBrowser(sendOp);
+// Opening a pane from the rail should reveal it — close the drawer first.
+for (const id of ['browser-toggle', 'term-toggle']) {
+  const btn = $(id);
+  if (!btn) continue;
+  const prev = btn.onclick;
+  btn.onclick = (e) => {
+    if (els.app.classList.contains('rail-open')) setRail(false);
+    return prev?.call(btn, e);
+  };
+}
 connect();
 
 // ------------------------------------------------------------------ usage

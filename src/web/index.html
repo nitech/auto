@@ -99,6 +99,22 @@
     </div>
     <div id="session-list"></div>
     <div class="rail-foot">
+      <!-- Browser and terminals are optional panes — open from here, then
+           switch via the view tabs. Kept next to Settings, not in the topbar. -->
+      <div class="rail-tools">
+        <button id="browser-toggle" class="icon" title="Browser" aria-label="Browser" aria-pressed="false">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="4" width="20" height="16" rx="2"/>
+            <path d="M10 4v4"/><path d="M2 8h20"/><path d="M6 4v4"/>
+          </svg>
+        </button>
+        <button id="term-toggle" class="icon" title="Terminals" aria-label="Terminals" aria-pressed="false">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m7 11 2-2-2-2"/><path d="M11 13h4"/>
+            <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+          </svg>
+        </button>
+      </div>
       <button type="button" id="sheet-open" class="rail-settings" title="Settings" aria-label="Settings">
         <!-- Cog path adapted from Lucide (ISC): https://lucide.dev -->
         <svg class="gear" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -134,21 +150,13 @@
           <option value="auto">Auto-approve</option>
         </select>
       </span>
-      <!-- Paths from Lucide (ISC): https://lucide.dev — app-window, square-terminal -->
-      <span class="topbar-tools">
-        <button id="browser-toggle" class="icon" title="Browser" aria-label="Browser" aria-pressed="false">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="2" y="4" width="20" height="16" rx="2"/>
-            <path d="M10 4v4"/><path d="M2 8h20"/><path d="M6 4v4"/>
-          </svg>
-        </button>
-        <button id="term-toggle" class="icon" title="Terminals" aria-label="Terminals" aria-pressed="false">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="m7 11 2-2-2-2"/><path d="M11 13h4"/>
-            <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
-          </svg>
-        </button>
-      </span>
+      <!-- Same-repo new chat. Path from Lucide message-square-plus (ISC). -->
+      <button id="new-chat" class="icon" title="New chat in this repo" aria-label="New chat in this repo" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          <path d="M12 7v6"/><path d="M9 10h6"/>
+        </svg>
+      </button>
     </header>
 
     <!-- Chat is always first; browser and each shell open as closable tabs. -->
