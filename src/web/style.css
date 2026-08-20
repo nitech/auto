@@ -601,11 +601,17 @@ button.icon {
 .perm,
 .ask,
 .plan,
+.created-plan,
 .notice,
 details.think,
 .turn-status {
   width: 100%;
   max-width: 900px;
+  /* Wide View Plan fences must scroll inside the card, not grow it past
+     the phone — #transcript centres its children, so an oversized card was
+     clipped on both edges and read as truncated mid-word. */
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .turn-status {
@@ -1045,6 +1051,41 @@ details.think .body {
   overflow-wrap: anywhere;
   max-height: 60vh;
   overflow: auto;
+  min-width: 0;
+}
+.created-plan .body.md pre {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.created-plan .body.md table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.created-plan .body.md th,
+.created-plan .body.md td {
+  border: 1px solid var(--line-2);
+  padding: 4px 9px;
+  text-align: left;
+}
+.created-plan .body.md th { background: var(--bg-3); font-weight: 600; }
+.created-plan .body.md h1,
+.created-plan .body.md h2,
+.created-plan .body.md h3 {
+  font-size: 15px;
+  margin: 14px 0 6px;
+  font-weight: 650;
+}
+.created-plan .body.md p { margin: 0 0 10px; }
+.created-plan .body.md p:last-child { margin-bottom: 0; }
+.created-plan .body.md ul,
+.created-plan .body.md ol {
+  margin: 0 0 10px;
+  padding-left: 1.25em;
 }
 .created-plan .acts {
   display: flex;

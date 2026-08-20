@@ -29,7 +29,10 @@ function inline(text) {
       .replace(
         /\[([^\]]+)\]\((https?:[^)\s]+)\)/g,
         '<a href="$2" target="_blank" rel="noopener">$1</a>',
-      ),
+      )
+      // Plans cite repo paths as `[file](src/…)` — not http, so leave the
+      // label as code rather than raw brackets on a phone.
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<code>$1</code>'),
   );
 }
 

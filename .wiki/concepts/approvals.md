@@ -14,7 +14,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: How desktop tools are drawn
-generated: { by: agent, at: 2026-08-16T06:35:00Z }
+generated: { by: agent, at: 2026-08-20T21:15:00Z }
 ---
 
 # Approvals, questions, and plans
@@ -78,6 +78,12 @@ IDE first still works; Auto notices and marks it answered.
 Build with a model picker. Build presses Cursor's own button on that card,
 after choosing the model there if one was named. Telegram gets the same two
 actions.
+
+On the web, View Plan expands the markdown inside the card. The card stays
+in the same column as the rest of the chat — wide fences and tables scroll
+inside it rather than growing past the phone and getting clipped mid-line.
+Repo-path links in the plan (`[file](src/…)`) render as the file name in
+code, not raw brackets.
 
 ## Related
 

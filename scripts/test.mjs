@@ -1656,6 +1656,12 @@ if (existsSync(SRC)) {
       fail('a markdown link must stay a single <a>');
       failed = true;
     }
+    // Plans cite files as [label](src/…); those are not http, so show the label.
+    has('[sessions.mjs](src/core/sessions.mjs)', ['<code>sessions.mjs</code>']);
+    if (renderMarkdown('[sessions.mjs](src/core/sessions.mjs)').includes('<a ')) {
+      fail('a relative markdown link must not become an <a>');
+      failed = true;
+    }
     if (renderMarkdown('`https://example.com`').includes('<a ')) {
       fail('a url in code must stay code');
       failed = true;
