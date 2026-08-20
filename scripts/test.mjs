@@ -2049,7 +2049,17 @@ if (existsSync(SRC)) {
   const icon = readFileSync(join(ROOT, 'src/web/icon.svg'), 'utf8');
   let failed = false;
   if (!html.includes('rel="icon"') || !html.includes('href="/icon.svg"')) {
-    fail('the tab needs an SVG favicon');
+    fail('the tab needs a favicon, and the SVG mark must still be declared');
+    failed = true;
+  }
+  // Offered a scalable entry, WebKit takes it over the touch icon and draws it
+  // small on a white card in the iOS share sheet. The SVG is mask-icon only.
+  if (/rel="icon"[^>]*image\/svg/.test(html) || /image\/svg[^>]*rel="icon"/.test(html)) {
+    fail('the SVG must not be a rel="icon" — WebKit picks it over the touch icon');
+    failed = true;
+  }
+  if (!html.includes('rel="mask-icon"')) {
+    fail('the SVG mark belongs on mask-icon');
     failed = true;
   }
   if (!html.includes('apple-touch-icon') || !html.includes('/apple-touch-icon.png')) {
@@ -2062,7 +2072,7 @@ if (existsSync(SRC)) {
     fail('iOS also probes the precomposed touch icon and favicon.ico — declare both');
     failed = true;
   }
-  if (!html.includes('/favicon-32x32.png') || !html.includes('/favicon-16x16.png')) {
+  if (!html.includes('/favicon-96x96.png') || !html.includes('/favicon-32x32.png') || !html.includes('/favicon-16x16.png')) {
     fail('WebKit does not take an SVG favicon as a site icon everywhere — ship raster favicons');
     failed = true;
   }
@@ -2105,6 +2115,7 @@ if (existsSync(SRC)) {
     'apple-touch-icon-precomposed.png',
     'icon-192.png',
     'icon-512.png',
+    'favicon-96x96.png',
     'favicon-32x32.png',
     'favicon-16x16.png',
   ];

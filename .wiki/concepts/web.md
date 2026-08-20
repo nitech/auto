@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-20T17:40:00Z }
+generated: { by: agent, at: 2026-08-20T18:10:00Z }
 ---
 
 # Web app
@@ -43,15 +43,22 @@ Home Screen. The A is scaled up inside a full-bleed dark tile so the mark
 fills more of the preview.
 
 WebKit draws a site's icon full-bleed in the iOS share sheet only when it
-actually *chose* a touch icon; otherwise it centres a small favicon on a
-white card, which is what Auto used to show. So the icon block copies what
-sites that get this right declare: `apple-touch-icon` plus
-`apple-touch-icon-precomposed` (the name older iOS probes first), raster
-`favicon-32x32` / `favicon-16x16` and `favicon.ico` — WebKit does not take
-an SVG favicon as a site icon everywhere — and the SVG last, for desktop
-tabs. Every icon path is declared **clean**: `?v=` fingerprinting is for
-css/js only, because a query string is a way to be skipped. iOS needs
-`apple-mobile-web-app-capable` and
+actually *chose* a touch icon; otherwise it centres a small icon on a white
+card. The icon block therefore copies what sites that get this right
+declare: `apple-touch-icon` plus `apple-touch-icon-precomposed` (the name
+older iOS probes first), raster `favicon-96x96` / `-32x32` / `-16x16` and
+`favicon.ico`, and the SVG as **`mask-icon` only**. There is deliberately no
+`rel="icon"` SVG: offered a scalable entry, WebKit takes it over the touch
+icon and draws it small. Every icon path is declared **clean** — `?v=`
+fingerprinting is for css/js only, because a query string is another way to
+be skipped.
+
+Not settled: a plain HTTP origin on port 4331, a fresh MagicDNS origin, and
+HTTPS through `tailscale serve` each left the share sheet unchanged, so the
+matte is not about the URL. WebKit caches a site icon per origin and holds
+it hard, so any retest needs an origin that has never been visited (a new
+port through `tailscale serve` is the cheapest one) or Clear History and
+Website Data. iOS needs `apple-mobile-web-app-capable` and
 `apple-touch-icon.png` or Add to Home Screen still works but opens as a
 Safari tab with a screenshot for an icon. Settings explains the path
 (Share → Add to Home Screen on iPhone; the browser's own Install prompt

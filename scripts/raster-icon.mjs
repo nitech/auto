@@ -271,6 +271,7 @@ const targets = [
   { file: 'apple-touch-icon-precomposed.png', size: 180 },
   { file: 'icon-192.png', size: 192 },
   { file: 'icon-512.png', size: 512 },
+  { file: 'favicon-96x96.png', size: 96 },
   { file: 'favicon-32x32.png', size: 32 },
   { file: 'favicon-16x16.png', size: 16 },
 ];
