@@ -62,6 +62,10 @@ const els = {
   planSheet: $('plan-sheet'),
   planSheetTitle: $('plan-sheet-title'),
   planBody: $('plan-body'),
+  planFoot: $('plan-foot'),
+  planBuild: $('plan-build'),
+  planBuildModel: $('plan-build-model'),
+  planOutcome: $('plan-outcome'),
 };
 
 const state = {
@@ -83,6 +87,8 @@ const state = {
   askCards: new Map(),
   /** toolCallId of the plan currently open in the full-window viewer */
   openPlanId: null,
+  /** card element for that open plan — Build in the footer uses it */
+  openPlanCard: null,
   stream: null,
   streamKind: null,
   /** the thinking block being written to, so it can be folded when it ends */
@@ -1084,11 +1090,20 @@ function renderCreatedPlan(rec) {
 function openPlanView(card) {
   const fields = planFields(card.rec || {});
   state.openPlanId = card.rec?.toolCallId || null;
+  state.openPlanCard = card;
   els.planSheetTitle.textContent = fields.name || 'Plan';
   els.planBody.innerHTML = fields.markdown
     ? markdown(fields.markdown)
     : '<p class="sheet-note">No plan text yet.</p>';
   els.planBody.scrollTop = 0;
+  fillPlanModels(els.planBuildModel);
+  const fromCard = card.querySelector('.build-model')?.value;
+  if (fromCard != null && [...els.planBuildModel.options].some((o) => o.value === fromCard)) {
+    els.planBuildModel.value = fromCard;
+  }
+  delete els.planBuild.dataset.sent;
+  if (card.querySelector('.build')?.dataset.sent) els.planBuild.dataset.sent = '1';
+  paintPlanActions(card);
   setPlanSheet(true);
 }
 
@@ -1097,7 +1112,9 @@ function setPlanSheet(open) {
   if (!open) {
     els.planBody.innerHTML = '';
     els.planSheetTitle.textContent = 'Plan';
+    els.planOutcome.textContent = '';
     state.openPlanId = null;
+    state.openPlanCard = null;
   }
 }
 
@@ -1120,20 +1137,64 @@ function fillPlanModels(select) {
   }
 }
 
-function sendPlanBuild(card) {
+function sendPlanBuild(card, modelSelect) {
   const rec = card.rec || {};
-  const model = card.querySelector('.build-model')?.value || '';
-  const build = card.querySelector('.build');
+  const pick = modelSelect || card.querySelector('.build-model');
+  const model = pick?.value || '';
   const outcome = card.querySelector('.outcome');
-  for (const b of card.querySelectorAll('button, select')) b.disabled = true;
+  for (const b of card.querySelectorAll('button, select')) {
+    if (!b.classList.contains('view')) b.disabled = true;
+  }
+  card.querySelector('.build').dataset.sent = '1';
   if (outcome) outcome.textContent = 'building…';
+  if (state.openPlanCard === card) {
+    els.planBuild.disabled = true;
+    els.planBuildModel.disabled = true;
+    els.planBuild.dataset.sent = '1';
+    els.planOutcome.textContent = 'building…';
+  }
   sendOp({
     op: 'plan.build',
     sessionId: state.sessionId,
     toolCallId: rec.toolCallId,
     model,
   });
-  build.dataset.sent = '1';
+}
+
+/** Keep the card and the full-window footer in the same Build state. */
+function paintPlanActions(card) {
+  const fields = planFields(card.rec || {});
+  const waiting = fields.awaitingBuild && card.rec.awaitingBuild !== false;
+  const sent = Boolean(card.querySelector('.build')?.dataset.sent);
+  const outcome = card.querySelector('.outcome');
+  card.classList.toggle('resolved', !waiting);
+  if (!waiting) {
+    if (outcome) outcome.textContent = outcome.textContent?.startsWith('Building')
+      ? outcome.textContent
+      : 'Built.';
+    for (const b of card.querySelectorAll('button, select')) {
+      if (!b.classList.contains('view')) b.disabled = true;
+    }
+  } else if (!sent) {
+    if (outcome) outcome.textContent = '';
+    for (const b of card.querySelectorAll('button, select')) b.disabled = false;
+  }
+  if (els.planSheet.hidden || state.openPlanCard !== card) return;
+  if (!waiting) {
+    els.planOutcome.textContent = els.planOutcome.textContent?.startsWith('Building')
+      ? els.planOutcome.textContent
+      : 'Built.';
+    els.planBuild.disabled = true;
+    els.planBuildModel.disabled = true;
+  } else if (!sent) {
+    els.planOutcome.textContent = '';
+    els.planBuild.disabled = false;
+    els.planBuildModel.disabled = false;
+  } else {
+    els.planBuild.disabled = true;
+    els.planBuildModel.disabled = true;
+    if (!els.planOutcome.textContent) els.planOutcome.textContent = 'building…';
+  }
 }
 
 function paintCreatedPlan(card, rec) {
@@ -1149,18 +1210,7 @@ function paintCreatedPlan(card, rec) {
     els.planSheetTitle.textContent = fields.name || 'Plan';
     if (fields.markdown) els.planBody.innerHTML = markdown(fields.markdown);
   }
-  const waiting = fields.awaitingBuild && card.rec.awaitingBuild !== false;
-  card.classList.toggle('resolved', !waiting);
-  const outcome = card.querySelector('.outcome');
-  if (!waiting) {
-    outcome.textContent = 'Built.';
-    for (const b of card.querySelectorAll('button, select')) {
-      if (!b.classList.contains('view')) b.disabled = true;
-    }
-  } else if (!card.querySelector('.build').dataset.sent) {
-    outcome.textContent = '';
-    for (const b of card.querySelectorAll('button, select')) b.disabled = false;
-  }
+  paintPlanActions(card);
 }
 
 function renderPlan(rec) {
@@ -2044,12 +2094,25 @@ function connect() {
         for (const b of card.querySelectorAll('button, select')) {
           if (!b.classList.contains('view')) b.disabled = true;
         }
+        if (state.openPlanCard === card) {
+          els.planBuild.disabled = true;
+          els.planBuildModel.disabled = true;
+          els.planOutcome.textContent = 'Building in Cursor…';
+        }
         return;
       }
-      for (const b of card.querySelectorAll('button, select')) b.disabled = false;
+      for (const b of card.querySelectorAll('button, select')) {
+        if (!b.classList.contains('view')) b.disabled = false;
+      }
       const build = card.querySelector('.build');
       if (build) delete build.dataset.sent;
       if (outcome) outcome.textContent = msg.reason || 'could not build — try again';
+      if (state.openPlanCard === card) {
+        delete els.planBuild.dataset.sent;
+        els.planBuild.disabled = false;
+        els.planBuildModel.disabled = false;
+        els.planOutcome.textContent = msg.reason || 'could not build — try again';
+      }
       return;
     }
 
@@ -2803,6 +2866,17 @@ els.usageSheet.onclick = (e) => {
 $('plan-close').onclick = () => setPlanSheet(false);
 els.planSheet.onclick = (e) => {
   if (e.target === els.planSheet) setPlanSheet(false);
+};
+els.planBuild.onclick = () => {
+  if (!state.openPlanCard) return;
+  sendPlanBuild(state.openPlanCard, els.planBuildModel);
+};
+els.planBuildModel.onchange = () => {
+  const card = state.openPlanCard;
+  const sel = card?.querySelector('.build-model');
+  if (sel && [...sel.options].some((o) => o.value === els.planBuildModel.value)) {
+    sel.value = els.planBuildModel.value;
+  }
 };
 
 // Mobile browsers suspend sockets in the background; resync when we come back.

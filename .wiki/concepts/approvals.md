@@ -14,7 +14,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: How desktop tools are drawn
-generated: { by: agent, at: 2026-08-20T21:25:00Z }
+generated: { by: agent, at: 2026-08-20T21:30:00Z }
 ---
 
 # Approvals, questions, and plans
@@ -80,9 +80,9 @@ after choosing the model there if one was named. Telegram gets the same two
 actions.
 
 On the web, View Plan opens the markdown full-window (like Settings): title
-in the header, × or Escape to close. Wide fences and tables scroll inside the
-viewer. Repo-path links in the plan (`[file](src/…)`) render as the file name
-in code, not raw brackets.
+in the header, × or Escape to close, and Build with its model picker stuck as
+a footer under the scrolling text. Repo-path links in the plan
+(`[file](src/…)`) render as the file name in code, not raw brackets.
 
 ## Related
 

@@ -1061,27 +1061,43 @@ details.think .body {
   color: inherit;
 }
 .created-plan .acts button.view { color: var(--muted); }
-.created-plan .build-group {
+.created-plan .build-group,
+.plan-foot .build-group {
   display: flex;
   align-items: stretch;
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid var(--ok-border);
 }
-.created-plan .build-group button.build {
+.created-plan .build-group button.build,
+.plan-foot .build-group button.build {
   border: none;
   border-radius: 0;
   background: var(--amber);
   color: #1a1408;
   font-weight: 600;
+  padding: 6px 13px;
+  font-size: 13px;
+  cursor: pointer;
 }
-.created-plan .build-group select {
+.created-plan .build-group select,
+.plan-foot .build-group select {
   border: none;
   border-left: 1px solid rgba(0, 0, 0, 0.2);
   border-radius: 0;
   background: var(--amber);
   color: #1a1408;
   max-width: 11rem;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.created-plan .build-group button.build:disabled,
+.created-plan .build-group select:disabled,
+.plan-foot .build-group button.build:disabled,
+.plan-foot .build-group select:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 .created-plan .outcome { font-size: 12px; color: var(--muted); margin-top: 8px; text-align: right; }
 .created-plan.resolved { opacity: 0.85; }
@@ -1113,7 +1129,7 @@ details.think .body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: 0;
   animation: sheet-in 0.16s ease;
 }
 
@@ -1134,7 +1150,7 @@ details.think .body {
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 16px 18px 28px;
+  padding: 16px 18px 20px;
   font-size: 14px;
   overflow-wrap: anywhere;
   max-width: 900px;
@@ -1182,6 +1198,33 @@ details.think .body {
 .plan-body ol {
   margin: 0 0 10px;
   padding-left: 1.25em;
+}
+
+.plan-foot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--bg-2);
+}
+
+.plan-foot .outcome {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: left;
+}
+
+.plan-foot .build-group {
+  flex: 0 0 auto;
 }
 
 /* notices */

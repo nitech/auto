@@ -1879,6 +1879,10 @@ if (existsSync(SRC)) {
     fail('View Plan must open a full-window plan sheet with a close control');
     failed = true;
   }
+  if (!html.includes('id="plan-foot"') || !html.includes('id="plan-build"') || !html.includes('id="plan-build-model"')) {
+    fail('full-window View Plan must keep Build controls in a sticky footer');
+    failed = true;
+  }
   if (!js.includes('function openPlanView') || !js.includes('function setPlanSheet') || !js.includes('openPlanView(card)')) {
     fail('View Plan must open the plan sheet, not expand inline');
     failed = true;
@@ -1887,8 +1891,8 @@ if (existsSync(SRC)) {
     fail('View Plan must not toggle Hide Plan inline');
     failed = true;
   }
-  if (!css.includes('#plan-sheet') || !css.includes('.plan-body')) {
-    fail('plan sheet must be styled as a full-window viewer');
+  if (!css.includes('#plan-sheet') || !css.includes('.plan-body') || !css.includes('.plan-foot')) {
+    fail('plan sheet must be styled as a full-window viewer with a sticky Build footer');
     failed = true;
   }
   const attAt = html.indexOf('id="attachments"');
