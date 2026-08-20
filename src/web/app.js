@@ -49,7 +49,6 @@ const els = {
   model: $('model'),
   policy: $('policy'),
   conn: $('conn'),
-  connLabel: $('conn-label'),
   sheet: $('sheet'),
   toBottom: $('to-bottom'),
   attachments: $('attachments'),
@@ -1803,8 +1802,8 @@ function setConn(kind, label) {
   els.conn.className = kind === 'ok' ? 'dot ok'
     : kind === 'error' ? 'dot error'
     : 'dot';
-  els.connLabel.textContent = label;
   els.conn.title = label;
+  els.conn.setAttribute('aria-label', label);
   if (!els.sheet.hidden) {
     $('sheet-conn').textContent = `${label} · ${location.host}`;
   }
@@ -2630,7 +2629,7 @@ function setSheet(open) {
   $('sheet-hostname').textContent = state.host.hostname
     ? `hostname · ${state.host.hostname}`
     : '';
-  $('sheet-conn').textContent = `${els.connLabel.textContent} · ${location.host}`;
+  $('sheet-conn').textContent = `${els.conn.title || '…'} · ${location.host}`;
 }
 
 /** Rail brand + Settings Host both read from this. */
