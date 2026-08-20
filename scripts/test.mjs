@@ -2150,11 +2150,13 @@ if (existsSync(SRC)) {
 {
   const { stampHtml } = await import('../src/web/stamp.mjs');
   const out = stampHtml(
-    '<link href="/style.css" /><script src="/app.js"></script><link href="/style.css?v=old" />',
-    (p) => (p === '/style.css' ? 'aaa' : 'bbb'),
+    '<link href="/style.css" /><script src="/app.js"></script><link href="/style.css?v=old" /><link href="/apple-touch-icon.png" /><link href="/icon.svg" />',
+    (p) => ({ '/style.css': 'aaa', '/app.js': 'bbb', '/apple-touch-icon.png': 'ccc', '/icon.svg': 'ddd' }[p] || 'x'),
   );
   if (!out.includes('/style.css?v=aaa') || !out.includes('/app.js?v=bbb') || out.includes('?v=old')) {
     fail(`stampHtml must rewrite css/js URLs with ?v=, got ${out}`);
+  } else if (!out.includes('/apple-touch-icon.png?v=ccc') || !out.includes('/icon.svg?v=ddd')) {
+    fail(`stampHtml must fingerprint touch icon URLs so Safari drops a stale mark, got ${out}`);
   } else {
     ok('v2 web: css/js URLs are fingerprinted from size+mtime');
   }

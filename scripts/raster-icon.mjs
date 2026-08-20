@@ -29,6 +29,12 @@ export const DOT_R = 32;
 /** How far the fillet pad overlaps the capsules, to hide the AA seam on the old V. */
 export const FILLET_OVERLAP = 2;
 export const SRC = 512;
+/**
+ * Scale the A around the tile centre. 1.0 keeps the old ~80% maskable inset;
+ * a bit over 1 fills more of the home-screen / share preview without leaving
+ * the maskable safe zone (still clear of the outer 10%).
+ */
+export const MARK_SCALE = 1.28;
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const WEB = join(ROOT, 'src', 'web');
@@ -195,14 +201,17 @@ function fillet(px, py, ax, ay, lx, ly, rx, ry, halfW, filletR, overlap) {
 
 function raster(size) {
   const px = Buffer.alloc(size * size * 4);
-  const s = size / SRC;
+  const s = (size / SRC) * MARK_SCALE;
+  const mid = size / 2;
+  const srcMid = SRC / 2;
+  const map = (v) => mid + (v - srcMid) * s;
   const halfW = (STROKE_W / 2) * s;
   const filletR = FILLET_R * s;
   const overlap = FILLET_OVERLAP * s;
-  const [ax, ay] = [APEX[0] * s, APEX[1] * s];
-  const [lx, ly] = [FOOT_L[0] * s, FOOT_L[1] * s];
-  const [rx, ry] = [FOOT_R[0] * s, FOOT_R[1] * s];
-  const [dcx, dcy] = [DOT_C[0] * s, DOT_C[1] * s];
+  const [ax, ay] = [map(APEX[0]), map(APEX[1])];
+  const [lx, ly] = [map(FOOT_L[0]), map(FOOT_L[1])];
+  const [rx, ry] = [map(FOOT_R[0]), map(FOOT_R[1])];
+  const [dcx, dcy] = [map(DOT_C[0]), map(DOT_C[1])];
   const dotR = DOT_R * s;
 
   for (let y = 0; y < size; y++) {

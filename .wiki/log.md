@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-20
+* **Update**: App icon mark scaled up (~1.28×) so it fills more of the home-screen / share preview; Safari's white share-sheet matte around website icons stays (OS chrome).
 * **Update**: Browser tab title leads with this machine's host label (`hostname · Auto`).
 * **Update**: Session-rail WebSocket status is a coloured dot left of the host name (no Connected / Reconnecting… text in the header).
 

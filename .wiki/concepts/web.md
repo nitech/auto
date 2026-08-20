@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-20T16:50:00Z }
+generated: { by: agent, at: 2026-08-20T17:00:00Z }
 ---
 
 # Web app
@@ -39,7 +39,10 @@ same id from the browser. Telegram `/switch` does not steal the tab.
 
 Open `http://<tailscale-ip>:4331/`. It is a PWA: `display: standalone`, an
 SVG tab icon, and PNG icons (180 / 192 / 512) so a phone can put it on the
-Home Screen. iOS needs `apple-mobile-web-app-capable` and
+Home Screen. The A is scaled up inside a full-bleed dark tile so the mark
+fills more of the preview; Safari's share sheet still draws its own white
+matte around website icons — that frame is not ours to remove. iOS needs
+`apple-mobile-web-app-capable` and
 `apple-touch-icon.png` or Add to Home Screen still works but opens as a
 Safari tab with a screenshot for an icon. Settings explains the path
 (Share → Add to Home Screen on iPhone; the browser's own Install prompt
