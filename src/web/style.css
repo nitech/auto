@@ -208,19 +208,22 @@ html[data-standalone] #app {
   padding: max(14px, env(safe-area-inset-top, 0px)) 14px 10px;
 }
 
+/* Auto + host stack is sized to the 22px mark — same height, no extra gap. */
 .brand {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  justify-content: center;
+  gap: 0;
   min-width: 0;
   flex: 1;
-  line-height: 1.15;
+  line-height: 1;
 }
 
 .brand-name {
   font-weight: 650;
   letter-spacing: -0.01em;
-  font-size: 16px;
+  font-size: 13px;
+  padding: 0;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -230,10 +233,11 @@ html[data-standalone] #app {
 .brand-host {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
-  font-size: 11.5px;
+  font-size: 9px;
   font-weight: 500;
+  padding: 0;
   color: var(--faint);
 }
 
@@ -246,14 +250,12 @@ html[data-standalone] #app {
 
 /* The favicon's A mark, glyph only — currentColor and the usage amber, so it
    follows the app theme rather than the system's (an <img> of icon.svg would
-   follow the system and can disagree with a manual theme pick). Height matches
-   the Auto + host stack; a hair of top margin keeps the glyph from reading high. */
+   follow the system and can disagree with a manual theme pick). */
 .brand-mark {
-  width: 34px;
-  height: 34px;
+  width: 22px;
+  height: 22px;
   flex: 0 0 auto;
-  align-self: flex-start;
-  margin-top: 2px;
+  align-self: center;
 }
 
 #session-list {
