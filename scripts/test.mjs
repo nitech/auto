@@ -1875,6 +1875,22 @@ if (existsSync(SRC)) {
     fail('usage dial and dialog must sit beside the attach control');
     failed = true;
   }
+  if (!html.includes('id="plan-sheet"') || !html.includes('id="plan-close"') || !html.includes('id="plan-body"')) {
+    fail('View Plan must open a full-window plan sheet with a close control');
+    failed = true;
+  }
+  if (!js.includes('function openPlanView') || !js.includes('function setPlanSheet') || !js.includes('openPlanView(card)')) {
+    fail('View Plan must open the plan sheet, not expand inline');
+    failed = true;
+  }
+  if (js.includes("textContent = open ? 'Hide Plan'") || js.includes('Hide Plan')) {
+    fail('View Plan must not toggle Hide Plan inline');
+    failed = true;
+  }
+  if (!css.includes('#plan-sheet') || !css.includes('.plan-body')) {
+    fail('plan sheet must be styled as a full-window viewer');
+    failed = true;
+  }
   const attAt = html.indexOf('id="attachments"');
   const boxAt = html.indexOf('class="composer-box"');
   // Close of the composer-box itself — not an inner </div>, and not the

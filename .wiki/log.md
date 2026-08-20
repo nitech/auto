@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-20
+* **Update**: View Plan opens the plan markdown full-window (× / Escape), not inline in the card.
 * **Update**: View Plan on the web keeps the Created Plan card in the chat column — wide fences scroll inside instead of clipping mid-line on a phone; repo-path links render as code.
 * **Update**: Icons are three tags — `favicon.ico`, `icon.svg`, `apple-touch-icon.png` — after an attempt to make the iOS share sheet draw the mark full-bleed went nowhere. Ruled out: clean vs fingerprinted icon URLs, a precomposed touch icon, raster favicons in three sizes, `mask-icon`, a fresh MagicDNS origin, and HTTPS on 443. That white matte is Safari's chrome.
 * **Update**: Auto is reachable over HTTPS inside the tailnet via `tailscale serve` (443 → 4331); Funnel stays off.

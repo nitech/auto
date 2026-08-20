@@ -59,6 +59,9 @@ const els = {
   usage: $('usage'),
   usageSheet: $('usage-sheet'),
   usageBody: $('usage-body'),
+  planSheet: $('plan-sheet'),
+  planSheetTitle: $('plan-sheet-title'),
+  planBody: $('plan-body'),
 };
 
 const state = {
@@ -78,6 +81,8 @@ const state = {
   permCards: new Map(),
   /** askId -> element, so a question can be marked answered where it stands */
   askCards: new Map(),
+  /** toolCallId of the plan currently open in the full-window viewer */
+  openPlanId: null,
   stream: null,
   streamKind: null,
   /** the thinking block being written to, so it can be folded when it ends */
@@ -1055,7 +1060,6 @@ function renderCreatedPlan(rec) {
     <div class="head">Created Plan</div>
     <div class="title"></div>
     <div class="overview"></div>
-    <div class="body md" hidden></div>
     <div class="acts">
       <button type="button" class="view">View Plan</button>
       <span class="build-group">
@@ -1068,18 +1072,33 @@ function renderCreatedPlan(rec) {
   card.createdPlan = true;
   fillPlanModels(card.querySelector('.build-model'));
 
-  card.querySelector('.view').onclick = () => {
-    const body = card.querySelector('.body');
-    const open = body.hidden;
-    body.hidden = !open;
-    card.querySelector('.view').textContent = open ? 'Hide Plan' : 'View Plan';
-    if (open) card.dataset.opened = '1';
-  };
+  card.querySelector('.view').onclick = () => openPlanView(card);
   card.querySelector('.build').onclick = () => sendPlanBuild(card);
 
   if (rec.toolCallId) state.toolCards.set(rec.toolCallId, card);
   paintCreatedPlan(card, rec);
   add(card);
+}
+
+/** Full-window plan markdown — same idea as Settings, closed with ×. */
+function openPlanView(card) {
+  const fields = planFields(card.rec || {});
+  state.openPlanId = card.rec?.toolCallId || null;
+  els.planSheetTitle.textContent = fields.name || 'Plan';
+  els.planBody.innerHTML = fields.markdown
+    ? markdown(fields.markdown)
+    : '<p class="sheet-note">No plan text yet.</p>';
+  els.planBody.scrollTop = 0;
+  setPlanSheet(true);
+}
+
+function setPlanSheet(open) {
+  els.planSheet.hidden = !open;
+  if (!open) {
+    els.planBody.innerHTML = '';
+    els.planSheetTitle.textContent = 'Plan';
+    state.openPlanId = null;
+  }
 }
 
 function fillPlanModels(select) {
@@ -1124,8 +1143,12 @@ function paintCreatedPlan(card, rec) {
   const overview = card.querySelector('.overview');
   overview.textContent = fields.overview;
   overview.hidden = !fields.overview;
-  const body = card.querySelector('.body');
-  if (fields.markdown) body.innerHTML = markdown(fields.markdown);
+  // If this plan is open in the modal, keep the text current as Cursor
+  // streams more of it in.
+  if (!els.planSheet.hidden && card.rec?.toolCallId && card.rec.toolCallId === state.openPlanId) {
+    els.planSheetTitle.textContent = fields.name || 'Plan';
+    if (fields.markdown) els.planBody.innerHTML = markdown(fields.markdown);
+  }
   const waiting = fields.awaitingBuild && card.rec.awaitingBuild !== false;
   card.classList.toggle('resolved', !waiting);
   const outcome = card.querySelector('.outcome');
@@ -1777,6 +1800,7 @@ function attach(sessionId) {
     return;
   }
   saveDraft(state.sessionId);
+  setPlanSheet(false);
   state.sessionId = sessionId;
   rememberSession(sessionId);
   state.lastSeq = 0;
@@ -2751,6 +2775,7 @@ document.addEventListener('keydown', (e) => {
   // Innermost first: the dialogs sit over the sheet, which sits over a
   // tool view, which sits over the rail.
   if (!$('lightbox').hidden) closeLightbox();
+  else if (!els.planSheet.hidden) setPlanSheet(false);
   else if (!els.usageSheet.hidden) setUsageSheet(false);
   else if (!$('newbie').hidden) setNewbie(false);
   else if (!els.sheet.hidden) setSheet(false);
@@ -2774,6 +2799,10 @@ els.usage.onclick = () => {
 $('usage-close').onclick = () => setUsageSheet(false);
 els.usageSheet.onclick = (e) => {
   if (e.target === els.usageSheet) setUsageSheet(false);
+};
+$('plan-close').onclick = () => setPlanSheet(false);
+els.planSheet.onclick = (e) => {
+  if (e.target === els.planSheet) setPlanSheet(false);
 };
 
 // Mobile browsers suspend sockets in the background; resync when we come back.
