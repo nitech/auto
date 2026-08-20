@@ -246,12 +246,14 @@ html[data-standalone] #app {
 
 /* The favicon's A mark, glyph only — currentColor and the usage amber, so it
    follows the app theme rather than the system's (an <img> of icon.svg would
-   follow the system and can disagree with a manual theme pick). */
+   follow the system and can disagree with a manual theme pick). Height matches
+   the Auto + host stack; a hair of top margin keeps the glyph from reading high. */
 .brand-mark {
-  width: 22px;
-  height: 22px;
+  width: 34px;
+  height: 34px;
   flex: 0 0 auto;
-  align-self: center;
+  align-self: flex-start;
+  margin-top: 2px;
 }
 
 #session-list {
