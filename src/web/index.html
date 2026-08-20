@@ -10,18 +10,11 @@
 <meta name="apple-mobile-web-app-title" content="Auto" />
 <title>Auto</title>
 <link rel="manifest" href="/manifest.webmanifest" />
-<!-- Icon paths stay clean (no ?v=): a query string is a way for WebKit to skip
-     a site icon. No `rel="icon"` SVG on purpose — offered a scalable entry,
-     WebKit takes it and draws it small on a white card in the iOS share sheet
-     instead of using the touch icon. The SVG stays as mask-icon (pinned tabs),
-     which is exactly what sites whose icon renders full-bleed there declare. -->
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-<link rel="apple-touch-icon-precomposed" sizes="180x180" href="/apple-touch-icon-precomposed.png" />
-<link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-<link rel="mask-icon" href="/icon.svg" color="#0b0d12" />
-<link rel="shortcut icon" href="/favicon.ico" />
+<!-- Three tags cover every browser: .ico for old ones and Safari, the SVG for
+     modern tabs, the PNG for iOS. Paths stay clean — `?v=` is for css/js. -->
+<link rel="icon" href="/favicon.ico" sizes="32x32" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="stylesheet" href="/vendor/xterm.css" />
 <link rel="stylesheet" href="/style.css" />
 <style>

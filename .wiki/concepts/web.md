@@ -42,23 +42,17 @@ SVG tab icon, and PNG icons (180 / 192 / 512) so a phone can put it on the
 Home Screen. The A is scaled up inside a full-bleed dark tile so the mark
 fills more of the preview.
 
-WebKit draws a site's icon full-bleed in the iOS share sheet only when it
-actually *chose* a touch icon; otherwise it centres a small icon on a white
-card. The icon block therefore copies what sites that get this right
-declare: `apple-touch-icon` plus `apple-touch-icon-precomposed` (the name
-older iOS probes first), raster `favicon-96x96` / `-32x32` / `-16x16` and
-`favicon.ico`, and the SVG as **`mask-icon` only**. There is deliberately no
-`rel="icon"` SVG: offered a scalable entry, WebKit takes it over the touch
-icon and draws it small. Every icon path is declared **clean** — `?v=`
-fingerprinting is for css/js only, because a query string is another way to
-be skipped.
+Three icon tags, and that is deliberate: `favicon.ico` for browsers that do
+not take an SVG, `icon.svg` for modern tabs, `apple-touch-icon.png` for iOS.
+Paths stay clean, since `?v=` fingerprinting is for css/js.
 
-Not settled: a plain HTTP origin on port 4331, a fresh MagicDNS origin, and
-HTTPS through `tailscale serve` each left the share sheet unchanged, so the
-matte is not about the URL. WebKit caches a site icon per origin and holds
-it hard, so any retest needs an origin that has never been visited (a new
-port through `tailscale serve` is the cheapest one) or Clear History and
-Website Data. iOS needs `apple-mobile-web-app-capable` and
+Chasing the iOS share sheet, which centres Auto's mark on a white card
+rather than filling the rounded square, is a known dead end: the enlarged
+mark, clean icon URLs, a precomposed touch icon, raster favicons in three
+sizes, demoting the SVG to `mask-icon`, a fresh MagicDNS origin, and HTTPS
+on 443 through `tailscale serve` all left it identical. Treat that matte as
+Safari's own chrome unless someone has new evidence. iOS needs
+`apple-mobile-web-app-capable` and
 `apple-touch-icon.png` or Add to Home Screen still works but opens as a
 Safari tab with a screenshot for an icon. Settings explains the path
 (Share → Add to Home Screen on iPhone; the browser's own Install prompt

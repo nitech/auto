@@ -2049,31 +2049,15 @@ if (existsSync(SRC)) {
   const icon = readFileSync(join(ROOT, 'src/web/icon.svg'), 'utf8');
   let failed = false;
   if (!html.includes('rel="icon"') || !html.includes('href="/icon.svg"')) {
-    fail('the tab needs a favicon, and the SVG mark must still be declared');
+    fail('the tab needs an SVG favicon');
     failed = true;
   }
-  // Offered a scalable entry, WebKit takes it over the touch icon and draws it
-  // small on a white card in the iOS share sheet. The SVG is mask-icon only.
-  if (/rel="icon"[^>]*image\/svg/.test(html) || /image\/svg[^>]*rel="icon"/.test(html)) {
-    fail('the SVG must not be a rel="icon" — WebKit picks it over the touch icon');
-    failed = true;
-  }
-  if (!html.includes('rel="mask-icon"')) {
-    fail('the SVG mark belongs on mask-icon');
+  if (!html.includes('href="/favicon.ico"')) {
+    fail('browsers that do not take an SVG favicon need favicon.ico');
     failed = true;
   }
   if (!html.includes('apple-touch-icon') || !html.includes('/apple-touch-icon.png')) {
     fail('iOS Home Screen needs an apple-touch-icon PNG');
-    failed = true;
-  }
-  // WebKit renders a touch icon full-bleed in the share sheet only when it
-  // chose one: raster favicons and precomposed, all declared without a query.
-  if (!html.includes('apple-touch-icon-precomposed') || !html.includes('/favicon.ico')) {
-    fail('iOS also probes the precomposed touch icon and favicon.ico — declare both');
-    failed = true;
-  }
-  if (!html.includes('/favicon-96x96.png') || !html.includes('/favicon-32x32.png') || !html.includes('/favicon-16x16.png')) {
-    fail('WebKit does not take an SVG favicon as a site icon everywhere — ship raster favicons');
     failed = true;
   }
   if (!html.includes('apple-mobile-web-app-capable') || !html.includes('mobile-web-app-capable')) {
@@ -2110,15 +2094,7 @@ if (existsSync(SRC)) {
     fail('the PWA icon must be full-bleed so iOS/Android can mask it — no rounded rect');
     failed = true;
   }
-  const pngFiles = [
-    'apple-touch-icon.png',
-    'apple-touch-icon-precomposed.png',
-    'icon-192.png',
-    'icon-512.png',
-    'favicon-96x96.png',
-    'favicon-32x32.png',
-    'favicon-16x16.png',
-  ];
+  const pngFiles = ['apple-touch-icon.png', 'icon-192.png', 'icon-512.png'];
   const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
   for (const name of pngFiles) {
     const p = join(ROOT, 'src/web', name);

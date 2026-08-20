@@ -1,9 +1,8 @@
 # Directory Update Log
 
 ## 2026-08-20
-* **Update**: The SVG mark is `mask-icon` only — as a `rel="icon"` WebKit picks it over the touch icon. Raster favicons now 96/32/16. Ruled out as causes of the small-icon-on-white share sheet: HTTP vs HTTPS, port 4331 vs 443, and the origin's hostname.
+* **Update**: Icons are three tags — `favicon.ico`, `icon.svg`, `apple-touch-icon.png` — after an attempt to make the iOS share sheet draw the mark full-bleed went nowhere. Ruled out: clean vs fingerprinted icon URLs, a precomposed touch icon, raster favicons in three sizes, `mask-icon`, a fresh MagicDNS origin, and HTTPS on 443. That white matte is Safari's chrome.
 * **Update**: Auto is reachable over HTTPS inside the tailnet via `tailscale serve` (443 → 4331); Funnel stays off.
-* **Fix**: iOS share sheet drew a small icon on a white card because WebKit never chose Auto's touch icon. Now declared like sites that render full-bleed: precomposed touch icon, raster favicons and `favicon.ico`, and icon paths left clean (`?v=` is css/js only).
 * **Update**: App icon mark scaled up (~1.28×) so it fills more of the home-screen / share preview.
 * **Update**: Browser tab title leads with this machine's host label (`hostname · Auto`).
 * **Update**: Session-rail WebSocket status is a coloured dot left of the host name (no Connected / Reconnecting… text in the header).

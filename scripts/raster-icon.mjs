@@ -260,20 +260,11 @@ function encodeIco(png, size) {
   return Buffer.concat([dir, png]);
 }
 
-/**
- * `apple-touch-icon-precomposed.png` is the same art under the name older iOS
- * probes first; both are also what iOS fetches from the root when a page
- * declares no link at all. The 16/32 favicons and `favicon.ico` exist because
- * WebKit does not treat an SVG favicon as a site icon everywhere.
- */
+/** 180 for iOS, 192/512 for the Android manifest, 32 inside favicon.ico. */
 const targets = [
   { file: 'apple-touch-icon.png', size: 180 },
-  { file: 'apple-touch-icon-precomposed.png', size: 180 },
   { file: 'icon-192.png', size: 192 },
   { file: 'icon-512.png', size: 512 },
-  { file: 'favicon-96x96.png', size: 96 },
-  { file: 'favicon-32x32.png', size: 32 },
-  { file: 'favicon-16x16.png', size: 16 },
 ];
 
 for (const t of targets) {
