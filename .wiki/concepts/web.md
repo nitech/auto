@@ -23,14 +23,21 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T08:25:00Z }
+generated: { by: agent, at: 2026-08-21T08:40:00Z }
 ---
 
 # Web app
 
 A projection of the host's [transcript](transcripts.md). It attaches over
 the WebSocket, replays from a sequence number, and renders records as they
-stream. A reload or a dropped connection costs nothing.
+stream. A reload or a dropped connection does not lose history.
+
+The last ~1200 records are cached in memory (switching chats in this tab)
+and IndexedDB (hard reload). Boot paints the cache first, then the handshake
+asks for `fromSeq: lastSeq` so only the tail is downloaded; the loading
+overlay is skipped when the cache already filled the pane. Switching back to
+a chat still in memory is the same path. The host remains authoritative —
+`replaced` or a gap clears the pane and redraws.
 
 The open chat is this tab's, not the host's active session. A refresh puts
 `?session=` on the URL and the handshake asks for that id even when the page
@@ -95,8 +102,9 @@ meta also asks for `interactive-widget=resizes-content` where supported.
 
 ## What it draws
 
-- While a long transcript replays, the chat pane shows the Auto A mark
-  (same glyph as the rail) and "Loading conversation…", not a blank.
+- While a long transcript replays with nothing cached, the chat pane shows
+  the Auto A mark (same glyph as the rail) and "Loading conversation…", not
+  a blank. A cache hit paints first and skips that overlay.
 - The session rail, grouped by [project](projects.md), plus Cursor's recent
   chats so the rail can be the same list the IDE shows.
 - The [queue](queue.md) above the chat box, with reword / send now / delete.

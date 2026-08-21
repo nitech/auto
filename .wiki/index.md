@@ -5,7 +5,7 @@ Remote control for Cursor's agent. Start at [overview](overview.md).
 # Concepts
 
 * [Sessions](concepts/sessions.md) - One conversation, desktop or ACP, with its own transcript
-* [Transcripts](concepts/transcripts.md) - Append-only JSONL; clients hold no authoritative state
+* [Transcripts](concepts/transcripts.md) - Append-only JSONL; clients cache the tail, host stays authoritative
 * [Host](concepts/host.md) - One process on 4331: HTTP, WebSocket, restart, machine name
 * [Supervise](concepts/supervise.md) - Watchdog; runs setup checks; prints the Tailscale URL
 * [Access](concepts/access.md) - Tailscale-only reachability, setup checklist, no Auto login
@@ -18,7 +18,7 @@ Remote control for Cursor's agent. Start at [overview](overview.md).
 * [Approvals](concepts/approvals.md) - Permissions, question cards, Created Plan, file-review bar
 * [Queue](concepts/queue.md) - Messages waiting behind a turn, in Auto or in Cursor
 * [Telegram](concepts/telegram.md) - Bot as a projection of the same host
-* [Web](concepts/web.md) - PWA that replays the transcript, remembers the open chat, and installs to the Home Screen
+* [Web](concepts/web.md) - PWA that caches and replays the transcript, remembers the open chat, and installs to the Home Screen
 * [Usage](concepts/usage.md) - Context dial for this chat, plus Cursor Models / Other Models account quotas
 * [Browser](concepts/browser.md) - Headed Chrome, screencast, not recorded
 * [Terminals](concepts/terminals.md) - node-pty shells for the user and the agent

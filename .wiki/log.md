@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Update**: Web client caches the transcript tail (memory + IndexedDB) so reload and chat switch paint immediately, then catch up from `lastSeq`.
 * **Update**: Active scrub label is brighter (kind-coloured ring, stronger type) and stays opaque near centre.
 * **Update**: Scrub mode draws a radial veil behind the label wheel so chat text cannot wash out the pills.
 * **Update**: Scrub labels are now a counter-scrolling rotary wheel; widths trace a semicircle and fade to zero at the viewport ends.

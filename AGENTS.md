@@ -53,8 +53,9 @@ value as setup documentation is fine.
   `session/load`, so an idle one costs nothing but its history stays intact.
 - **The transcript is the truth.** Every prompt, tool call, result, diff,
   permission and error is appended to `state/transcripts/<id>.jsonl` with a
-  monotonic sequence number. Clients replay from a sequence number; they
-  hold no authoritative state. If you add a new kind of event, record it —
+  monotonic sequence number. Clients replay from a sequence number; they may
+  cache the last stretch for a fast paint, but the host remains authoritative.
+  If you add a new kind of event, record it —
   a record we cannot render yet beats one we threw away.
 - **Two ways into the IDE.** A desktop chat is driven by typing into Cursor's
   own window over its debugging port, and only failing that through the desktop

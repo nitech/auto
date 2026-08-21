@@ -11,15 +11,20 @@ sources:
   - id: map
     resource: /src/core/map-updates.mjs
     title: ACP update mapping
-generated: { by: agent, at: 2026-08-16T06:35:00Z }
+  - id: cache
+    resource: /src/web/transcript-cache.js
+    title: Client transcript cache
+generated: { by: agent, at: 2026-08-21T08:40:00Z }
 ---
 
 # Transcripts
 
 Every prompt, tool call, result, diff, permission, plan, question, and error
 is appended to `state/transcripts/<id>.jsonl` with a monotonic `seq` per
-session. Clients replay from a sequence number. They hold no authoritative
-state.
+session. Clients replay from a sequence number. The host is the source of
+truth; a client may keep a **cache** of the last stretch so a reload is not
+a blank wait, but it is never authoritative — catch-up from `lastSeq` (or a
+full replace when the host says so) wins.
 
 Unknown ACP update kinds are stored as `acp:<kind>` rather than dropped. A
 record we cannot render yet beats one we threw away.
@@ -62,6 +67,15 @@ whole file. A chat that has run for days is tens of megabytes; sending it as
 one WebSocket message locked the tab. Older records stay on disk and can be
 asked for by sequence number. A reconnect that claims a `fromSeq` ahead of
 the log is started over — that transcript was reset behind it.
+
+## Client cache
+
+The [web app](web.md) keeps the same ~1200-record tail in memory (session
+switches in this tab) and IndexedDB (hard reload). On boot or switch it
+paints the cache immediately, then attaches with `fromSeq: lastSeq`. The
+host either appends what is new or sets `replaced` / reports a gap — only
+then does the client wipe and redraw. Live records update the cache as they
+stream; disk writes are debounced and flushed on hide.
 
 ## Streaming assistant text
 

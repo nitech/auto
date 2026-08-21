@@ -2,9 +2,10 @@
  * Auto v2 web client.
  *
  * A projection of the host's transcript: it attaches to a session, replays
- * from a sequence number, and renders records as they stream. The transcript
- * itself is not stored here, so a reload or a dropped connection costs
- * nothing; which chat was open is remembered, so you come back to it.
+ * from a sequence number, and renders records as they stream. The host is
+ * still the source of truth; a local cache (memory + IndexedDB) only keeps
+ * the last stretch so a reload or switching back can paint immediately and
+ * catch up from lastSeq. Which chat was open is remembered separately.
  */
 
 import {
@@ -30,6 +31,16 @@ import {
   planFields,
   turnCopy,
 } from './desktop-tool-ui.js';
+import {
+  appendLive,
+  flushDiskSave,
+  loadCache,
+  makeSnap,
+  memoryGet,
+  mergeRecords,
+  saveCache,
+  scheduleDiskSave,
+} from './transcript-cache.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -79,6 +90,12 @@ const state = {
   /** Cursor's own recent chats, whichever project they belong to */
   chats: [],
   lastSeq: 0,
+  /** records currently drawn for this session (tail only) — fed into the cache */
+  liveRecords: [],
+  /** how many records sit before liveRecords[0], for the "earlier" notice */
+  liveEarlier: 0,
+  /** painted from cache; attached must still restore tool tabs even on catch-up */
+  paintedFromCache: false,
   busy: false,
   /** toolCallId -> element, so tool_update mutates the card it belongs to */
   toolCards: new Map(),
@@ -154,10 +171,83 @@ function nearBottom() {
 /**
  * A long transcript takes a few seconds to arrive and draw. The overlay is
  * in the markup so it is there before this file runs; this only flips it.
+ * A cache hit skips it — the conversation is already on screen.
  */
 function setHistoryLoading(on) {
   els.historyLoading.hidden = !on;
   els.transcript.setAttribute('aria-busy', on ? 'true' : 'false');
+}
+
+/** Wipe the chat pane and the maps that point into it. */
+function resetChatUi() {
+  els.transcript.innerHTML = '';
+  hideScrub(true);
+  markScrubDirty();
+  state.toolCards.clear();
+  state.bundle = null;
+  state.permCards.clear();
+  state.askCards.clear();
+  state.stream = null;
+  state.thinking = null;
+  state.statusEl = null;
+  state.turn = null;
+  resetTerminals();
+}
+
+/** Keep the live record list (and cache) in step with what render just drew. */
+function noteLiveRecord(rec) {
+  if (state.replaying || !state.sessionId) return;
+  if (typeof rec?.seq !== 'number') return;
+  const { records, earlierDelta } = appendLive(state.liveRecords, rec);
+  state.liveRecords = records;
+  if (earlierDelta) state.liveEarlier += earlierDelta;
+  persistLive(state.sessionId);
+}
+
+function persistLive(sessionId) {
+  if (!sessionId || !state.liveRecords.length) return;
+  const snap = saveCache(sessionId, state.liveRecords, state.liveEarlier);
+  if (snap) scheduleDiskSave(sessionId, snap);
+}
+
+function adoptLive(records, earlier = 0) {
+  const snap = makeSnap(records, earlier);
+  state.liveRecords = snap.records.slice();
+  state.liveEarlier = snap.earlier;
+  state.lastSeq = snap.lastSeq;
+  if (state.sessionId && snap.records.length) {
+    saveCache(state.sessionId, snap.records, snap.earlier);
+    scheduleDiskSave(state.sessionId, snap);
+  }
+}
+
+/**
+ * Draw a cached snapshot so the pane is not blank while the host catches up.
+ * Tool tabs wait for `attached` (panes are host-owned); terminal chunks land
+ * in the early buffer until then.
+ */
+function paintFromCache(snap) {
+  if (!snap?.records?.length) return;
+  resetChatUi();
+  state.paintedFromCache = true;
+  state.liveRecords = [];
+  state.liveEarlier = 0;
+  state.lastSeq = 0;
+  state.replaying = true;
+  if (snap.earlier > 0) {
+    const note = div('notice');
+    note.textContent = `${snap.earlier.toLocaleString()} earlier records are not shown.`;
+    add(note);
+  }
+  for (const rec of snap.records) render(rec);
+  state.replaying = false;
+  state.liveRecords = snap.records.slice();
+  state.liveEarlier = snap.earlier || 0;
+  state.lastSeq = snap.lastSeq || state.lastSeq;
+  if (state.turn) endTurn({ ts: state.now || Date.now() });
+  else settleRunningTools();
+  decorate(els.transcript);
+  scrollDown(true);
 }
 
 function scrollDown(force = false) {
@@ -1759,6 +1849,7 @@ function render(rec) {
     default:
       break;
   }
+  noteLiveRecord(rec);
 }
 
 // -------------------------------------------------------------------- rail
@@ -2326,28 +2417,48 @@ function attach(sessionId) {
     setRail(false);
     return;
   }
+  // Keep the chat we are leaving so switching back is instant.
+  if (state.sessionId && state.liveRecords.length) {
+    const snap = saveCache(state.sessionId, state.liveRecords, state.liveEarlier);
+    if (snap) {
+      scheduleDiskSave(state.sessionId, snap);
+      flushDiskSave(state.sessionId);
+    }
+  }
   saveDraft(state.sessionId);
   setPlanSheet(false);
   state.sessionId = sessionId;
   rememberSession(sessionId);
-  state.lastSeq = 0;
   state.pendingEchoes = [];
-  els.transcript.innerHTML = '';
-  hideScrub(true);
-  markScrubDirty();
-  state.toolCards.clear();
-  state.bundle = null;
-  state.permCards.clear();
-  state.askCards.clear();
-  state.stream = null;
-  state.thinking = null;
-  state.statusEl = null;
-  state.turn = null;
-  resetTerminals();
+  state.paintedFromCache = false;
   loadDraft(sessionId);
-  setHistoryLoading(true);
   setRail(false);
-  sendOp({ op: 'attach', sessionId, fromSeq: 0 });
+
+  // Memory is sync — paint it before the old chat can linger as the wrong one.
+  const warm = memoryGet(sessionId);
+  if (warm?.records?.length) {
+    paintFromCache(warm);
+    setHistoryLoading(false);
+    sendOp({ op: 'attach', sessionId, fromSeq: warm.lastSeq || 0 });
+    return;
+  }
+
+  state.lastSeq = 0;
+  state.liveRecords = [];
+  state.liveEarlier = 0;
+  resetChatUi();
+  setHistoryLoading(true);
+  // Disk may still have it (e.g. after a reload that only warmed this tab's chat).
+  loadCache(sessionId).then((cached) => {
+    if (state.sessionId !== sessionId) return;
+    if (cached?.records?.length) {
+      paintFromCache(cached);
+      setHistoryLoading(false);
+      sendOp({ op: 'attach', sessionId, fromSeq: cached.lastSeq || 0 });
+      return;
+    }
+    sendOp({ op: 'attach', sessionId, fromSeq: 0 });
+  });
 }
 
 /** Rail header + Settings Host both read from this. */
@@ -2368,8 +2479,9 @@ function connect() {
   // socket, so this has to travel with the handshake rather than be asked for
   // afterwards; without it every dropped connection redraws the conversation
   // from scratch, which on a flaky phone connection is most of them.
-  // A first load has no lastSeq — that used to omit the session entirely, and
-  // the host then opened whichever chat was active, not the one this tab had.
+  // A first load has no lastSeq unless the cache painted first — that used to
+  // omit the session entirely, and the host then opened whichever chat was
+  // active, not the one this tab had.
   const q = new URLSearchParams();
   const sessionId = state.sessionId || rememberedSession();
   if (sessionId) q.set('session', sessionId);
@@ -2377,8 +2489,8 @@ function connect() {
     q.set('fromSeq', String(state.lastSeq));
   }
   const query = q.toString();
-  // A reconnect that already has the conversation on screen should not cover
-  // it; a first load (or a replay from scratch) has nothing else to show.
+  // A reconnect (or a cache hit) that already has the conversation on screen
+  // should not cover it; a cold load has nothing else to show.
   if (!state.lastSeq) setHistoryLoading(true);
   const ws = new WebSocket(`${proto}://${location.host}/${query ? `?${query}` : ''}`);
   state.ws = ws;
@@ -2430,21 +2542,14 @@ function connect() {
       const gap = !msg.replaced && msg.earlier > 0;
       const fresh =
         gap || (msg.replaced ?? (msg.sessionId !== state.sessionId || msg.records[0]?.seq === 1));
+      const fromCache = state.paintedFromCache;
+      state.paintedFromCache = false;
       state.sessionId = msg.sessionId;
       rememberSession(msg.sessionId);
       if (fresh) {
-        els.transcript.innerHTML = '';
-        hideScrub(true);
-        markScrubDirty();
-        state.toolCards.clear();
-        state.bundle = null;
-        state.permCards.clear();
-        state.askCards.clear();
-        state.stream = null;
-        state.thinking = null;
-        state.statusEl = null;
-        state.turn = null;
-        resetTerminals();
+        resetChatUi();
+        state.liveRecords = [];
+        state.liveEarlier = 0;
       }
       renderModels(msg.catalog?.models);
       renderModes(msg.catalog?.modes);
@@ -2456,7 +2561,9 @@ function connect() {
       // Panes first (quiet), so replayed terminal chunks have somewhere to land
       // and the remembered active tab can win after restoreViews.
       for (const t of msg.terminals || []) openPane(t, { activate: false });
-      if (fresh) restoreViews(rememberedViews(msg.sessionId));
+      // Cache paint skipped tool tabs (host-owned panes). Restore them on the
+      // first attach even when the transcript only caught up.
+      if (fresh || fromCache) restoreViews(rememberedViews(msg.sessionId));
       // Say what is not on screen, so the top of a long chat reads as the middle
       // of a conversation rather than the beginning of one.
       if (fresh && msg.earlier > 0) {
@@ -2466,6 +2573,14 @@ function connect() {
       }
       for (const rec of msg.records) render(rec);
       state.replaying = false;
+      if (fresh) {
+        adoptLive(msg.records, msg.earlier || 0);
+      } else if (msg.records.length) {
+        const merged = mergeRecords(state.liveRecords, msg.records);
+        adoptLive(merged, state.liveEarlier);
+      } else if (state.sessionId) {
+        persistLive(state.sessionId);
+      }
       if (state.busy) paintLiveStatus();
       else if (state.turn) endTurn({ ts: state.now || Date.now() });
       else settleRunningTools();
@@ -3374,8 +3489,15 @@ els.planBuildModel.onchange = () => {
 
 // Mobile browsers suspend sockets in the background; resync when we come back.
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && state.ws?.readyState !== 1) connect();
-  if (!document.hidden && state.sessionId) refreshUsage();
+  if (document.hidden) {
+    if (state.sessionId) flushDiskSave(state.sessionId);
+    return;
+  }
+  if (state.ws?.readyState !== 1) connect();
+  if (state.sessionId) refreshUsage();
+});
+window.addEventListener('pagehide', () => {
+  if (state.sessionId) flushDiskSave(state.sessionId);
 });
 
 paintMode();
@@ -3395,7 +3517,28 @@ for (const id of ['browser-toggle', 'term-toggle']) {
     return prev?.call(btn, e);
   };
 }
-connect();
+
+/**
+ * Paint any cached transcript before the socket opens, so a reload is not a
+ * blank "Loading conversation…" wait for the same words that were just here.
+ */
+async function boot() {
+  const id = rememberedSession();
+  if (id) {
+    try {
+      const cached = await loadCache(id);
+      if (cached?.records?.length) {
+        state.sessionId = id;
+        paintFromCache(cached);
+        setHistoryLoading(false);
+      }
+    } catch {
+      /* cache is best-effort */
+    }
+  }
+  connect();
+}
+boot();
 
 // ------------------------------------------------------------------ usage
 

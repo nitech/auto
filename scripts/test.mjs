@@ -1743,6 +1743,103 @@ if (existsSync(SRC)) {
   if (!failed) ok('v2 web: transcript loading marker');
 }
 
+// 1d3b. Client transcript cache — paint immediately, catch up from lastSeq.
+{
+  let failed = false;
+  try {
+    const {
+      CACHE_LIMIT,
+      trimTail,
+      mergeRecords,
+      appendLive,
+      makeSnap,
+      memoryPut,
+      memoryGet,
+      memoryClear,
+      saveCache,
+    } = await import('../src/web/transcript-cache.js');
+    memoryClear();
+    if (CACHE_LIMIT !== 1200) {
+      fail(`CACHE_LIMIT must match the host REPLAY_LIMIT (1200), got ${CACHE_LIMIT}`);
+      failed = true;
+    }
+    const trimmed = trimTail(
+      Array.from({ length: 5 }, (_, i) => ({ seq: i + 1 })),
+      3,
+    );
+    if (trimmed.map((r) => r.seq).join(',') !== '3,4,5') {
+      fail(`trimTail should keep the newest records, got ${trimmed.map((r) => r.seq)}`);
+      failed = true;
+    }
+    const merged = mergeRecords(
+      [
+        { seq: 1, kind: 'a' },
+        { seq: 2, kind: 'b' },
+      ],
+      [
+        { seq: 2, kind: 'B' },
+        { seq: 3, kind: 'c' },
+      ],
+    );
+    if (merged.map((r) => `${r.seq}:${r.kind}`).join('|') !== '1:a|2:B|3:c') {
+      fail(`mergeRecords should upsert by seq, got ${JSON.stringify(merged)}`);
+      failed = true;
+    }
+    const grew = appendLive(
+      [
+        { seq: 1 },
+        { seq: 2 },
+      ],
+      { seq: 3 },
+      2,
+    );
+    if (grew.records.map((r) => r.seq).join(',') !== '2,3' || grew.earlierDelta !== 1) {
+      fail(`appendLive should trim the head and report earlierDelta, got ${JSON.stringify(grew)}`);
+      failed = true;
+    }
+    const snap = makeSnap(
+      [
+        { seq: 10 },
+        { seq: 11 },
+        { seq: 12 },
+      ],
+      5,
+      2,
+    );
+    if (snap.lastSeq !== 12 || snap.earlier !== 6 || snap.records.length !== 2) {
+      fail(`makeSnap should trim and bump earlier, got ${JSON.stringify(snap)}`);
+      failed = true;
+    }
+    memoryPut('s1', saveCache('s1', [{ seq: 1 }, { seq: 2 }], 0));
+    if (memoryGet('s1')?.lastSeq !== 2) {
+      fail('memory cache should round-trip a snap');
+      failed = true;
+    }
+    memoryClear('s1');
+
+    const app = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+    if (!app.includes("from './transcript-cache.js'")) {
+      fail('app.js must use the transcript cache module');
+      failed = true;
+    }
+    if (!app.includes('function paintFromCache') || !app.includes('async function boot')) {
+      fail('app.js must paint from cache before connect on boot');
+      failed = true;
+    }
+    if (!app.includes('memoryGet(sessionId)') || !app.includes('fromSeq: warm.lastSeq')) {
+      fail('attach must use a warm memory cache and catch up from its lastSeq');
+      failed = true;
+    }
+    if (!app.includes('paintedFromCache') || !app.includes('fromCache')) {
+      fail('attached must restore tool tabs after a cache paint even on catch-up');
+      failed = true;
+    }
+    if (!failed) ok('v2 web: transcript client cache');
+  } catch (e) {
+    fail(`transcript cache: ${e.message}`);
+  }
+}
+
 // A refresh used to omit the session from the handshake (lastSeq is 0 on a
 // fresh page), so the host opened whichever chat was active — often not the
 // one this tab had been looking at.
