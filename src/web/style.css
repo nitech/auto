@@ -2284,6 +2284,7 @@ button.icon.active {
 #chat-scrub {
   position: absolute;
   top: 12px;
+  left: 0;
   right: 0;
   bottom: 56px;
   z-index: 4;
@@ -2350,7 +2351,7 @@ button.icon.active {
 .scrub-timeline {
   position: absolute;
   top: 0;
-  /* Clear of the 28px grip, plus ~40px more so labels sit away from the thumb. */
+  /* The scrubber spans the pane, so this is a real 92px gap from the grip. */
   right: 92px;
   bottom: 0;
   left: 4px;

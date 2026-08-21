@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T07:10:00Z }
+generated: { by: agent, at: 2026-08-21T07:30:00Z }
 ---
 
 # Web app
@@ -123,9 +123,10 @@ meta also asks for `interactive-widget=resizes-content` where supported.
 - While scrolling a long chat, a flush right-edge grip appears (rounded on
   the left, drag ridges — Google Photos style). Grabbing it expands a labeled
   timeline **to the left of the thumb** — your messages, questions, plans, and
-  approvals — so the finger never covers the labels. Labels size the pills so
-  the words stay readable; density only raises the minimum width (denser
-  stretch → slightly longer floor). Crowded user messages are thinned so
+  approvals. The timeline spans the chat pane and keeps a fixed 92px clearance
+  from the right edge, so the finger never covers the labels. Labels size the
+  pills so the words stay readable; density only raises the minimum width
+  (denser stretch → slightly longer floor). Crowded user messages are thinned so
   questions/plans/approvals stay. Dragging moves freely and only snaps when
   the finger is a few pixels from a landmark (with a haptic tick); labels stay
   pinned beside the grip — thinner pills, active = whiter text only. Arrow

@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Fix**: Scrubber now spans the chat pane, making the label's 92px right clearance real instead of being measured inside a zero-width container.
 * **Update**: Scrub plan pills use amber (yellow); labels sit further left so they never touch the grip.
 * **Update**: Scrub snap is magnetic (only near a landmark); labels stay clear of the grip, thinner, active = whiter text only.
 * **Update**: Scrub handle is a flush right-edge grip (rounded on the left, drag ridges, no arrows).
