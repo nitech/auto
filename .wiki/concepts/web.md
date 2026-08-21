@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T13:35:00Z }
+generated: { by: agent, at: 2026-08-21T15:45:00Z }
 ---
 
 # Web app
@@ -112,8 +112,10 @@ meta also asks for `interactive-widget=resizes-content` where supported.
 - While a long transcript replays with nothing cached, the chat pane shows
   the Auto A mark (same glyph as the rail) and "Loading conversation…", not
   a blank. A cache hit paints first and skips that overlay.
-- The session rail, grouped by [project](projects.md), plus Cursor's recent
-  chats so the rail can be the same list the IDE shows.
+- The session rail as two accordion rows — **Chats** (date-grouped Auto
+  sessions and Cursor's recent chats) and **Projects** (folders Cursor
+  knows, plus per-folder desktop chats). Opening one closes the other;
+  which row was open is remembered in the browser.
 - The [queue](queue.md) above the chat box, with reword / send now / delete.
 - Tool calls the way Cursor groups them — see [tool lanes](tool-lanes.md).
 - Diffs, thinking (folded when the block ends, timed from the record so a

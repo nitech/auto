@@ -258,12 +258,59 @@ html[data-standalone] #app {
 
 #session-list {
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 4px 8px 8px;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-height: 0;
 }
+
+/* Chats and Projects share the rail as two accordion rows — both headers
+   stay visible; only the open section scrolls. */
+.rail-section {
+  flex: 0 0 auto;
+  border-radius: 8px;
+}
+
+.rail-section[open] {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rail-section > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 10px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--faint);
+  border-radius: 8px;
+  user-select: none;
+}
+
+.rail-section > summary::-webkit-details-marker { display: none; }
+.rail-section > summary::before { content: '▸ '; opacity: 0.7; }
+.rail-section[open] > summary::before { content: '▾ '; }
+.rail-section[open] > summary { color: var(--text); }
+.rail-section > summary:hover { background: var(--bg-3); }
+
+.rail-section-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 4px;
+}
+
+#app.rail-dragging .rail-section-body { overflow: hidden; }
 
 /* Projects head their sessions, the way the desktop groups them. */
 .project {
@@ -349,18 +396,6 @@ html[data-standalone] #app {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.more-projects { margin-top: 10px; }
-
-.more-projects > summary {
-  cursor: pointer;
-  padding: 8px 10px;
-  font-size: 12px;
-  color: var(--faint);
-  border-radius: 8px;
-}
-
-.more-projects > summary:hover { background: var(--bg-3); }
 
 /* Date headings, the way Cursor's own history is grouped. */
 .rail-group {

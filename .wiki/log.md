@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Update**: Session rail is a Chats / Projects accordion (two rows; exclusive open; remembered) so Projects is not buried under a collapsed details at the bottom of the chat list.
 * **Update**: Web composer floats over the transcript — no hairline above the box; messages scroll through a fade underneath, with `--composer-height` clearing the live edge.
 * **Update**: Scrub labels move linearly with the finger (even landmark spacing on the wheel), independent of how much chat text sits between landmarks — that uneven mapping was what made the timeline jump.
 * **Update**: Reverted scrub labels to the semicircle width wheel; kept the harder chat dim (18%) while scrubbing.

@@ -11,7 +11,7 @@ sources:
   - id: chats
     resource: /src/core/desktop-chats.mjs
     title: Chats per workspace
-generated: { by: agent, at: 2026-08-15T09:36:00Z }
+generated: { by: agent, at: 2026-08-21T15:45:00Z }
 ---
 
 # Projects
@@ -20,6 +20,10 @@ Auto does not invent "your projects". It is a remote control, so the list
 is the desktop's list: folders open in a Cursor window right now, then
 every workspace Cursor remembers. Folders Auto already has a session in
 stay on the rail even if the IDE forgot them.
+
+In the [web](web.md) rail they sit behind the **Projects** accordion row
+(beside **Chats**), not buried under a collapsed details at the bottom of
+the conversation list.
 
 Read from `%APPDATA%\Cursor\User` — `globalStorage/storage.json` for open
 windows (including multi-root `.code-workspace` files) and

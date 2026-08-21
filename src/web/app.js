@@ -2101,52 +2101,111 @@ function conversations() {
   return rows.sort((a, b) => b.at - a.at);
 }
 
+/** Which accordion row the rail shows: chats (default) or projects. */
+const RAIL_SECTION_KEY = 'auto.railSection';
+
+function railSection() {
+  try {
+    return localStorage.getItem(RAIL_SECTION_KEY) === 'projects' ? 'projects' : 'chats';
+  } catch {
+    return 'chats';
+  }
+}
+
+function rememberRailSection(which) {
+  try {
+    localStorage.setItem(RAIL_SECTION_KEY, which === 'projects' ? 'projects' : 'chats');
+  } catch {
+    /* private mode */
+  }
+}
+
 /**
- * The rail reads like Cursor's own history: one list of conversations, newest
- * first, under date headings. Projects follow at the bottom — you need them to
- * start work somewhere new, and to reach chats older than this list goes.
+ * One of the two category rows. Opening one closes the other so the rail is
+ * always either the conversation list or the project list — never both, and
+ * never neither.
+ */
+function railAccordion(id, label, open) {
+  const details = document.createElement('details');
+  details.className = 'rail-section';
+  details.dataset.section = id;
+  details.open = open;
+
+  const summary = document.createElement('summary');
+  summary.textContent = label;
+  const body = div('rail-section-body');
+  details.append(summary, body);
+
+  details.addEventListener('toggle', () => {
+    if (details.open) {
+      rememberRailSection(id);
+      for (const other of els.rail.querySelectorAll('.rail-section')) {
+        if (other !== details && other.open) other.open = false;
+      }
+      return;
+    }
+    // Closing the open row would leave an empty rail — bounce it back open.
+    const anyOpen = [...els.rail.querySelectorAll('.rail-section')].some((d) => d.open);
+    if (!anyOpen) details.open = true;
+  });
+
+  return { details, body };
+}
+
+/**
+ * The rail is two accordion rows — Chats and Projects — so switching category
+ * is one tap, not a scroll to a buried details at the bottom. Chats still
+ * reads like Cursor's history (newest first, date headings); Projects is the
+ * folders Cursor knows, for starting somewhere new or older desktop chats.
  */
 function renderRail() {
   els.rail.innerHTML = '';
+  const open = railSection();
+  const items = conversations();
 
+  const chats = railAccordion('chats', `Chats (${items.length})`, open === 'chats');
   let heading = null;
-  for (const item of conversations()) {
+  for (const item of items) {
     const bucket = dateBucket(item.at);
     if (bucket !== heading) {
       heading = bucket;
       const head = div('rail-group');
       head.textContent = bucket;
-      els.rail.appendChild(head);
+      chats.body.appendChild(head);
     }
-    els.rail.appendChild(sessionRow(item));
+    chats.body.appendChild(sessionRow(item));
   }
-
-  if (!els.rail.childElementCount) {
+  if (!items.length) {
     const empty = div('rail-empty');
     empty.textContent = 'No conversations yet.';
-    els.rail.appendChild(empty);
+    chats.body.appendChild(empty);
   }
 
   const projects = state.projects.length
     ? state.projects
-    : [...new Set(state.sessions.map((s) => s.folder))].map((path) => ({
+    : [...new Set(state.sessions.map((s) => s.folder).filter(Boolean))].map((path) => ({
         path,
         name: (path || '').split(/[\\/]/).pop(),
         open: false,
       }));
-  if (!projects.length) return;
-
-  const more = document.createElement('details');
-  more.className = 'more-projects';
-  const summary = document.createElement('summary');
-  summary.textContent = `Projects (${projects.length})`;
-  more.append(summary);
-  for (const project of projects) {
-    more.append(projectHeader(project, 0));
-    const chats = desktopChatsBlock(project);
-    if (chats) more.append(chats);
+  const projectsPanel = railAccordion(
+    'projects',
+    `Projects (${projects.length})`,
+    open === 'projects',
+  );
+  if (!projects.length) {
+    const empty = div('rail-empty');
+    empty.textContent = 'No projects yet — start a new session.';
+    projectsPanel.body.appendChild(empty);
+  } else {
+    for (const project of projects) {
+      projectsPanel.body.appendChild(projectHeader(project, 0));
+      const desktop = desktopChatsBlock(project);
+      if (desktop) projectsPanel.body.appendChild(desktop);
+    }
   }
-  els.rail.appendChild(more);
+
+  els.rail.append(chats.details, projectsPanel.details);
 }
 
 /**
