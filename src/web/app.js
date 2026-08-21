@@ -556,8 +556,26 @@ function scrubToClientY(clientY) {
   const usable = Math.max(1, rect.height - pad * 2);
   const ratio = Math.min(1, Math.max(0, (clientY - rect.top - pad) / usable));
   const max = Math.max(0, t.scrollHeight - t.clientHeight);
+  const prev = t.style.scrollBehavior;
+  t.style.scrollBehavior = 'auto';
+
+  // Rail bottom = true chat bottom (not "last landmark mid-view"), so ↓
+  // stays hidden because we are actually there.
+  if ((1 - ratio) * usable <= SCRUB_SNAP_PX) {
+    t.scrollTop = max;
+    if (state.scrubSnapEl !== els.transcript) {
+      state.scrubSnapEl = els.transcript;
+      scrubBuzz();
+    }
+    t.style.scrollBehavior = prev;
+    syncScrubHandle();
+    syncScrubActive();
+    return;
+  }
+
   const { entry, distPx } = nearestScrubByScrollRatio(ratio);
   if (entry && distPx <= SCRUB_SNAP_PX) {
+    t.style.scrollBehavior = prev;
     snapScrubToEntry(entry);
     return;
   }
@@ -566,8 +584,6 @@ function scrubToClientY(clientY) {
   if (state.scrubSnapEl && distPx > SCRUB_SNAP_PX * 1.6) {
     state.scrubSnapEl = null;
   }
-  const prev = t.style.scrollBehavior;
-  t.style.scrollBehavior = 'auto';
   t.scrollTop = ratio * max;
   t.style.scrollBehavior = prev;
   syncScrubHandle();
@@ -615,8 +631,12 @@ function bindScrubber() {
       scrubStepLandmark(-1);
     } else if (e.key === 'Home' && entries[0]) {
       snapScrubToEntry(entries[0]);
-    } else if (e.key === 'End' && entries.length) {
-      snapScrubToEntry(entries[entries.length - 1]);
+    } else if (e.key === 'End') {
+      const max = Math.max(0, t.scrollHeight - t.clientHeight);
+      t.style.scrollBehavior = 'auto';
+      t.scrollTop = max;
+      syncScrubHandle();
+      syncScrubActive();
     } else {
       syncScrubHandle();
       syncScrubActive();
