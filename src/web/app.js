@@ -301,8 +301,8 @@ function thinScrubLandmarks(entries, railPx) {
 }
 
 /**
- * Build timeline pills. Density sets a *minimum* width (Photos-style hint);
- * the label itself sizes the pill so the words stay readable left of the thumb.
+ * Build timeline pills. Density sets a *minimum* width; labels stay the same
+ * size when active (only the text colour changes).
  */
 function rebuildScrubTimeline() {
   if (!els.scrubTimeline) return;
@@ -331,32 +331,27 @@ function rebuildScrubTimeline() {
     pill.className = 'scrub-pill';
     pill.dataset.kind = entry.kind;
     pill.style.top = `${entry.top * 100}%`;
-    paintScrubPill(pill, entry, false);
+    paintScrubPill(pill, entry);
     els.scrubTimeline.append(pill);
     state.scrubEntries.push({ ...entry, pill });
   }
   state.scrubTimelineDirty = false;
 }
 
-function scrubPillMinWidth(spanFrac, active) {
-  if (active) return Math.round(160 + spanFrac * 80);
-  return Math.round(96 + spanFrac * 48);
+function scrubPillMinWidth(spanFrac) {
+  return Math.round(88 + spanFrac * 40);
 }
 
-function paintScrubPill(pill, entry, active) {
-  let kind = pill.querySelector('.scrub-kind');
+function paintScrubPill(pill, entry) {
   let text = pill.querySelector('.scrub-text');
-  if (!kind) {
-    kind = document.createElement('span');
-    kind.className = 'scrub-kind';
+  if (!text) {
     text = document.createElement('span');
     text.className = 'scrub-text';
-    pill.replaceChildren(kind, text);
+    pill.replaceChildren(text);
   }
-  kind.textContent = entry.label.kind;
-  text.textContent = scrubClip(entry.label.text, active ? 64 : 40);
+  text.textContent = scrubClip(entry.label.text, 40);
   pill.style.width = '';
-  pill.style.minWidth = `${scrubPillMinWidth(entry.spanFrac, active)}px`;
+  pill.style.minWidth = `${scrubPillMinWidth(entry.spanFrac)}px`;
 }
 
 function nearestScrubEntry(y) {
@@ -375,7 +370,7 @@ function nearestScrubEntry(y) {
   return best;
 }
 
-/** Scroll so the landmark sits at the same reading line the active pill uses. */
+/** Scroll so the landmark sits at the same reading line used for “active”. */
 function scrubScrollTopFor(el) {
   const t = els.transcript;
   const max = Math.max(0, t.scrollHeight - t.clientHeight);
@@ -390,6 +385,9 @@ function scrubBuzz() {
     /* ignore */
   }
 }
+
+/** How close (in rail pixels) the finger must be before the magnet pulls. */
+const SCRUB_SNAP_PX = 14;
 
 function snapScrubToEntry(entry, { buzz = true } = {}) {
   if (!entry) return;
@@ -408,19 +406,23 @@ function snapScrubToEntry(entry, { buzz = true } = {}) {
   syncScrubActive();
 }
 
-function scrubEntryAtRatio(ratio) {
+function nearestScrubByScrollRatio(ratio) {
   const entries = state.scrubEntries;
-  if (!entries.length) return null;
+  const t = els.transcript;
+  const max = Math.max(1, t.scrollHeight - t.clientHeight);
+  if (!entries.length) return { entry: null, distPx: Infinity };
   let best = entries[0];
   let bestDist = Infinity;
   for (const entry of entries) {
-    const d = Math.abs(entry.top - ratio);
+    const snapRatio = scrubScrollTopFor(entry.el) / max;
+    const d = Math.abs(snapRatio - ratio);
     if (d < bestDist) {
       bestDist = d;
       best = entry;
     }
   }
-  return best;
+  const rail = els.scrub?.getBoundingClientRect().height || t.clientHeight;
+  return { entry: best, distPx: bestDist * Math.max(1, rail - 48) };
 }
 
 function scrubStepLandmark(dir) {
@@ -455,10 +457,9 @@ function syncScrubActive() {
   const y = t.scrollTop + t.clientHeight * 0.28;
   const active = nearestScrubEntry(y);
   for (const entry of state.scrubEntries) {
-    const on = entry === active;
-    entry.pill.classList.toggle('active', on);
-    entry.pill.style.top = on ? `${scrubScrollRatio() * 100}%` : `${entry.top * 100}%`;
-    paintScrubPill(entry.pill, entry, on);
+    // Labels stay pinned to their landmark — never slide under the thumb.
+    entry.pill.classList.toggle('active', entry === active);
+    entry.pill.style.top = `${entry.top * 100}%`;
   }
 }
 
@@ -547,12 +548,17 @@ function scrubToClientY(clientY) {
   const pad = 24;
   const usable = Math.max(1, rect.height - pad * 2);
   const ratio = Math.min(1, Math.max(0, (clientY - rect.top - pad) / usable));
-  const entry = scrubEntryAtRatio(ratio);
-  if (entry) {
+  const max = Math.max(0, t.scrollHeight - t.clientHeight);
+  const { entry, distPx } = nearestScrubByScrollRatio(ratio);
+  if (entry && distPx <= SCRUB_SNAP_PX) {
     snapScrubToEntry(entry);
     return;
   }
-  const max = Math.max(0, t.scrollHeight - t.clientHeight);
+  // Free scrub — clear the latch once the finger leaves the snap zone so the
+  // next approach can buzz again.
+  if (state.scrubSnapEl && distPx > SCRUB_SNAP_PX * 1.6) {
+    state.scrubSnapEl = null;
+  }
   const prev = t.style.scrollBehavior;
   t.style.scrollBehavior = 'auto';
   t.scrollTop = ratio * max;

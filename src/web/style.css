@@ -2350,7 +2350,8 @@ button.icon.active {
 .scrub-timeline {
   position: absolute;
   top: 0;
-  right: 36px;
+  /* Clear of the grip — labels never sit under the thumb. */
+  right: 40px;
   bottom: 0;
   left: 4px;
   pointer-events: none;
@@ -2363,16 +2364,16 @@ button.icon.active {
   right: 0;
   transform: translateY(-50%);
   width: max-content;
-  max-width: min(180px, 48vw);
-  min-width: 96px;
-  padding: 5px 10px;
+  max-width: min(160px, 44vw);
+  min-width: 72px;
+  padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid var(--line-2);
   border-left-width: 3px;
   background: color-mix(in srgb, var(--bg-3) 92%, transparent);
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1.3;
+  font-size: 11px;
+  line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2385,35 +2386,12 @@ button.icon.active {
 .scrub-pill[data-kind='plan'] { border-left-color: var(--green); }
 .scrub-pill[data-kind='approval'] { border-left-color: var(--red); }
 
+/* Active = whiter text only; same size as the rest. */
 .scrub-pill.active {
-  max-width: min(280px, 72vw);
-  min-width: 160px;
-  padding: 8px 12px;
-  background: var(--bg-3);
   color: var(--text);
-  border-color: var(--line-2);
-  font-size: 13px;
-  font-weight: 550;
+  background: var(--bg-3);
   z-index: 1;
-  border-radius: 12px;
 }
-
-.scrub-pill.active[data-kind='you'] { border-left-color: var(--focus); }
-.scrub-pill.active[data-kind='question'] { border-left-color: var(--amber); }
-.scrub-pill.active[data-kind='plan'] { border-left-color: var(--green); }
-.scrub-pill.active[data-kind='approval'] { border-left-color: var(--red); }
-
-.scrub-pill .scrub-kind {
-  display: block;
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: 2px;
-}
-
-.scrub-pill:not(.active) .scrub-kind { display: none; }
 
 .scrub-pill .scrub-text {
   display: block;

@@ -2296,6 +2296,7 @@ if (existsSync(SRC)) {
     !js.includes('function thinScrubLandmarks') ||
     !js.includes('function snapScrubToEntry') ||
     !js.includes('function scrubBuzz') ||
+    !js.includes('SCRUB_SNAP_PX') ||
     !js.includes('navigator.vibrate') ||
     !js.includes(".msg.user, .ask, .created-plan, .perm")
   ) {
