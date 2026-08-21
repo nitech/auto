@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Update**: Scrub handle is a flush right-edge grip (rounded on the left, drag ridges, no arrows).
 * **Update**: Scrubbing snaps to landmarks and buzzes (`navigator.vibrate`) on each new snap point.
 * **Update**: Scrubber pills size to their labels (readable); density only raises the minimum width.
 * **Update**: Chat scrubber is Photos-style — handle while scrolling; labeled density-weighted timeline expands left of the thumb only while scrubbing.

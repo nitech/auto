@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T06:45:00Z }
+generated: { by: agent, at: 2026-08-21T06:50:00Z }
 ---
 
 # Web app
@@ -120,12 +120,12 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   the answer, the way Cursor labels a finished turn. Commands left
   "running…" after the session goes idle settle to stopped — an idle chip
   with live cards is a lie.
-- While scrolling a long chat, a small ↕ handle appears on the right
-  (Google Photos style). Grabbing it expands a labeled timeline **to the
-  left of the thumb** — your messages, questions, plans, and approvals —
-  so the finger never covers the labels. Labels size the pills so the words
-  stay readable; density only raises the minimum width (denser stretch →
-  slightly longer floor). Crowded user messages are thinned so
+- While scrolling a long chat, a flush right-edge grip appears (rounded on
+  the left, drag ridges — Google Photos style). Grabbing it expands a labeled
+  timeline **to the left of the thumb** — your messages, questions, plans, and
+  approvals — so the finger never covers the labels. Labels size the pills so
+  the words stay readable; density only raises the minimum width (denser
+  stretch → slightly longer floor). Crowded user messages are thinned so
   questions/plans/approvals stay. Dragging snaps to each landmark and buzzes
   via `navigator.vibrate` when the snap point changes (Android; iOS has no
   Vibration API). Arrow keys step landmark-to-landmark the same way. Release

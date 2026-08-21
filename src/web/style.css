@@ -2276,7 +2276,7 @@ button.icon.active {
 
 /*
  * Chat scrubber — Google Photos style. Two modes:
- *   hint  — only the ↕ handle on the right while scrolling
+ *   hint  — only the edge grip while scrolling
  *   scrub — labeled timeline expands left of the thumb (never under it)
  * Pill labels size to their text so they stay readable; density only raises
  * the minimum width.
@@ -2284,7 +2284,7 @@ button.icon.active {
 #chat-scrub {
   position: absolute;
   top: 12px;
-  right: 6px;
+  right: 0;
   bottom: 56px;
   z-index: 4;
   pointer-events: none;
@@ -2299,17 +2299,19 @@ button.icon.active {
   transform: none;
 }
 
+/* Flush to the pane edge: square on the right, rounded only on the left. */
 .scrub-handle {
   position: absolute;
   top: 0;
   right: 0;
-  width: 36px;
-  height: 36px;
-  margin-top: -18px;
-  border-radius: 50%;
+  width: 28px;
+  height: 48px;
+  margin-top: -24px;
+  border-radius: 12px 0 0 12px;
   border: 1px solid var(--line-2);
+  border-right: 0;
   background: var(--bg-3);
-  color: var(--text);
+  color: var(--muted);
   box-shadow: var(--shadow-sm);
   display: flex;
   align-items: center;
@@ -2324,17 +2326,31 @@ button.icon.active {
 .scrub-handle:hover,
 .scrub-handle:focus-visible {
   border-color: var(--focus);
+  color: var(--text);
   outline: none;
 }
 
 #chat-scrub[data-mode='scrub'] .scrub-handle {
   border-color: var(--focus);
+  color: var(--text);
+}
+
+/* Drag ridges — the usual “this moves” affordance. */
+.scrub-grip {
+  display: block;
+  width: 12px;
+  height: 14px;
+  background:
+    linear-gradient(currentColor, currentColor) 0 0 / 12px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 6px / 12px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 12px / 12px 2px no-repeat;
+  opacity: 0.85;
 }
 
 .scrub-timeline {
   position: absolute;
   top: 0;
-  right: 48px;
+  right: 36px;
   bottom: 0;
   left: 4px;
   pointer-events: none;

@@ -2269,6 +2269,7 @@ if (existsSync(SRC)) {
   if (
     !html.includes('id="chat-scrub"') ||
     !html.includes('scrub-handle') ||
+    !html.includes('scrub-grip') ||
     !html.includes('scrub-timeline') ||
     !html.includes('data-mode="hint"')
   ) {
@@ -2278,8 +2279,10 @@ if (existsSync(SRC)) {
   if (
     !css.includes('#chat-scrub') ||
     !css.includes('.scrub-handle') ||
+    !css.includes('.scrub-grip') ||
     !css.includes('.scrub-pill') ||
-    !css.includes("[data-mode='scrub']")
+    !css.includes("[data-mode='scrub']") ||
+    !css.includes('border-radius: 12px 0 0 12px')
   ) {
     fail('style.css must style hint and scrub modes');
     failed = true;

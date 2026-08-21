@@ -544,7 +544,7 @@ function scrubToClientY(clientY) {
   const t = els.transcript;
   if (!t || !els.scrub) return;
   const rect = els.scrub.getBoundingClientRect();
-  const pad = 18;
+  const pad = 24;
   const usable = Math.max(1, rect.height - pad * 2);
   const ratio = Math.min(1, Math.max(0, (clientY - rect.top - pad) / usable));
   const entry = scrubEntryAtRatio(ratio);
