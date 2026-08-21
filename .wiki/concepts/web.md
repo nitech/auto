@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T12:30:00Z }
+generated: { by: agent, at: 2026-08-21T12:40:00Z }
 ---
 
 # Web app
@@ -140,11 +140,11 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   28px grip, so the finger never covers the labels without disconnecting them
   visually. It is a rotary wheel: moving the grip down moves the evenly spaced
   label stack up. Every landmark remains on the wheel, including those beyond
-  the viewport. Pills keep a fixed width (~260px max) and tuck under the grip
-  — they slide out from the right below the handle and slide back into the
-  right above it. Past the rim each pill is `visibility: hidden` and the
-  timeline clips (`overflow: hidden`). Pill `top` and `translateX` update with
-  no CSS transition so they stay locked to the finger. Active only changes
+  the viewport. Pill widths follow a semicircle (`sqrt(r²-y²)`), widest at
+  vertical centre (~260px) and tapering/fading to nothing at the top and bottom; past
+  that radius each pill is `visibility: hidden` and the timeline clips
+  (`overflow: hidden`). Pill `top` and `width` update with no CSS transition so
+  they stay locked to the finger. Active only changes
   text colour — now with a kind-coloured ring and brighter fill
   so the centre label reads as the focus. A radial veil anchored on the right
   edge sits behind the wheel so transcript text cannot wash out the pills.

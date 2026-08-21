@@ -2344,7 +2344,7 @@ button.icon.active {
 
 /*
  * Soft veil behind the label wheel so transcript text cannot fight the pills.
- * Anchored on the right edge — labels tuck under the grip from that side.
+ * Anchored on the right edge — same buried-circle idea as the widths.
  */
 #chat-scrub[data-mode='scrub']::before {
   content: '';
@@ -2393,7 +2393,7 @@ button.icon.active {
   position: absolute;
   right: 0;
   transform: translateY(-50%);
-  width: max-content;
+  width: 22px;
   max-width: min(260px, 72vw);
   min-width: 0;
   padding: 5px 12px;
@@ -2409,8 +2409,8 @@ button.icon.active {
   text-overflow: ellipsis;
   box-sizing: border-box;
   box-shadow: var(--shadow-sm);
-  will-change: top, transform, opacity;
-  /* top/transform track the finger with no lag. Colour alone can ease when
+  will-change: top, width, opacity;
+  /* top/width must track the finger with no lag. Colour alone can ease when
    * a pill becomes active. */
   transition:
     color 0.12s ease,
