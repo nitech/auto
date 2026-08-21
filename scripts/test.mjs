@@ -2565,7 +2565,11 @@ if (existsSync(SRC)) {
     !js.includes('function scrubBuzz') ||
     !js.includes('SCRUB_SNAP_PX') ||
     !js.includes('navigator.vibrate') ||
-    !js.includes(".msg.user, .ask, .created-plan, .perm") ||
+    !js.includes(".msg.user, .ask, .created-plan, .perm, .msg.agent[data-scrub=\"answer\"]") ||
+    !js.includes('function markAnswerLandmark') ||
+    !js.includes('function ensureAnswerLandmarks') ||
+    !js.includes('data-scrub="answer"') ||
+    !css.includes("[data-kind='answer']") ||
     !js.includes('scrubDriveRatio') ||
     !js.includes('scrubPointer')
   ) {
