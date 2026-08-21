@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-22T00:30:00Z }
+generated: { by: agent, at: 2026-08-22T00:35:00Z }
 ---
 
 # Web app
@@ -186,6 +186,13 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   on every streamed chunk. Short replies skip the button. Code blocks still
   have their own Copy control. The control is a quiet right-aligned clipboard
   icon (check on success), not a text label.
+- While an answer streams, stick-to-bottom is **instant** (one scroll per
+  frame, `behavior: 'auto'`). `#transcript` no longer uses CSS
+  `scroll-behavior: smooth` — that animated every chunk and jumped as
+  animations cancelled. The ↓ button still scrolls smoothly on its own.
+  The live `.agent-body` also pins a `min-height` floor so incomplete
+  markdown (open fence, half a table) cannot collapse the bubble and yank
+  the pane; the pin clears when the bubble finishes.
 
 ## Composer
 

@@ -189,6 +189,25 @@ function nearBottom() {
   return t.scrollHeight - t.scrollTop - t.clientHeight < 160;
 }
 
+/** Coalesce stick-to-bottom into one instant scroll per frame. CSS
+ *  `scroll-behavior: smooth` on #transcript used to animate every chunk,
+ *  so a fast answer stuttered and jumped as animations cancelled each other. */
+let scrollDownRaf = 0;
+function scrollDown(force = false) {
+  if (!(force || nearBottom())) return;
+  if (scrollDownRaf) return;
+  scrollDownRaf = requestAnimationFrame(() => {
+    scrollDownRaf = 0;
+    const t = els.transcript;
+    t.scrollTo({ top: t.scrollHeight, behavior: 'auto' });
+  });
+}
+
+/** Smooth only for the explicit ↓ control — never for streamed chunks. */
+function scrollDownSmooth() {
+  els.transcript.scrollTo({ top: els.transcript.scrollHeight, behavior: 'smooth' });
+}
+
 /**
  * A long transcript takes a few seconds to arrive and draw. The overlay is
  * in the markup so it is there before this file runs; this only flips it.
@@ -329,14 +348,6 @@ function paintFromCache(snap) {
   else settleRunningTools();
   decorate(els.transcript);
   scrollDown(true);
-}
-
-function scrollDown(force = false) {
-  if (force || nearBottom()) {
-    requestAnimationFrame(() => {
-      els.transcript.scrollTop = els.transcript.scrollHeight;
-    });
-  }
 }
 
 /** Long enough that "copy the whole answer as markdown" earns a button. */
@@ -1010,6 +1021,8 @@ function endTurn(rec) {
   }
   settleRunningTools();
   closeThinking();
+  if (state.streamBody) state.streamBody.style.minHeight = '';
+  if (state.stream?.classList?.contains('agent')) syncAgentMdCopy(state.stream);
   const started = state.turn?.started || rec.ts;
   const durationMs =
     rec.durationMs > 0 ? rec.durationMs : rec.ts && started ? rec.ts - started : 0;
@@ -1052,8 +1065,9 @@ function settleRunningTools() {
 
 function add(node, { keepStream = false } = {}) {
   if (!keepStream) {
-    // Stream is closing — give the finished bubble its markdown copy footer
-    // before we drop the pointer (tools/notices arrive without keepStream).
+    // Stream is closing — drop the height pin and offer the markdown copy
+    // icon before we drop the pointer (tools/notices arrive without keepStream).
+    if (state.streamBody) state.streamBody.style.minHeight = '';
     if (state.stream?.classList?.contains('agent')) syncAgentMdCopy(state.stream);
     closeThinking();
     state.stream = null;
@@ -1237,14 +1251,21 @@ function renderStreaming(rec) {
   }
   const stick = nearBottom();
   // A desktop rewrite replaces the bubble; appending would stutter the answer.
-  if (rec.replace) state.stream.dataset.raw = rec.text || '';
-  else state.stream.dataset.raw += rec.text || '';
+  if (rec.replace) {
+    state.stream.dataset.raw = rec.text || '';
+    if (state.streamBody) state.streamBody.style.minHeight = '';
+  } else {
+    state.stream.dataset.raw += rec.text || '';
+  }
   if (isThought) {
     state.stream.textContent = state.stream.dataset.raw;
   } else {
     const body = state.streamBody || state.stream.querySelector(':scope > .agent-body') || state.stream;
+    // Incomplete markdown (open fence, half a table) briefly collapses then
+    // grows — pin the floor so the pane does not jump up under the reader.
+    const floor = Math.max(body.offsetHeight, parseFloat(body.style.minHeight) || 0);
     body.innerHTML = markdown(state.stream.dataset.raw);
-    syncAgentMdCopy(state.stream);
+    body.style.minHeight = `${Math.max(floor, body.offsetHeight)}px`;
   }
   scrollDown(stick);
 }
@@ -2021,6 +2042,7 @@ function renderError(rec) {
  */
 function withdrawInterruptedTurn() {
   state.withdrawnTurn = true;
+  if (state.streamBody) state.streamBody.style.minHeight = '';
   state.stream = null;
   state.streamKind = null;
   state.streamBody = null;
@@ -3423,7 +3445,7 @@ els.transcript.addEventListener('scroll', () => {
   onTranscriptScroll();
 }, { passive: true });
 els.toBottom.onclick = () => {
-  scrollDown(true);
+  scrollDownSmooth();
   syncToBottom();
 };
 bindScrubber();

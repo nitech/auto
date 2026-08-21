@@ -1949,6 +1949,32 @@ if (existsSync(SRC)) {
   if (!failed) ok('v2 web: copy agent answer as markdown');
 }
 
+// Stick-to-bottom while an answer streams must be instant. Smooth CSS scroll
+// on #transcript made every chunk animate, and unfinished markdown collapsing
+// the bubble made the pane jump.
+{
+  const css = readFileSync(join(ROOT, 'src/web/style.css'), 'utf8');
+  const js = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  let failed = false;
+  if (!js.includes('function scrollDownSmooth') || !js.includes("behavior: 'auto'")) {
+    fail('streamed stick-to-bottom must scroll instantly (auto), not via CSS smooth');
+    failed = true;
+  }
+  if (!js.includes('scrollDownRaf') || !js.includes('body.style.minHeight')) {
+    fail('stream updates must coalesce scroll and pin agent-body height against collapse');
+    failed = true;
+  }
+  if (/#transcript\s*\{[^}]*scroll-behavior:\s*smooth/.test(css)) {
+    fail('#transcript must not use scroll-behavior: smooth (streamed chunks would jump)');
+    failed = true;
+  }
+  if (!js.includes('scrollDownSmooth()')) {
+    fail('the ↓ button should keep a smooth scroll via scrollDownSmooth');
+    failed = true;
+  }
+  if (!failed) ok('v2 web: streaming scroll stays put');
+}
+
 // 1d3. Chat history is not a blank pane while it loads. A long transcript
 // takes a few seconds to replay, and an empty #transcript used to look like
 // the app had frozen.

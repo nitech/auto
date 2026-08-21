@@ -673,7 +673,9 @@ button.icon {
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  scroll-behavior: smooth;
+  /* Instant by default — streamed stick-to-bottom must not animate. The ↓
+     button calls scrollTo({ behavior: 'smooth' }) on its own. */
+  scroll-behavior: auto;
   transition: opacity 0.18s ease;
 }
 
