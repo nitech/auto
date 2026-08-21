@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-22T00:25:00Z }
+generated: { by: agent, at: 2026-08-22T00:30:00Z }
 ---
 
 # Web app
@@ -184,7 +184,8 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   `data-raw` and paints HTML into an inner `.agent-body`, so a long answer
   can offer **Copy markdown** at the bottom without destroying that control
   on every streamed chunk. Short replies skip the button. Code blocks still
-  have their own Copy control.
+  have their own Copy control. The control is a quiet right-aligned clipboard
+  icon (check on success), not a text label.
 
 ## Composer
 

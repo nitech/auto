@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-22
+* **Update**: Markdown copy on long agent answers is a quiet right-aligned clipboard icon (check on success), not a text label.
 * **Update**: Long agent answers on the web get a **Copy markdown** footer — raw source stays on the bubble (`data-raw` / `.agent-body` split) so streaming does not wipe the button.
 
 ## 2026-08-21

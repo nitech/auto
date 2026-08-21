@@ -343,18 +343,31 @@ function scrollDown(force = false) {
 const COPY_MD_MIN = 200;
 
 /**
- * Flash a copy control as done, then restore its label. Shared by code blocks
- * and the agent-message markdown footer.
+ * Flash a copy control as done, then restore. Text buttons pass a label;
+ * icon buttons pass a restore function (or HTML string via opts.html).
  */
-function flashCopied(btn, idleLabel) {
-  btn.textContent = 'Copied';
-  btn.classList.add('done');
+function flashCopied(btn, idle) {
   clearTimeout(btn._copyFlash);
+  btn.classList.add('done');
+  if (typeof idle === 'function') {
+    btn._copyFlash = setTimeout(() => {
+      idle();
+      btn.classList.remove('done');
+    }, 1200);
+    return;
+  }
+  btn.textContent = 'Copied';
   btn._copyFlash = setTimeout(() => {
-    btn.textContent = idleLabel;
+    btn.textContent = idle;
     btn.classList.remove('done');
   }, 1200);
 }
+
+/** Clipboard glyph — same stroke language as the rest of the chrome. */
+const COPY_MD_ICON =
+  '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const COPY_MD_DONE =
+  '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
 
 /**
  * Code is worth taking away, so every block carries a copy button. It lives
@@ -412,16 +425,20 @@ function syncAgentMdCopy(msg) {
   foot = document.createElement('button');
   foot.type = 'button';
   foot.className = 'copy-md';
-  foot.textContent = 'Copy markdown';
+  foot.innerHTML = COPY_MD_ICON;
   foot.setAttribute('aria-label', 'Copy message as markdown');
+  foot.title = 'Copy markdown';
   foot.onclick = async (e) => {
     e.preventDefault();
     e.stopPropagation();
     try {
       await navigator.clipboard.writeText(msg.dataset.raw || '');
-      flashCopied(foot, 'Copy markdown');
+      foot.innerHTML = COPY_MD_DONE;
+      flashCopied(foot, () => {
+        foot.innerHTML = COPY_MD_ICON;
+      });
     } catch {
-      foot.textContent = 'Blocked';
+      foot.title = 'Blocked';
     }
   };
   msg.append(foot);

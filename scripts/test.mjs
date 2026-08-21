@@ -1930,11 +1930,12 @@ if (existsSync(SRC)) {
     !js.includes('function syncAgentMdCopy') ||
     !js.includes('COPY_MD_MIN') ||
     !js.includes("className = 'copy-md'") ||
-    !js.includes("Copy markdown") ||
+    !js.includes('COPY_MD_ICON') ||
+    !js.includes('Copy message as markdown') ||
     !js.includes("div('agent-body')") ||
     !js.includes('streamBody')
   ) {
-    fail('app.js must keep raw markdown on agent bubbles and offer Copy markdown');
+    fail('app.js must keep raw markdown on agent bubbles and offer an icon Copy control');
     failed = true;
   }
   if (!js.includes('body.innerHTML = markdown(state.stream.dataset.raw)')) {
