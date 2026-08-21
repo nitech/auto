@@ -505,10 +505,16 @@ function layoutScrubWheel() {
     const normalized = Math.min(1, Math.abs(y - centre) / radius);
     const circle = Math.sqrt(Math.max(0, 1 - normalized * normalized));
     const active = i === activeIndex;
+    // Past the semicircle: hide hard. Opacity alone still painted a ghost
+    // while width/colour eased, and half a pill sat past the clip edge.
+    const onWheel = normalized < 1;
     entry.pill.style.top = `${y}px`;
     entry.pill.style.width = `${Math.round(18 + circle * 162)}px`;
+    entry.pill.style.visibility = onWheel ? 'visible' : 'hidden';
     // Active stays fully readable even when slightly off-centre.
-    entry.pill.style.opacity = String(active ? Math.max(0.95, Math.pow(circle, 0.75)) : Math.pow(circle, 0.75));
+    entry.pill.style.opacity = String(
+      !onWheel ? 0 : active ? Math.max(0.95, Math.pow(circle, 0.75)) : Math.pow(circle, 0.75),
+    );
     entry.pill.classList.toggle('active', active);
   }
 }

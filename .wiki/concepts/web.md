@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T08:50:00Z }
+generated: { by: agent, at: 2026-08-21T09:22:00Z }
 ---
 
 # Web app
@@ -138,8 +138,12 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   visually. It is a rotary wheel: moving the grip down moves the evenly spaced
   label stack up. Every landmark remains on the wheel, including those beyond
   the viewport. Pill widths follow a semicircle (`sqrt(r²-y²)`), widest at
-  vertical centre and tapering/fading to nothing at the top and bottom; active
-  only changes text colour — now with a kind-coloured ring and brighter fill
+  vertical centre and tapering/fading to nothing at the top and bottom; past
+  that radius each pill is `visibility: hidden` and the timeline clips
+  (`overflow: hidden`). Pill `top` updates with no CSS transition so opacity
+  and position stay locked while the grip moves fast — a delayed top used to
+  let readable labels slide in from past the pane ends. Active only changes
+  text colour — now with a kind-coloured ring and brighter fill
   so the centre label reads as the focus. A radial veil anchored on the right
   edge sits behind the wheel so transcript text cannot wash out the pills.
   Dragging moves freely and only snaps when the finger is a few pixels from a

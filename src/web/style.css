@@ -2377,6 +2377,8 @@ button.icon.active {
   left: 4px;
   pointer-events: none;
   z-index: 1;
+  /* Wheel ends fade; clip anything that still sits past the pane. */
+  overflow: hidden;
 }
 
 .scrub-timeline[hidden] { display: none; }
@@ -2402,10 +2404,10 @@ button.icon.active {
   box-sizing: border-box;
   box-shadow: var(--shadow-sm);
   will-change: top, width, opacity;
+  /* top must track the finger with no lag — a delayed top + live opacity
+   * lets fully readable labels slide in from past the pane ends. */
   transition:
-    top 0.08s linear,
     width 0.1s ease-out,
-    opacity 0.12s ease-out,
     color 0.12s ease,
     background-color 0.12s ease;
 }
