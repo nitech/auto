@@ -2274,6 +2274,130 @@ button.icon.active {
 #to-bottom[hidden] { display: none; }
 #to-bottom:hover { border-color: var(--focus); }
 
+/*
+ * Chat scrubber — Google Photos / Claude style. A thin rail on the right
+ * while you are scrolling a long transcript, with ticks for your messages,
+ * questions, and plans, and a preview of whatever sits under the thumb.
+ */
+#chat-scrub {
+  position: absolute;
+  top: 12px;
+  right: 4px;
+  bottom: 56px;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+#chat-scrub[hidden] { display: none; }
+#chat-scrub[data-active] {
+  opacity: 1;
+  transform: none;
+}
+
+.scrub-rail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 28px;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: ns-resize;
+  border-radius: 999px;
+}
+
+.scrub-rail::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 50%;
+  width: 3px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: var(--line-2);
+  opacity: 0.9;
+}
+
+.scrub-marks {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 0;
+  right: 0;
+}
+
+.scrub-mark {
+  position: absolute;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: var(--muted);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+.scrub-mark[data-kind='you'] { background: var(--focus); }
+.scrub-mark[data-kind='question'] { background: var(--amber, #d4a017); }
+.scrub-mark[data-kind='plan'] { background: var(--green); }
+.scrub-mark[data-kind='approval'] { background: var(--red); }
+
+.scrub-thumb {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: var(--text);
+  border: 2px solid var(--bg-3);
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.scrub-preview {
+  position: absolute;
+  right: 36px;
+  top: 50%;
+  max-width: min(280px, 62vw);
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line-2);
+  background: var(--bg-3);
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transform: translateY(-50%);
+}
+
+.scrub-preview[hidden] { display: none; }
+
+.scrub-kind {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.scrub-text {
+  font-size: 12.5px;
+  color: var(--text);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .scroller {
   position: relative;
   flex: 1;

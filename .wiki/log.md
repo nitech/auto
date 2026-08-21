@@ -1,5 +1,8 @@
 # Directory Update Log
 
+## 2026-08-21
+* **Update**: Long chats get a scroll scrubber (ticks for your messages, questions, plans, approvals + a floating preview) that appears while scrolling.
+
 ## 2026-08-20
 * **Update**: Topbar has New chat (same-repo empty conversation); Browser and Terminals toggles moved to the session-rail foot above Settings.
 * **Update**: Desktop attach no longer announces "lives in the Cursor desktop app" — that is the default; truncated catch-up still notes how many messages are shown.

@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-20T20:30:00Z }
+generated: { by: agent, at: 2026-08-21T04:10:00Z }
 ---
 
 # Web app
@@ -120,6 +120,11 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   the answer, the way Cursor labels a finished turn. Commands left
   "running…" after the session goes idle settle to stopped — an idle chip
   with live cards is a lie.
+- While scrolling a long chat, a scrub rail appears on the right (Claude /
+  Google Photos style): ticks for your messages, questions, plans, and
+  approvals, a thumb for where you are, and a floating preview of the nearest
+  landmark. Drag the rail to jump; it fades once you stop. Short chats never
+  show it. The ↓ jump-to-newest button is unchanged.
 
 ## Composer
 

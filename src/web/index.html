@@ -178,6 +178,18 @@
         <span>Loading conversation…</span>
       </div>
       <div id="transcript" aria-busy="true"></div>
+      <!-- Appears while scrolling a long chat: ticks for your messages,
+           questions, and plans, plus a preview of whatever is under the thumb. -->
+      <div id="chat-scrub" hidden>
+        <div class="scrub-preview" hidden>
+          <span class="scrub-kind"></span>
+          <span class="scrub-text"></span>
+        </div>
+        <div class="scrub-rail" role="slider" aria-orientation="vertical" aria-label="Chat position" tabindex="0">
+          <div class="scrub-marks" aria-hidden="true"></div>
+          <div class="scrub-thumb" aria-hidden="true"></div>
+        </div>
+      </div>
       <button id="to-bottom" title="Jump to newest" aria-label="Jump to newest" hidden>↓</button>
     </div>
 

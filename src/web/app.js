@@ -51,6 +51,13 @@ const els = {
   conn: $('conn'),
   sheet: $('sheet'),
   toBottom: $('to-bottom'),
+  scrub: $('chat-scrub'),
+  scrubRail: document.querySelector('#chat-scrub .scrub-rail'),
+  scrubMarks: document.querySelector('#chat-scrub .scrub-marks'),
+  scrubThumb: document.querySelector('#chat-scrub .scrub-thumb'),
+  scrubPreview: document.querySelector('#chat-scrub .scrub-preview'),
+  scrubKind: document.querySelector('#chat-scrub .scrub-kind'),
+  scrubText: document.querySelector('#chat-scrub .scrub-text'),
   attachments: $('attachments'),
   file: $('file'),
   queue: $('queue'),
@@ -119,6 +126,10 @@ const state = {
   usageTimer: null,
   /** this machine: OS hostname, optional nick, label for the rail */
   host: { hostname: '', nick: null, label: '' },
+  /** chat scrubber: visible while scrolling a long transcript */
+  scrubHide: null,
+  scrubbing: false,
+  scrubMarksDirty: true,
 };
 
 // ------------------------------------------------------------------ helpers
@@ -196,6 +207,222 @@ function decorate(root) {
 /** The jump button only earns its place once you have scrolled away. */
 function syncToBottom() {
   els.toBottom.hidden = nearBottom();
+}
+
+/**
+ * Landmarks worth marking on the scrub rail — the structure of a long chat,
+ * not every tool card. Order matches the DOM.
+ */
+function scrubLandmarks() {
+  return [...els.transcript.querySelectorAll('.msg.user, .ask, .created-plan, .perm')];
+}
+
+function scrubLabel(el) {
+  if (el.classList.contains('user')) {
+    const t = el.querySelector('.user-text')?.textContent?.trim() || '';
+    if (t) return { kind: 'You', text: t };
+    if (el.querySelector('.thumbs, .cap')) return { kind: 'You', text: 'Image' };
+    return { kind: 'You', text: 'Message' };
+  }
+  if (el.classList.contains('ask')) {
+    const t =
+      el.querySelector('.title')?.textContent?.trim() ||
+      el.querySelector('.prompt')?.textContent?.trim() ||
+      '';
+    return { kind: 'Question', text: t || 'Waiting for an answer' };
+  }
+  if (el.classList.contains('created-plan')) {
+    const t = el.querySelector('.title')?.textContent?.trim() || '';
+    return { kind: 'Plan', text: t || 'Created plan' };
+  }
+  if (el.classList.contains('perm')) {
+    const t = el.querySelector('.what')?.textContent?.trim() || '';
+    return { kind: 'Approval', text: t || 'Needs a decision' };
+  }
+  return { kind: '', text: '' };
+}
+
+function scrubClip(s, n = 72) {
+  const t = String(s || '').replace(/\s+/g, ' ').trim();
+  if (t.length <= n) return t;
+  return `${t.slice(0, n - 1).trimEnd()}…`;
+}
+
+/** Tall enough that a scrubber earns its keep. */
+function scrubWorthShowing() {
+  const t = els.transcript;
+  return t.scrollHeight > t.clientHeight + 240;
+}
+
+function rebuildScrubMarks() {
+  if (!els.scrubMarks) return;
+  const t = els.transcript;
+  const h = t.scrollHeight || 1;
+  const marks = scrubLandmarks();
+  els.scrubMarks.replaceChildren();
+  for (const el of marks) {
+    const tick = document.createElement('span');
+    tick.className = 'scrub-mark';
+    if (el.classList.contains('user')) tick.dataset.kind = 'you';
+    else if (el.classList.contains('ask')) tick.dataset.kind = 'question';
+    else if (el.classList.contains('created-plan')) tick.dataset.kind = 'plan';
+    else tick.dataset.kind = 'approval';
+    tick.style.top = `${(el.offsetTop / h) * 100}%`;
+    els.scrubMarks.append(tick);
+  }
+  state.scrubMarksDirty = false;
+}
+
+function previewAtY(y) {
+  const marks = scrubLandmarks();
+  if (!marks.length) {
+    els.scrubKind.textContent = '';
+    els.scrubText.textContent = 'Chat';
+    return;
+  }
+  let best = marks[0];
+  let bestDist = Infinity;
+  for (const el of marks) {
+    const mid = el.offsetTop + el.offsetHeight / 2;
+    const d = Math.abs(mid - y);
+    if (d < bestDist) {
+      bestDist = d;
+      best = el;
+    }
+  }
+  const label = scrubLabel(best);
+  els.scrubKind.textContent = label.kind;
+  els.scrubText.textContent = scrubClip(label.text);
+}
+
+function syncScrubThumb() {
+  const t = els.transcript;
+  const max = Math.max(1, t.scrollHeight - t.clientHeight);
+  const ratio = Math.min(1, Math.max(0, t.scrollTop / max));
+  const pct = `${ratio * 100}%`;
+  if (els.scrubThumb) els.scrubThumb.style.top = pct;
+  if (els.scrubPreview) els.scrubPreview.style.top = pct;
+  if (els.scrubRail) {
+    els.scrubRail.setAttribute('aria-valuemin', '0');
+    els.scrubRail.setAttribute('aria-valuemax', '100');
+    els.scrubRail.setAttribute('aria-valuenow', String(Math.round(ratio * 100)));
+  }
+  // What you are looking at: a bit below the top of the viewport, not the
+  // absolute top (which is usually the previous turn's tail).
+  previewAtY(t.scrollTop + t.clientHeight * 0.28);
+  return ratio;
+}
+
+function showScrub() {
+  if (!els.scrub || !scrubWorthShowing()) {
+    hideScrub(true);
+    return;
+  }
+  if (state.scrubMarksDirty) rebuildScrubMarks();
+  els.scrub.hidden = false;
+  els.scrub.dataset.active = '1';
+  syncScrubThumb();
+  if (els.scrubPreview) els.scrubPreview.hidden = false;
+  clearTimeout(state.scrubHide);
+  if (!state.scrubbing) {
+    state.scrubHide = setTimeout(() => hideScrub(), 1400);
+  }
+}
+
+function hideScrub(force = false) {
+  if (!els.scrub) return;
+  if (state.scrubbing && !force) return;
+  clearTimeout(state.scrubHide);
+  state.scrubHide = null;
+  delete els.scrub.dataset.active;
+  if (els.scrubPreview) els.scrubPreview.hidden = true;
+  // Keep the rail briefly so a thumb can grab it again; force tears it down.
+  if (force) els.scrub.hidden = true;
+  else {
+    state.scrubHide = setTimeout(() => {
+      if (!state.scrubbing) els.scrub.hidden = true;
+    }, 320);
+  }
+}
+
+function onTranscriptScroll() {
+  els.toBottom.hidden = nearBottom();
+  if (state.replaying) return;
+  showScrub();
+}
+
+function scrubToClientY(clientY) {
+  const rail = els.scrubRail;
+  const t = els.transcript;
+  if (!rail || !t) return;
+  const rect = rail.getBoundingClientRect();
+  const pad = 6;
+  const usable = Math.max(1, rect.height - pad * 2);
+  const ratio = Math.min(1, Math.max(0, (clientY - rect.top - pad) / usable));
+  const max = Math.max(0, t.scrollHeight - t.clientHeight);
+  const prev = t.style.scrollBehavior;
+  t.style.scrollBehavior = 'auto';
+  t.scrollTop = ratio * max;
+  t.style.scrollBehavior = prev;
+  syncScrubThumb();
+}
+
+function bindScrubber() {
+  if (!els.scrubRail) return;
+  const rail = els.scrubRail;
+
+  const start = (e) => {
+    if (!scrubWorthShowing()) return;
+    e.preventDefault();
+    state.scrubbing = true;
+    clearTimeout(state.scrubHide);
+    showScrub();
+    scrubToClientY(e.clientY ?? e.touches?.[0]?.clientY);
+    rail.setPointerCapture?.(e.pointerId);
+  };
+  const move = (e) => {
+    if (!state.scrubbing) return;
+    e.preventDefault();
+    scrubToClientY(e.clientY);
+  };
+  const end = () => {
+    if (!state.scrubbing) return;
+    state.scrubbing = false;
+    state.scrubHide = setTimeout(() => hideScrub(), 900);
+  };
+
+  rail.addEventListener('pointerdown', start);
+  rail.addEventListener('pointermove', move);
+  rail.addEventListener('pointerup', end);
+  rail.addEventListener('pointercancel', end);
+  rail.addEventListener('lostpointercapture', end);
+
+  rail.addEventListener('keydown', (e) => {
+    const t = els.transcript;
+    const step = Math.max(80, t.clientHeight * 0.35);
+    if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+      e.preventDefault();
+      t.scrollTop += e.key === 'PageDown' ? t.clientHeight * 0.9 : step;
+      showScrub();
+    } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+      e.preventDefault();
+      t.scrollTop -= e.key === 'PageUp' ? t.clientHeight * 0.9 : step;
+      showScrub();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      t.scrollTop = 0;
+      showScrub();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      t.scrollTop = t.scrollHeight;
+      showScrub();
+    }
+  });
+}
+
+/** Marks go stale whenever the transcript gains or loses a landmark. */
+function markScrubDirty() {
+  state.scrubMarksDirty = true;
 }
 
 /**
@@ -327,6 +554,7 @@ function add(node, { keepStream = false } = {}) {
   decorate(node);
   scrollDown(stick);
   syncToBottom();
+  markScrubDirty();
   return node;
 }
 
@@ -1879,6 +2107,8 @@ function attach(sessionId) {
   state.lastSeq = 0;
   state.pendingEchoes = [];
   els.transcript.innerHTML = '';
+  hideScrub(true);
+  markScrubDirty();
   state.toolCards.clear();
   state.bundle = null;
   state.permCards.clear();
@@ -1978,6 +2208,8 @@ function connect() {
       rememberSession(msg.sessionId);
       if (fresh) {
         els.transcript.innerHTML = '';
+        hideScrub(true);
+        markScrubDirty();
         state.toolCards.clear();
         state.bundle = null;
         state.permCards.clear();
@@ -2372,11 +2604,15 @@ els.file.onchange = () => {
   els.file.value = '';
 };
 
-els.transcript.addEventListener('scroll', syncToBottom);
+els.transcript.addEventListener('scroll', () => {
+  syncToBottom();
+  onTranscriptScroll();
+}, { passive: true });
 els.toBottom.onclick = () => {
   scrollDown(true);
   syncToBottom();
 };
+bindScrubber();
 
 // --------------------------------------------------------- new session
 

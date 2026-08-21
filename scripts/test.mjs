@@ -2259,6 +2259,32 @@ if (existsSync(SRC)) {
   if (!failed) ok('v2 web: New session list stays above the keyboard');
 }
 
+// Long chats get a scroll scrubber: ticks for landmarks and a floating preview.
+{
+  const html = readFileSync(join(ROOT, 'src/web/index.html'), 'utf8');
+  const css = readFileSync(join(ROOT, 'src/web/style.css'), 'utf8');
+  const js = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  let failed = false;
+  if (!html.includes('id="chat-scrub"') || !html.includes('scrub-preview') || !html.includes('scrub-rail')) {
+    fail('index.html must include the chat scrubber chrome');
+    failed = true;
+  }
+  if (!css.includes('#chat-scrub') || !css.includes('.scrub-mark') || !css.includes('.scrub-preview')) {
+    fail('style.css must style the chat scrubber');
+    failed = true;
+  }
+  if (
+    !js.includes('function bindScrubber') ||
+    !js.includes('function scrubLandmarks') ||
+    !js.includes('function showScrub') ||
+    !js.includes(".msg.user, .ask, .created-plan, .perm")
+  ) {
+    fail('app.js must drive the scrubber from transcript landmarks');
+    failed = true;
+  }
+  if (!failed) ok('v2 web: chat scroll scrubber');
+}
+
 // Composer drafts stay with the chat you typed them in, and an idle send
 // appears in the stream before Cursor has finished taking it — without
 // drawing the host's later copy as a second bubble.
