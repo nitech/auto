@@ -483,21 +483,16 @@ function paintScrubPill(pill, entry) {
 }
 
 /**
- * Convert real transcript progress into fractional landmark index. This keeps
- * labels evenly spaced on the wheel while preserving where each one snaps.
+ * Finger (or scroll) progress → fractional landmark index on the wheel.
+ * Linear in the rail, not in chat scroll: a long stretch of text between two
+ * landmarks must not make the labels crawl, and a dense cluster must not make
+ * them leap. Chat scroll and snap stay on their own path.
  */
 function scrubWheelProgress(ratio) {
   const entries = state.scrubEntries;
   if (entries.length <= 1) return 0;
-  if (ratio <= entries[0].snapRatio) return 0;
-  for (let i = 1; i < entries.length; i++) {
-    const here = entries[i].snapRatio;
-    if (ratio > here) continue;
-    const before = entries[i - 1].snapRatio;
-    const span = here - before;
-    return span > 0 ? i - 1 + (ratio - before) / span : i;
-  }
-  return entries.length - 1;
+  const r = Math.min(1, Math.max(0, ratio));
+  return r * (entries.length - 1);
 }
 
 /**

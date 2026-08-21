@@ -2557,6 +2557,7 @@ if (existsSync(SRC)) {
     !js.includes('function enterScrubMode') ||
     !js.includes('function rebuildScrubTimeline') ||
     !js.includes('function scrubWheelProgress') ||
+    !js.includes('r * (entries.length - 1)') ||
     !js.includes('function layoutScrubWheel') ||
     !js.includes('function scrubLayoutRatio') ||
     !js.includes('Math.sqrt(Math.max(0, 1 - normalized * normalized))') ||

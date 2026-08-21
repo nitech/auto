@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T12:40:00Z }
+generated: { by: agent, at: 2026-08-21T12:50:00Z }
 ---
 
 # Web app
@@ -135,7 +135,9 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   timeline **to the left of the thumb** — your messages, questions, plans, and
   approvals — and the chat text dims hard so the pills lead. Labels
   follow the finger continuously; only the chat content snaps to landmarks,
-  so the wheel does not jitter under a magnetic latch. The timeline
+  so the wheel does not jitter under a magnetic latch. Label motion is linear
+  along the rail (index × finger), independent of how much chat text sits
+  between landmarks — chat scroll and snap keep their own mapping. The timeline
   spans the chat pane and keeps 32px of air beyond the
   28px grip, so the finger never covers the labels without disconnecting them
   visually. It is a rotary wheel: moving the grip down moves the evenly spaced

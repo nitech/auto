@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Update**: Scrub labels move linearly with the finger (even landmark spacing on the wheel), independent of how much chat text sits between landmarks — that uneven mapping was what made the timeline jump.
 * **Update**: Reverted scrub labels to the semicircle width wheel; kept the harder chat dim (18%) while scrubbing.
 * **Update**: Scrub labels are wider (~260px) and follow the finger continuously; only the chat content snaps to landmarks, so the wheel no longer jitters under the magnetic latch.
 * **Update**: Chat text fades slightly while the scrub timeline is open so the landmark pills lead.
