@@ -52,12 +52,8 @@ const els = {
   sheet: $('sheet'),
   toBottom: $('to-bottom'),
   scrub: $('chat-scrub'),
-  scrubRail: document.querySelector('#chat-scrub .scrub-rail'),
-  scrubMarks: document.querySelector('#chat-scrub .scrub-marks'),
-  scrubThumb: document.querySelector('#chat-scrub .scrub-thumb'),
-  scrubPreview: document.querySelector('#chat-scrub .scrub-preview'),
-  scrubKind: document.querySelector('#chat-scrub .scrub-kind'),
-  scrubText: document.querySelector('#chat-scrub .scrub-text'),
+  scrubHandle: document.querySelector('#chat-scrub .scrub-handle'),
+  scrubTimeline: document.querySelector('#chat-scrub .scrub-timeline'),
   attachments: $('attachments'),
   file: $('file'),
   queue: $('queue'),
@@ -129,7 +125,9 @@ const state = {
   /** chat scrubber: visible while scrolling a long transcript */
   scrubHide: null,
   scrubbing: false,
-  scrubMarksDirty: true,
+  scrubTimelineDirty: true,
+  /** landmark elements currently drawn as timeline pills */
+  scrubEntries: [],
 };
 
 // ------------------------------------------------------------------ helpers
@@ -210,11 +208,19 @@ function syncToBottom() {
 }
 
 /**
- * Landmarks worth marking on the scrub rail — the structure of a long chat,
- * not every tool card. Order matches the DOM.
+ * Landmarks worth marking on the scrub timeline — the structure of a long
+ * chat, not every tool card. Order matches the DOM.
  */
 function scrubLandmarks() {
   return [...els.transcript.querySelectorAll('.msg.user, .ask, .created-plan, .perm')];
+}
+
+function scrubKindOf(el) {
+  if (el.classList.contains('user')) return 'you';
+  if (el.classList.contains('ask')) return 'question';
+  if (el.classList.contains('created-plan')) return 'plan';
+  if (el.classList.contains('perm')) return 'approval';
+  return '';
 }
 
 function scrubLabel(el) {
@@ -254,79 +260,188 @@ function scrubWorthShowing() {
   return t.scrollHeight > t.clientHeight + 240;
 }
 
-function rebuildScrubMarks() {
-  if (!els.scrubMarks) return;
+function scrubScrollRatio() {
   const t = els.transcript;
-  const h = t.scrollHeight || 1;
-  const marks = scrubLandmarks();
-  els.scrubMarks.replaceChildren();
-  for (const el of marks) {
-    const tick = document.createElement('span');
-    tick.className = 'scrub-mark';
-    if (el.classList.contains('user')) tick.dataset.kind = 'you';
-    else if (el.classList.contains('ask')) tick.dataset.kind = 'question';
-    else if (el.classList.contains('created-plan')) tick.dataset.kind = 'plan';
-    else tick.dataset.kind = 'approval';
-    tick.style.top = `${(el.offsetTop / h) * 100}%`;
-    els.scrubMarks.append(tick);
-  }
-  state.scrubMarksDirty = false;
+  const max = Math.max(1, t.scrollHeight - t.clientHeight);
+  return Math.min(1, Math.max(0, t.scrollTop / max));
 }
 
-function previewAtY(y) {
-  const marks = scrubLandmarks();
-  if (!marks.length) {
-    els.scrubKind.textContent = '';
-    els.scrubText.textContent = 'Chat';
-    return;
+/**
+ * Drop crowded user messages so pills stay readable; questions / plans /
+ * approvals always stay. Prefer landmarks near the current scroll position.
+ */
+function thinScrubLandmarks(entries, railPx) {
+  const minGap = 18;
+  if (entries.length <= 1 || railPx <= 0) return entries;
+
+  const must = (e) => e.kind !== 'you';
+  const kept = entries.filter(must);
+  const users = entries.filter((e) => e.kind === 'you');
+  const ratio = scrubScrollRatio();
+
+  const fits = (list) => {
+    const sorted = [...list].sort((a, b) => a.top - b.top);
+    for (let i = 1; i < sorted.length; i++) {
+      if ((sorted[i].top - sorted[i - 1].top) * railPx < minGap) return false;
+    }
+    return true;
+  };
+
+  if (fits([...kept, ...users])) return entries;
+
+  const ranked = [...users].sort((a, b) => Math.abs(a.top - ratio) - Math.abs(b.top - ratio));
+  const chosen = [];
+  for (const u of ranked) {
+    const trial = [...kept, ...chosen, u];
+    if (fits(trial)) chosen.push(u);
   }
-  let best = marks[0];
+  return [...kept, ...chosen].sort((a, b) => a.top - b.top);
+}
+
+/**
+ * Build density-weighted pills. Width scales with the transcript span until
+ * the next landmark (Photos-style: denser stretch → wider pill).
+ */
+function rebuildScrubTimeline() {
+  if (!els.scrubTimeline) return;
+  const t = els.transcript;
+  const h = t.scrollHeight || 1;
+  const railPx = els.scrub.getBoundingClientRect().height || t.clientHeight;
+  const marks = scrubLandmarks();
+  const raw = marks.map((el, i) => {
+    const topPx = el.offsetTop;
+    const nextTop = i + 1 < marks.length ? marks[i + 1].offsetTop : h;
+    const span = Math.max(1, nextTop - topPx);
+    return {
+      el,
+      kind: scrubKindOf(el),
+      top: topPx / h,
+      spanFrac: span / h,
+      label: scrubLabel(el),
+    };
+  });
+  const entries = thinScrubLandmarks(raw, railPx);
+  els.scrubTimeline.replaceChildren();
+  state.scrubEntries = [];
+
+  for (const entry of entries) {
+    const pill = document.createElement('div');
+    pill.className = 'scrub-pill';
+    pill.dataset.kind = entry.kind;
+    pill.style.top = `${entry.top * 100}%`;
+    const w = Math.round(28 + entry.spanFrac * 120);
+    pill.style.width = `${Math.min(72, Math.max(28, w))}px`;
+    const kind = document.createElement('span');
+    kind.className = 'scrub-kind';
+    kind.textContent = entry.label.kind;
+    const text = document.createElement('span');
+    text.className = 'scrub-text';
+    text.textContent = scrubClip(entry.label.text, 32);
+    pill.append(kind, text);
+    els.scrubTimeline.append(pill);
+    state.scrubEntries.push({ ...entry, pill });
+  }
+  state.scrubTimelineDirty = false;
+}
+
+function nearestScrubEntry(y) {
+  const entries = state.scrubEntries;
+  if (!entries.length) return null;
+  let best = entries[0];
   let bestDist = Infinity;
-  for (const el of marks) {
-    const mid = el.offsetTop + el.offsetHeight / 2;
+  for (const entry of entries) {
+    const mid = entry.el.offsetTop + entry.el.offsetHeight / 2;
     const d = Math.abs(mid - y);
     if (d < bestDist) {
       bestDist = d;
-      best = el;
+      best = entry;
     }
   }
-  const label = scrubLabel(best);
-  els.scrubKind.textContent = label.kind;
-  els.scrubText.textContent = scrubClip(label.text);
+  return best;
 }
 
-function syncScrubThumb() {
-  const t = els.transcript;
-  const max = Math.max(1, t.scrollHeight - t.clientHeight);
-  const ratio = Math.min(1, Math.max(0, t.scrollTop / max));
+function syncScrubHandle() {
+  const ratio = scrubScrollRatio();
   const pct = `${ratio * 100}%`;
-  if (els.scrubThumb) els.scrubThumb.style.top = pct;
-  if (els.scrubPreview) els.scrubPreview.style.top = pct;
-  if (els.scrubRail) {
-    els.scrubRail.setAttribute('aria-valuemin', '0');
-    els.scrubRail.setAttribute('aria-valuemax', '100');
-    els.scrubRail.setAttribute('aria-valuenow', String(Math.round(ratio * 100)));
+  if (els.scrubHandle) {
+    els.scrubHandle.style.top = pct;
+    els.scrubHandle.setAttribute('aria-valuemin', '0');
+    els.scrubHandle.setAttribute('aria-valuemax', '100');
+    els.scrubHandle.setAttribute('aria-valuenow', String(Math.round(ratio * 100)));
+    els.scrubHandle.setAttribute('role', 'slider');
   }
-  // What you are looking at: a bit below the top of the viewport, not the
-  // absolute top (which is usually the previous turn's tail).
-  previewAtY(t.scrollTop + t.clientHeight * 0.28);
   return ratio;
 }
 
-function showScrub() {
+function syncScrubActive() {
+  if (!state.scrubbing || !els.scrubTimeline) return;
+  const t = els.transcript;
+  const y = t.scrollTop + t.clientHeight * 0.28;
+  const active = nearestScrubEntry(y);
+  for (const entry of state.scrubEntries) {
+    const on = entry === active;
+    entry.pill.classList.toggle('active', on);
+    if (on) {
+      entry.pill.style.top = `${scrubScrollRatio() * 100}%`;
+      entry.pill.querySelector('.scrub-text').textContent = scrubClip(entry.label.text, 56);
+      // Active pill can grow with density but stays readable beside the thumb.
+      const w = Math.round(48 + entry.spanFrac * 160);
+      entry.pill.style.width = `${Math.min(200, Math.max(72, w))}px`;
+    } else {
+      entry.pill.style.top = `${entry.top * 100}%`;
+      entry.pill.querySelector('.scrub-text').textContent = scrubClip(entry.label.text, 32);
+      const w = Math.round(28 + entry.spanFrac * 120);
+      entry.pill.style.width = `${Math.min(72, Math.max(28, w))}px`;
+    }
+  }
+}
+
+function setScrubMode(mode) {
+  if (!els.scrub) return;
+  els.scrub.dataset.mode = mode;
+  if (els.scrubTimeline) {
+    const open = mode === 'scrub';
+    els.scrubTimeline.hidden = !open;
+    els.scrubTimeline.setAttribute('aria-hidden', open ? 'false' : 'true');
+  }
+}
+
+/** Hint mode: handle only, while scrolling a long chat. */
+function showScrubHint() {
   if (!els.scrub || !scrubWorthShowing()) {
     hideScrub(true);
     return;
   }
-  if (state.scrubMarksDirty) rebuildScrubMarks();
   els.scrub.hidden = false;
   els.scrub.dataset.active = '1';
-  syncScrubThumb();
-  if (els.scrubPreview) els.scrubPreview.hidden = false;
+  if (!state.scrubbing) setScrubMode('hint');
+  syncScrubHandle();
   clearTimeout(state.scrubHide);
   if (!state.scrubbing) {
     state.scrubHide = setTimeout(() => hideScrub(), 1400);
   }
+}
+
+/** Scrub mode: expand labeled timeline left of the thumb. */
+function enterScrubMode() {
+  if (!els.scrub || !scrubWorthShowing()) return;
+  state.scrubbing = true;
+  clearTimeout(state.scrubHide);
+  els.scrub.hidden = false;
+  els.scrub.dataset.active = '1';
+  if (state.scrubTimelineDirty) rebuildScrubTimeline();
+  setScrubMode('scrub');
+  syncScrubHandle();
+  syncScrubActive();
+}
+
+function leaveScrubMode() {
+  if (!state.scrubbing) return;
+  state.scrubbing = false;
+  setScrubMode('hint');
+  // Rebuild so secondary pills regain their resting tops/widths.
+  state.scrubTimelineDirty = true;
+  state.scrubHide = setTimeout(() => hideScrub(), 900);
 }
 
 function hideScrub(force = false) {
@@ -335,10 +450,11 @@ function hideScrub(force = false) {
   clearTimeout(state.scrubHide);
   state.scrubHide = null;
   delete els.scrub.dataset.active;
-  if (els.scrubPreview) els.scrubPreview.hidden = true;
-  // Keep the rail briefly so a thumb can grab it again; force tears it down.
-  if (force) els.scrub.hidden = true;
-  else {
+  setScrubMode('hint');
+  if (force) {
+    state.scrubbing = false;
+    els.scrub.hidden = true;
+  } else {
     state.scrubHide = setTimeout(() => {
       if (!state.scrubbing) els.scrub.hidden = true;
     }, 320);
@@ -348,15 +464,20 @@ function hideScrub(force = false) {
 function onTranscriptScroll() {
   els.toBottom.hidden = nearBottom();
   if (state.replaying) return;
-  showScrub();
+  if (state.scrubbing) {
+    syncScrubHandle();
+    syncScrubActive();
+    return;
+  }
+  showScrubHint();
 }
 
 function scrubToClientY(clientY) {
-  const rail = els.scrubRail;
+  const handle = els.scrubHandle;
   const t = els.transcript;
-  if (!rail || !t) return;
-  const rect = rail.getBoundingClientRect();
-  const pad = 6;
+  if (!handle || !t || !els.scrub) return;
+  const rect = els.scrub.getBoundingClientRect();
+  const pad = 18;
   const usable = Math.max(1, rect.height - pad * 2);
   const ratio = Math.min(1, Math.max(0, (clientY - rect.top - pad) / usable));
   const max = Math.max(0, t.scrollHeight - t.clientHeight);
@@ -364,21 +485,20 @@ function scrubToClientY(clientY) {
   t.style.scrollBehavior = 'auto';
   t.scrollTop = ratio * max;
   t.style.scrollBehavior = prev;
-  syncScrubThumb();
+  syncScrubHandle();
+  syncScrubActive();
 }
 
 function bindScrubber() {
-  if (!els.scrubRail) return;
-  const rail = els.scrubRail;
+  const handle = els.scrubHandle;
+  if (!handle) return;
 
   const start = (e) => {
     if (!scrubWorthShowing()) return;
     e.preventDefault();
-    state.scrubbing = true;
-    clearTimeout(state.scrubHide);
-    showScrub();
-    scrubToClientY(e.clientY ?? e.touches?.[0]?.clientY);
-    rail.setPointerCapture?.(e.pointerId);
+    enterScrubMode();
+    scrubToClientY(e.clientY);
+    handle.setPointerCapture?.(e.pointerId);
   };
   const move = (e) => {
     if (!state.scrubbing) return;
@@ -387,42 +507,41 @@ function bindScrubber() {
   };
   const end = () => {
     if (!state.scrubbing) return;
-    state.scrubbing = false;
-    state.scrubHide = setTimeout(() => hideScrub(), 900);
+    leaveScrubMode();
   };
 
-  rail.addEventListener('pointerdown', start);
-  rail.addEventListener('pointermove', move);
-  rail.addEventListener('pointerup', end);
-  rail.addEventListener('pointercancel', end);
-  rail.addEventListener('lostpointercapture', end);
+  handle.addEventListener('pointerdown', start);
+  handle.addEventListener('pointermove', move);
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+  handle.addEventListener('lostpointercapture', end);
 
-  rail.addEventListener('keydown', (e) => {
+  handle.addEventListener('keydown', (e) => {
     const t = els.transcript;
     const step = Math.max(80, t.clientHeight * 0.35);
+    const keys = ['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End'];
+    if (!keys.includes(e.key)) return;
+    e.preventDefault();
+    enterScrubMode();
     if (e.key === 'ArrowDown' || e.key === 'PageDown') {
-      e.preventDefault();
       t.scrollTop += e.key === 'PageDown' ? t.clientHeight * 0.9 : step;
-      showScrub();
     } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
-      e.preventDefault();
       t.scrollTop -= e.key === 'PageUp' ? t.clientHeight * 0.9 : step;
-      showScrub();
     } else if (e.key === 'Home') {
-      e.preventDefault();
       t.scrollTop = 0;
-      showScrub();
     } else if (e.key === 'End') {
-      e.preventDefault();
       t.scrollTop = t.scrollHeight;
-      showScrub();
     }
+    syncScrubHandle();
+    syncScrubActive();
+    clearTimeout(state.scrubHide);
+    state.scrubHide = setTimeout(() => leaveScrubMode(), 1200);
   });
 }
 
-/** Marks go stale whenever the transcript gains or loses a landmark. */
+/** Timeline goes stale whenever the transcript gains or loses a landmark. */
 function markScrubDirty() {
-  state.scrubMarksDirty = true;
+  state.scrubTimelineDirty = true;
 }
 
 /**

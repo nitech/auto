@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T04:10:00Z }
+generated: { by: agent, at: 2026-08-21T05:20:00Z }
 ---
 
 # Web app
@@ -120,11 +120,14 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   the answer, the way Cursor labels a finished turn. Commands left
   "running…" after the session goes idle settle to stopped — an idle chip
   with live cards is a lie.
-- While scrolling a long chat, a scrub rail appears on the right (Claude /
-  Google Photos style): ticks for your messages, questions, plans, and
-  approvals, a thumb for where you are, and a floating preview of the nearest
-  landmark. Drag the rail to jump; it fades once you stop. Short chats never
-  show it. The ↓ jump-to-newest button is unchanged.
+- While scrolling a long chat, a small ↕ handle appears on the right
+  (Google Photos style). Grabbing it expands a labeled timeline **to the
+  left of the thumb** — your messages, questions, plans, and approvals —
+  so the finger never covers the labels. Pill width scales with how much
+  of the transcript that segment occupies (denser stretch → wider pill);
+  crowded user messages are thinned so questions/plans/approvals stay.
+  Release collapses back to the handle, which fades when idle. Short chats
+  never show it. The ↓ jump-to-newest button is unchanged.
 
 ## Composer
 

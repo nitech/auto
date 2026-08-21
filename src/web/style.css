@@ -2275,14 +2275,15 @@ button.icon.active {
 #to-bottom:hover { border-color: var(--focus); }
 
 /*
- * Chat scrubber — Google Photos / Claude style. A thin rail on the right
- * while you are scrolling a long transcript, with ticks for your messages,
- * questions, and plans, and a preview of whatever sits under the thumb.
+ * Chat scrubber — Google Photos style. Two modes:
+ *   hint  — only the ↕ handle on the right while scrolling
+ *   scrub — labeled timeline expands left of the thumb (never under it)
+ * Pill width encodes how much of the transcript that segment occupies.
  */
 #chat-scrub {
   position: absolute;
   top: 12px;
-  right: 4px;
+  right: 6px;
   bottom: 56px;
   z-index: 4;
   pointer-events: none;
@@ -2297,105 +2298,106 @@ button.icon.active {
   transform: none;
 }
 
-.scrub-rail {
+.scrub-handle {
   position: absolute;
   top: 0;
   right: 0;
-  bottom: 0;
-  width: 28px;
+  width: 36px;
+  height: 36px;
+  margin-top: -18px;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  background: var(--bg-3);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: auto;
   touch-action: none;
   cursor: ns-resize;
-  border-radius: 999px;
+  padding: 0;
+  z-index: 2;
 }
 
-.scrub-rail::before {
-  content: '';
-  position: absolute;
-  top: 6px;
-  bottom: 6px;
-  left: 50%;
-  width: 3px;
-  transform: translateX(-50%);
-  border-radius: 999px;
-  background: var(--line-2);
-  opacity: 0.9;
+.scrub-handle:hover,
+.scrub-handle:focus-visible {
+  border-color: var(--focus);
+  outline: none;
 }
 
-.scrub-marks {
-  position: absolute;
-  top: 6px;
-  bottom: 6px;
-  left: 0;
-  right: 0;
+#chat-scrub[data-mode='scrub'] .scrub-handle {
+  border-color: var(--focus);
 }
 
-.scrub-mark {
-  position: absolute;
-  left: 50%;
-  width: 7px;
-  height: 7px;
-  margin: -3.5px 0 0 -3.5px;
-  border-radius: 50%;
-  background: var(--muted);
-  box-shadow: 0 0 0 2px var(--bg);
-}
-
-.scrub-mark[data-kind='you'] { background: var(--focus); }
-.scrub-mark[data-kind='question'] { background: var(--amber, #d4a017); }
-.scrub-mark[data-kind='plan'] { background: var(--green); }
-.scrub-mark[data-kind='approval'] { background: var(--red); }
-
-.scrub-thumb {
+.scrub-timeline {
   position: absolute;
   top: 0;
-  left: 50%;
-  width: 14px;
-  height: 14px;
-  margin: -7px 0 0 -7px;
-  border-radius: 50%;
-  background: var(--text);
-  border: 2px solid var(--bg-3);
-  box-shadow: var(--shadow-sm);
+  right: 44px;
+  bottom: 0;
+  left: 8px;
   pointer-events: none;
+}
+
+.scrub-timeline[hidden] { display: none; }
+
+.scrub-pill {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  max-width: min(160px, 42vw);
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  border-left-width: 3px;
+  background: color-mix(in srgb, var(--bg-3) 88%, transparent);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+  box-shadow: var(--shadow-sm);
+}
+
+.scrub-pill[data-kind='you'] { border-left-color: var(--focus); }
+.scrub-pill[data-kind='question'] { border-left-color: var(--amber); }
+.scrub-pill[data-kind='plan'] { border-left-color: var(--green); }
+.scrub-pill[data-kind='approval'] { border-left-color: var(--red); }
+
+.scrub-pill.active {
+  max-width: min(220px, 55vw);
+  padding: 7px 11px;
+  background: var(--bg-3);
+  color: var(--text);
+  border-color: var(--line-2);
+  font-size: 12.5px;
+  font-weight: 550;
   z-index: 1;
 }
 
-.scrub-preview {
-  position: absolute;
-  right: 36px;
-  top: 50%;
-  max-width: min(280px, 62vw);
-  padding: 8px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--line-2);
-  background: var(--bg-3);
-  box-shadow: var(--shadow-sm);
-  pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  transform: translateY(-50%);
-}
+.scrub-pill.active[data-kind='you'] { border-left-color: var(--focus); }
+.scrub-pill.active[data-kind='question'] { border-left-color: var(--amber); }
+.scrub-pill.active[data-kind='plan'] { border-left-color: var(--green); }
+.scrub-pill.active[data-kind='approval'] { border-left-color: var(--red); }
 
-.scrub-preview[hidden] { display: none; }
-
-.scrub-kind {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+.scrub-pill .scrub-kind {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--muted);
+  margin-bottom: 1px;
 }
 
-.scrub-text {
-  font-size: 12.5px;
-  color: var(--text);
-  line-height: 1.35;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+.scrub-pill:not(.active) .scrub-kind { display: none; }
+
+.scrub-pill .scrub-text {
+  display: block;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .scroller {

@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Update**: Chat scrubber is Photos-style — handle while scrolling; labeled density-weighted timeline expands left of the thumb only while scrubbing.
 * **Update**: Long chats get a scroll scrubber (ticks for your messages, questions, plans, approvals + a floating preview) that appears while scrolling.
 
 ## 2026-08-20

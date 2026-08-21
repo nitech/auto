@@ -2259,27 +2259,41 @@ if (existsSync(SRC)) {
   if (!failed) ok('v2 web: New session list stays above the keyboard');
 }
 
-// Long chats get a scroll scrubber: ticks for landmarks and a floating preview.
+// Long chats get a Photos-style scrubber: handle while scrolling, labeled
+// timeline (density-weighted pills) left of the thumb while scrubbing.
 {
   const html = readFileSync(join(ROOT, 'src/web/index.html'), 'utf8');
   const css = readFileSync(join(ROOT, 'src/web/style.css'), 'utf8');
   const js = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
   let failed = false;
-  if (!html.includes('id="chat-scrub"') || !html.includes('scrub-preview') || !html.includes('scrub-rail')) {
-    fail('index.html must include the chat scrubber chrome');
+  if (
+    !html.includes('id="chat-scrub"') ||
+    !html.includes('scrub-handle') ||
+    !html.includes('scrub-timeline') ||
+    !html.includes('data-mode="hint"')
+  ) {
+    fail('index.html must include the Photos-style chat scrubber chrome');
     failed = true;
   }
-  if (!css.includes('#chat-scrub') || !css.includes('.scrub-mark') || !css.includes('.scrub-preview')) {
-    fail('style.css must style the chat scrubber');
+  if (
+    !css.includes('#chat-scrub') ||
+    !css.includes('.scrub-handle') ||
+    !css.includes('.scrub-pill') ||
+    !css.includes("[data-mode='scrub']")
+  ) {
+    fail('style.css must style hint and scrub modes');
     failed = true;
   }
   if (
     !js.includes('function bindScrubber') ||
     !js.includes('function scrubLandmarks') ||
-    !js.includes('function showScrub') ||
+    !js.includes('function showScrubHint') ||
+    !js.includes('function enterScrubMode') ||
+    !js.includes('function rebuildScrubTimeline') ||
+    !js.includes('function thinScrubLandmarks') ||
     !js.includes(".msg.user, .ask, .created-plan, .perm")
   ) {
-    fail('app.js must drive the scrubber from transcript landmarks');
+    fail('app.js must drive the two-mode scrubber from transcript landmarks');
     failed = true;
   }
   if (!failed) ok('v2 web: chat scroll scrubber');
