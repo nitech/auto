@@ -2336,6 +2336,26 @@ button.icon.active {
   color: var(--text);
 }
 
+/*
+ * Soft veil behind the label wheel so transcript text cannot fight the pills.
+ * Anchored on the right edge — same buried-circle idea as the widths.
+ */
+#chat-scrub[data-mode='scrub']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    ellipse 85% 78% at 100% 50%,
+    var(--bg) 0%,
+    color-mix(in srgb, var(--bg) 92%, transparent) 28%,
+    color-mix(in srgb, var(--bg) 55%, transparent) 52%,
+    color-mix(in srgb, var(--bg) 18%, transparent) 72%,
+    transparent 88%
+  );
+}
+
 /* Drag ridges — the usual “this moves” affordance. */
 .scrub-grip {
   display: block;
@@ -2356,6 +2376,7 @@ button.icon.active {
   bottom: 0;
   left: 4px;
   pointer-events: none;
+  z-index: 1;
 }
 
 .scrub-timeline[hidden] { display: none; }

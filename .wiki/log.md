@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Update**: Scrub mode draws a radial veil behind the label wheel so chat text cannot wash out the pills.
 * **Update**: Scrub labels are now a counter-scrolling rotary wheel; widths trace a semicircle and fade to zero at the viewport ends.
 * **Update**: Scrub labels sit 32px beyond the grip, use larger text/padding, and widen progressively toward vertical screen centre.
 * **Fix**: Scrubber now spans the chat pane, making the label's 92px right clearance real instead of being measured inside a zero-width container.
