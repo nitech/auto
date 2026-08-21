@@ -230,6 +230,18 @@ function cacheAttachSeq(snap) {
   return snap?.lastSeq || 0;
 }
 
+/**
+ * The "N earlier records are not shown." row, or null when nothing is omitted.
+ * Tagged so ensureOpening can tell it apart from real conversation nodes.
+ */
+function earlierNotice(count) {
+  if (!count || count <= 0) return null;
+  const note = div('notice');
+  note.dataset.earlier = '1';
+  note.textContent = `${count.toLocaleString()} earlier records are not shown.`;
+  return note;
+}
+
 /** Paint opening + optional omission notice + tail into an empty transcript. */
 function paintTranscriptParts(head, omitted, records) {
   for (const rec of head || []) render(rec);

@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Fix**: "Loading conversation…" never left the screen — the opening-prompt refactor called `earlierNotice()` without ever defining it, so every replay threw. The function exists now, and `npm test` scans the web client for free calls to functions that exist nowhere (`node --check` accepts them as possible globals, which is how this shipped).
 * **Update**: Long-chat replay pins the opening prompt above the newest tail so the first message (and its scrub landmark) stay visible.
 * **Update**: Web client caches the transcript tail (memory + IndexedDB) so reload and chat switch paint immediately, then catch up from `lastSeq`.
 * **Update**: Active scrub label is brighter (kind-coloured ring, stronger type) and stays opaque near centre.

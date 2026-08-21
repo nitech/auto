@@ -71,6 +71,132 @@ if (existsSync(SRC)) {
   }
 }
 
+// 1b. Calls to functions that exist nowhere. `node --check` accepts them (the
+// name might be a global), and one shipped: a refactor renamed the omission
+// notice into earlierNotice() without writing it, so every replay threw and
+// "Loading conversation…" never left the screen. Free function calls in the
+// web client must resolve to something defined, imported, or a browser global.
+{
+  const WEBSRC = join(ROOT, 'src', 'web');
+  const KNOWN = new Set([
+    // keywords that read like calls
+    'if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'super', 'import',
+    'async', 'await', 'void', 'delete', 'new', 'yield', 'throw', 'case', 'instanceof', 'in', 'of', 'do', 'else',
+    // language globals
+    'Boolean', 'Number', 'String', 'Array', 'Object', 'Math', 'JSON', 'Date', 'Map',
+    'Set', 'WeakMap', 'WeakSet', 'WeakRef', 'Promise', 'Error', 'TypeError', 'RangeError',
+    'SyntaxError', 'RegExp', 'Symbol', 'Proxy', 'Reflect', 'BigInt', 'Intl',
+    'ArrayBuffer', 'DataView', 'Int8Array', 'Uint8Array', 'Uint8ClampedArray',
+    'Int16Array', 'Uint16Array', 'Int32Array', 'Uint32Array', 'Float32Array',
+    'Float64Array', 'BigInt64Array', 'BigUint64Array',
+    'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'structuredClone',
+    'encodeURIComponent', 'decodeURIComponent', 'encodeURI', 'decodeURI', 'btoa', 'atob',
+    // browser
+    'fetch', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval',
+    'requestAnimationFrame', 'cancelAnimationFrame', 'queueMicrotask',
+    'alert', 'confirm', 'prompt', 'WebSocket', 'URL', 'URLSearchParams',
+    'Blob', 'File', 'FileReader', 'FormData', 'Image', 'Audio', 'Notification',
+    'AbortController', 'EventSource', 'Worker', 'IntersectionObserver',
+    'ResizeObserver', 'MutationObserver', 'CustomEvent', 'Event', 'KeyboardEvent',
+    'PointerEvent', 'MouseEvent', 'TouchEvent', 'DOMParser', 'TextDecoder',
+    'TextEncoder', 'getComputedStyle', 'matchMedia', 'indexedDB',
+    // vendor scripts loaded before the modules
+    'Terminal', 'FitAddon',
+  ]);
+
+  /**
+   * Blank out comments, string/template contents and regex literals, keeping
+   * code inside `${}` interpolations. Anything cruder mis-reads a file like
+   * markdown.js, whose templates and regexes are full of quotes.
+   */
+  function codeOnly(src) {
+    let out = '';
+    // Mode stack: 'code' blocks track brace depth so `}` can close a `${`.
+    const stack = [{ mode: 'code', depth: 0 }];
+    let prev = ''; // last significant char in code mode, for regex-vs-division
+    let i = 0;
+    while (i < src.length) {
+      const top = stack[stack.length - 1];
+      const c = src[i];
+      const d = src[i + 1];
+      if (top.mode === 'template') {
+        if (c === '\\') { i += 2; continue; }
+        if (c === '`') { stack.pop(); out += '``'; prev = '`'; i++; continue; }
+        if (c === '$' && d === '{') { stack.push({ mode: 'code', depth: 0 }); out += ' ('; prev = '('; i += 2; continue; }
+        i++;
+        continue;
+      }
+      // code mode
+      if (c === '/' && d === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+      if (c === '/' && d === '*') { i += 2; while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++; i += 2; out += ' '; continue; }
+      if (c === "'" || c === '"') {
+        i++;
+        while (i < src.length && src[i] !== c) i += src[i] === '\\' ? 2 : 1;
+        i++; out += c + c; prev = c;
+        continue;
+      }
+      if (c === '`') { stack.push({ mode: 'template', depth: 0 }); i++; continue; }
+      if (c === '/') {
+        const regexish = !prev || '=([{,;:!&|?+-*%<>~^'.includes(prev)
+          || /(?:^|[^\w$])(?:return|typeof|case|new|do|else|instanceof|in|of)\s*$/.test(out);
+        if (regexish) {
+          i++;
+          let inClass = false;
+          while (i < src.length && (inClass || src[i] !== '/')) {
+            if (src[i] === '\\') i++;
+            else if (src[i] === '[') inClass = true;
+            else if (src[i] === ']') inClass = false;
+            i++;
+          }
+          i++;
+          while (i < src.length && /[a-z]/i.test(src[i])) i++;
+          out += ' 0 '; prev = '0';
+          continue;
+        }
+      }
+      if (c === '{') top.depth++;
+      if (c === '}') {
+        if (top.depth === 0 && stack.length > 1) { stack.pop(); out += ') '; prev = ')'; i++; continue; }
+        top.depth--;
+      }
+      out += c;
+      if (!/\s/.test(c)) prev = c;
+      i++;
+    }
+    return out;
+  }
+
+  let failed = false;
+  for (const name of readdirSync(WEBSRC).filter((f) => f.endsWith('.js'))) {
+    const code = codeOnly(readFileSync(join(WEBSRC, name), 'utf8'));
+    const defined = new Set();
+    for (const m of code.matchAll(/\bfunction\s*\*?\s*([A-Za-z_$][\w$]*)/g)) defined.add(m[1]);
+    for (const m of code.matchAll(/\b(?:const|let|var|class)\s+([A-Za-z_$][\w$]*)/g)) defined.add(m[1]);
+    // Destructured declarations, function parameters, imports, catch bindings,
+    // and method shorthand — everything that puts a callable name in scope.
+    for (const m of code.matchAll(/\b(?:const|let|var)\s*(\{[^}]*\}|\[[^\]]*\])\s*=/g)) {
+      for (const w of m[1].matchAll(/[A-Za-z_$][\w$]*/g)) defined.add(w[0]);
+    }
+    for (const m of code.matchAll(/\(([^()]*)\)\s*(?:=>|\{)/g)) {
+      for (const w of m[1].matchAll(/[A-Za-z_$][\w$]*/g)) defined.add(w[0]);
+    }
+    for (const m of code.matchAll(/\bimport\s*(\{[^}]*\}|[A-Za-z_$][\w$]*)\s*from/g)) {
+      for (const w of m[1].matchAll(/[A-Za-z_$][\w$]*/g)) defined.add(w[0]);
+    }
+    for (const m of code.matchAll(/\bcatch\s*\(\s*([A-Za-z_$][\w$]*)/g)) defined.add(m[1]);
+    for (const m of code.matchAll(/([A-Za-z_$][\w$]*)\s*\([^()]*\)\s*\{/g)) defined.add(m[1]);
+    const missing = new Set();
+    for (const m of code.matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(/g)) {
+      if (!defined.has(m[1]) && !KNOWN.has(m[1])) missing.add(m[1]);
+    }
+    if (missing.size) {
+      fail(`src/web/${name} calls functions that exist nowhere: ${[...missing].join(', ')}`);
+      failed = true;
+    }
+  }
+  if (!failed) ok('v2 web: every free function call resolves');
+}
+
 // 1g. First-run checklist — the rows a stranger sees after npm install.
 {
   const { collectChecks, ensureEnvFile, agentCliLoggedIn, formatReachability, whereAutoLives, agentLoginRequired } =
