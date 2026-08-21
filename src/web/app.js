@@ -299,8 +299,8 @@ function thinScrubLandmarks(entries, railPx) {
 }
 
 /**
- * Build density-weighted pills. Width scales with the transcript span until
- * the next landmark (Photos-style: denser stretch → wider pill).
+ * Build timeline pills. Density sets a *minimum* width (Photos-style hint);
+ * the label itself sizes the pill so the words stay readable left of the thumb.
  */
 function rebuildScrubTimeline() {
   if (!els.scrubTimeline) return;
@@ -329,19 +329,32 @@ function rebuildScrubTimeline() {
     pill.className = 'scrub-pill';
     pill.dataset.kind = entry.kind;
     pill.style.top = `${entry.top * 100}%`;
-    const w = Math.round(28 + entry.spanFrac * 120);
-    pill.style.width = `${Math.min(72, Math.max(28, w))}px`;
-    const kind = document.createElement('span');
-    kind.className = 'scrub-kind';
-    kind.textContent = entry.label.kind;
-    const text = document.createElement('span');
-    text.className = 'scrub-text';
-    text.textContent = scrubClip(entry.label.text, 32);
-    pill.append(kind, text);
+    paintScrubPill(pill, entry, false);
     els.scrubTimeline.append(pill);
     state.scrubEntries.push({ ...entry, pill });
   }
   state.scrubTimelineDirty = false;
+}
+
+function scrubPillMinWidth(spanFrac, active) {
+  if (active) return Math.round(160 + spanFrac * 80);
+  return Math.round(96 + spanFrac * 48);
+}
+
+function paintScrubPill(pill, entry, active) {
+  let kind = pill.querySelector('.scrub-kind');
+  let text = pill.querySelector('.scrub-text');
+  if (!kind) {
+    kind = document.createElement('span');
+    kind.className = 'scrub-kind';
+    text = document.createElement('span');
+    text.className = 'scrub-text';
+    pill.replaceChildren(kind, text);
+  }
+  kind.textContent = entry.label.kind;
+  text.textContent = scrubClip(entry.label.text, active ? 64 : 40);
+  pill.style.width = '';
+  pill.style.minWidth = `${scrubPillMinWidth(entry.spanFrac, active)}px`;
 }
 
 function nearestScrubEntry(y) {
@@ -381,18 +394,8 @@ function syncScrubActive() {
   for (const entry of state.scrubEntries) {
     const on = entry === active;
     entry.pill.classList.toggle('active', on);
-    if (on) {
-      entry.pill.style.top = `${scrubScrollRatio() * 100}%`;
-      entry.pill.querySelector('.scrub-text').textContent = scrubClip(entry.label.text, 56);
-      // Active pill can grow with density but stays readable beside the thumb.
-      const w = Math.round(48 + entry.spanFrac * 160);
-      entry.pill.style.width = `${Math.min(200, Math.max(72, w))}px`;
-    } else {
-      entry.pill.style.top = `${entry.top * 100}%`;
-      entry.pill.querySelector('.scrub-text').textContent = scrubClip(entry.label.text, 32);
-      const w = Math.round(28 + entry.spanFrac * 120);
-      entry.pill.style.width = `${Math.min(72, Math.max(28, w))}px`;
-    }
+    entry.pill.style.top = on ? `${scrubScrollRatio() * 100}%` : `${entry.top * 100}%`;
+    paintScrubPill(entry.pill, entry, on);
   }
 }
 

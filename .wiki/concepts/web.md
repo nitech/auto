@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T05:20:00Z }
+generated: { by: agent, at: 2026-08-21T06:35:00Z }
 ---
 
 # Web app
@@ -123,11 +123,12 @@ meta also asks for `interactive-widget=resizes-content` where supported.
 - While scrolling a long chat, a small ↕ handle appears on the right
   (Google Photos style). Grabbing it expands a labeled timeline **to the
   left of the thumb** — your messages, questions, plans, and approvals —
-  so the finger never covers the labels. Pill width scales with how much
-  of the transcript that segment occupies (denser stretch → wider pill);
-  crowded user messages are thinned so questions/plans/approvals stay.
-  Release collapses back to the handle, which fades when idle. Short chats
-  never show it. The ↓ jump-to-newest button is unchanged.
+  so the finger never covers the labels. Labels size the pills so the words
+  stay readable; density only raises the minimum width (denser stretch →
+  slightly longer floor). Crowded user messages are thinned so
+  questions/plans/approvals stay. Release collapses back to the handle,
+  which fades when idle. Short chats never show it. The ↓ jump-to-newest
+  button is unchanged.
 
 ## Composer
 
