@@ -162,7 +162,10 @@ That registers a logon scheduled task. The task runs `node`, not Bun.
 
 New sessions prefer a real Cursor window. That needs the IDE listening on its debug port.
 
-**If Cursor is already running without that port**, Auto will quit it and start it again so it can pass `--remote-debugging-port=9222`. That closes every Cursor window. Quit Cursor yourself first if you have unsaved work.
+**If Cursor is already running without that port**, Auto will **not** quit it
+by default — that closes every Cursor window. Start Cursor yourself with the
+port (below), or set `AUTO_ALLOW_CURSOR_RESTART=1` in `.env` if you really want
+Auto to force-quit and relaunch.
 
 Start Cursor like this (adjust the folder):
 

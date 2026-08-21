@@ -544,6 +544,9 @@ export class CursorCdp {
    * @param {() => boolean} [opts.cursorRunning]
    * @param {(opts: object) => object|Promise<object>} [opts.launchCursor]
    * @param {() => void|Promise<void>} [opts.quitCursor]
+   * @param {boolean} [opts.allowCursorRestart]  quit+relaunch when Cursor is
+   *   up without the debug port. Default off — that kill closes every window.
+   *   Opt in with `AUTO_ALLOW_CURSOR_RESTART=1`.
    */
   constructor({
     port = DEFAULT_PORT,
@@ -559,6 +562,7 @@ export class CursorCdp {
     cursorRunning: running,
     launchCursor,
     quitCursor,
+    allowCursorRestart,
   } = {}) {
     this.port = port;
     this.listTargets = listTargets || (() => defaultTargets(port));
@@ -578,6 +582,9 @@ export class CursorCdp {
     this.cursorRunning = running || defaultCursorRunning;
     this.launchCursor = launchCursor || ((opts) => spawnCursor(opts));
     this.quitCursor = quitCursor || defaultQuitCursor;
+    this.allowCursorRestart =
+      allowCursorRestart ??
+      /^(1|true|yes)$/i.test(String(process.env.AUTO_ALLOW_CURSOR_RESTART || ''));
   }
 
   /** Is Cursor listening at all? Cheap enough to ask before every send. */
@@ -618,13 +625,14 @@ export class CursorCdp {
    *
    * If one already is, nothing is launched. If Cursor is listening, a new
    * window is asked of the running process. If nothing is running, Cursor is
-   * started with the debug port. If it is running *without* the port, it has
-   * to be quit and started again — Electron will not add the port later.
+   * started with the debug port. If it is running *without* the port, the
+   * only Electron fix is quit+relaunch — that closes every window — so Auto
+   * refuses unless `allowCursorRestart` / `AUTO_ALLOW_CURSOR_RESTART=1`.
    *
    * @returns {Promise<{ status: 'showing'|'opened'|'started'|'restarted'|'no-cdp'|'no-window'|'error',
    *   reason?: string, title?: string }>}
    */
-  async ensureWindow({ folder }) {
+  async ensureWindow({ folder, allowRestart } = {}) {
     if (!String(folder || '').trim()) {
       return { status: 'error', reason: 'no folder was named' };
     }
@@ -632,6 +640,7 @@ export class CursorCdp {
 
     const listening = await this.available();
     const running = Boolean(await this.cursorRunning());
+    const mayRestart = allowRestart ?? this.allowCursorRestart;
 
     try {
       if (listening) {
@@ -639,6 +648,15 @@ export class CursorCdp {
         return this.#waitForFolder(folder, 'opened');
       }
       if (running) {
+        if (!mayRestart) {
+          return {
+            status: 'no-cdp',
+            reason:
+              'Cursor is running without its debug port; Auto will not quit it ' +
+              '(that closes every window). Start Cursor with ' +
+              `--remote-debugging-port=${this.port}, or set AUTO_ALLOW_CURSOR_RESTART=1`,
+          };
+        }
         await this.quitCursor();
         const gone = await waitUntil(async () => !(await this.cursorRunning()), {
           timeoutMs: 15_000,

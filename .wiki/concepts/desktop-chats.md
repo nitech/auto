@@ -11,7 +11,7 @@ sources:
   - id: sessions
     resource: /src/core/sessions.mjs
     title: Session attach / catch-up
-generated: { by: agent, at: 2026-08-20T19:55:00Z }
+generated: { by: agent, at: 2026-08-21T21:40:00Z }
 ---
 
 # Continuing Cursor desktop chats
@@ -31,9 +31,9 @@ new thread id, and attaches. The model picker is then set to **Auto**
 in that window used. If no window has the folder, Auto asks Cursor for
 `--new-window`. If Cursor is not running, it starts it with
 `--remote-debugging-port=9222`. If Cursor is already running *without* that
-port, Auto quits it and starts it again — that closes every window. If none
-of that works, Auto falls back to [ACP](acp.md) with the same Auto-select
-preference and writes a notice.
+port, Auto will not quit it by default — that closes every window — unless
+`AUTO_ALLOW_CURSOR_RESTART=1`. If none of that works, Auto falls back to
+[ACP](acp.md) with the same Auto-select preference and writes a notice.
 
 Desktop is the default path, so attaching does not announce that the chat
 lives in Cursor. A catch-up that leaves older history out still notes how

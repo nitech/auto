@@ -9,8 +9,8 @@
  * The awkward case is Cursor already running *without* the port. Electron will
  * not add it to a process that has started: a second launch just hands the
  * folder to the existing instance and exits. The only way to get the port is
- * to quit Cursor and start it again, which closes every window. Auto does that
- * only when a new session cannot otherwise appear in the IDE.
+ * to quit Cursor and start it again, which closes every window. Auto refuses
+ * that by default; set `AUTO_ALLOW_CURSOR_RESTART=1` to allow the kill.
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';

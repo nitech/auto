@@ -365,9 +365,10 @@ export class SessionManager extends EventEmitter {
    *
    * A new chat in Cursor is the same conversation on both ends. If no window
    * has this folder, Auto opens one; if Cursor is not running, Auto starts it
-   * with the debug port. Cursor already running without that port has to be
-   * restarted — Electron will not add it later. Only if none of that works
-   * does this fall back to an Auto-only agent, and it says so.
+   * with the debug port. Cursor already running without that port cannot gain
+   * it without a quit that closes every window — Auto refuses that unless
+   * `AUTO_ALLOW_CURSOR_RESTART=1`. Only if none of that works does this fall
+   * back to an Auto-only agent, and it says so.
    */
   async startInIde({ folder, title, policy, mode } = {}) {
     const dir = folder || this.defaultFolder;

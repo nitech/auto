@@ -44,10 +44,10 @@ value as setup documentation is fine.
   new chat in a Cursor window that already has that folder. If no window has
   it, Auto opens one; if Cursor is not running, Auto starts it with
   `--remote-debugging-port=9222`. If Cursor is already running *without* that
-  port, Auto quits it and starts it again — Electron will not add the port to a
-  process that has already started, and that restart closes every Cursor
-  window. If none of that works, it falls back to `cursor-agent acp` and says
-  so in the transcript.
+  port, Auto refuses to quit it by default (that kill closes every window) and
+  falls back to ACP with a notice — set `AUTO_ALLOW_CURSOR_RESTART=1` only when
+  you mean to force a relaunch. If none of that works, it falls back to
+  `cursor-agent acp` and says so in the transcript.
 - **One session, one conversation.** A desktop session is Cursor's own chat.
   An ACP session holds its own `cursor-agent acp` process and resumes via
   `session/load`, so an idle one costs nothing but its history stays intact.

@@ -14,7 +14,7 @@ sources:
   - id: host
     resource: /src/server/index.mjs
     title: Host process
-generated: { by: agent, at: 2026-08-21T08:40:00Z }
+generated: { by: agent, at: 2026-08-21T21:40:00Z }
 ---
 
 # Auto
@@ -41,8 +41,9 @@ is the truth; clients replay from a sequence number.
 
 New sessions prefer the IDE. If no window has the folder, Auto opens one; if
 Cursor is not running, it starts it with `--remote-debugging-port=9222`. If
-Cursor is already running *without* that port, Auto quits it and starts it
-again — that closes every window. Only then does it fall back to ACP.
+Cursor is already running *without* that port, Auto refuses to quit it by
+default (that would close every window) and falls back to ACP unless
+`AUTO_ALLOW_CURSOR_RESTART=1`.
 
 ## Surfaces
 

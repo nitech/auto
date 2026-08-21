@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Fix**: Auto no longer force-quits Cursor when the debug port is missing — refuses and falls back to ACP unless `AUTO_ALLOW_CURSOR_RESTART=1`.
 * **Update**: File-review Keep/Undo is a transcript card (+/− headline, scrub landmark), not a sticky composer strip.
 * **Fix**: File-review phone buttons require exact short labels (Keep All / Undo All / Redo) — chat titles starting with "Undo" no longer appear as Undo.
 * **Update**: Desktop file-review bar (Keep All / Undo All / Redo) is a deliberate action on web and Telegram — never an approval; watcher survives the turn.

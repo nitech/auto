@@ -990,11 +990,11 @@ if (existsSync(SRC)) {
       fail('a folder already open should not launch anything');
     }
 
-    // Cursor running without the port: the only way in is to quit and start it.
+    // Cursor running without the port: refuse to quit unless explicitly allowed.
     let listening = false;
     let running = true;
     let quits = 0;
-    const restarter = new CursorCdp({
+    const guarded = new CursorCdp({
       settleMs: 1,
       waitMs: 1,
       windowWaitMs: 40,
@@ -1012,10 +1012,52 @@ if (existsSync(SRC)) {
         running = true;
       },
     });
+    result = await guarded.ensureWindow({ folder: 'D:\\Sevenfold\\auto' });
+    if (result.status !== 'no-cdp') {
+      fail(`blind Cursor must not be force-quit by default, got ${JSON.stringify(result)}`);
+    }
+    if (quits) fail('refusing a restart must not call quitCursor');
+    if (!/AUTO_ALLOW_CURSOR_RESTART/i.test(result.reason || '')) {
+      fail(`refusal should name the opt-in: ${result.reason}`);
+    }
+
+    // Opt-in: quit and start again with the port.
+    listening = false;
+    running = true;
+    quits = 0;
+    const restarter = new CursorCdp({
+      settleMs: 1,
+      waitMs: 1,
+      windowWaitMs: 40,
+      allowCursorRestart: true,
+      listTargets: async () => (listening ? [target('mine')] : []),
+      openWindow: async () =>
+        new FakeWindow({ threadId: THREAD, hasComposer: true, workspace: '/d:/Sevenfold/auto' }),
+      cursorRunning: () => running,
+      quitCursor: async () => {
+        quits += 1;
+        running = false;
+      },
+      launchCursor: async (opts) => {
+        launches.push(opts);
+        listening = true;
+        running = true;
+      },
+    });
     result = await restarter.ensureWindow({ folder: 'D:\\Sevenfold\\auto' });
-    if (result.status !== 'restarted') fail(`blind Cursor should be restarted, got ${JSON.stringify(result)}`);
-    if (quits !== 1) fail('Cursor running without its port must be quit first');
+    if (result.status !== 'restarted') fail(`blind Cursor should be restarted when allowed, got ${JSON.stringify(result)}`);
+    if (quits !== 1) fail('Cursor running without its port must be quit first when restart is allowed');
     if (!launches.at(-1)?.debugPort) fail('the restarted Cursor must be started with the debug port');
+
+    // Per-call allowRestart overrides the constructor default.
+    listening = false;
+    running = true;
+    quits = 0;
+    result = await guarded.ensureWindow({ folder: 'D:\\Sevenfold\\auto', allowRestart: true });
+    if (result.status !== 'restarted') {
+      fail(`allowRestart on the call should restart, got ${JSON.stringify(result)}`);
+    }
+    if (quits !== 1) fail('per-call allowRestart must still quit Cursor first');
 
     // Nothing running: just start it with the port.
     listening = false;

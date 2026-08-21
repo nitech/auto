@@ -17,7 +17,7 @@ sources:
   - id: clipboard
     resource: /src/core/clipboard.mjs
     title: Image paste via clipboard
-generated: { by: agent, at: 2026-08-21T21:00:00Z }
+generated: { by: agent, at: 2026-08-21T21:40:00Z }
 ---
 
 # The Cursor window
@@ -119,8 +119,10 @@ behind. The outbox holds words only.
 A running instance that already has the debug port takes `--new-window`.
 Starting from nothing adds the port so the window is born reachable. Cursor
 already running *without* the port cannot have it added — Electron hands
-the folder over and exits — so Auto quits Cursor and starts it again. That
-closes every window. It is the only way a new session can appear in the IDE.
+the folder over and exits — so the only fix is quit+relaunch, which closes
+every window. Auto refuses that by default and falls back to ACP with a
+notice. Set `AUTO_ALLOW_CURSOR_RESTART=1` only when you mean to force the
+kill.
 
 ## Related
 
