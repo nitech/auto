@@ -2291,6 +2291,9 @@ if (existsSync(SRC)) {
     !js.includes('function enterScrubMode') ||
     !js.includes('function rebuildScrubTimeline') ||
     !js.includes('function thinScrubLandmarks') ||
+    !js.includes('function snapScrubToEntry') ||
+    !js.includes('function scrubBuzz') ||
+    !js.includes('navigator.vibrate') ||
     !js.includes(".msg.user, .ask, .created-plan, .perm")
   ) {
     fail('app.js must drive the two-mode scrubber from transcript landmarks');

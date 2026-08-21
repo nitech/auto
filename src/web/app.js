@@ -128,6 +128,8 @@ const state = {
   scrubTimelineDirty: true,
   /** landmark elements currently drawn as timeline pills */
   scrubEntries: [],
+  /** landmark currently snapped to while scrubbing (for haptic edges) */
+  scrubSnapEl: null,
 };
 
 // ------------------------------------------------------------------ helpers
@@ -373,6 +375,67 @@ function nearestScrubEntry(y) {
   return best;
 }
 
+/** Scroll so the landmark sits at the same reading line the active pill uses. */
+function scrubScrollTopFor(el) {
+  const t = els.transcript;
+  const max = Math.max(0, t.scrollHeight - t.clientHeight);
+  return Math.max(0, Math.min(max, el.offsetTop - t.clientHeight * 0.28));
+}
+
+/** Short tick on phones that expose Vibration API (Android Chrome; iOS no-ops). */
+function scrubBuzz() {
+  try {
+    navigator.vibrate?.(12);
+  } catch {
+    /* ignore */
+  }
+}
+
+function snapScrubToEntry(entry, { buzz = true } = {}) {
+  if (!entry) return;
+  const t = els.transcript;
+  const prev = t.style.scrollBehavior;
+  t.style.scrollBehavior = 'auto';
+  t.scrollTop = scrubScrollTopFor(entry.el);
+  t.style.scrollBehavior = prev;
+  if (buzz && state.scrubSnapEl !== entry.el) {
+    state.scrubSnapEl = entry.el;
+    scrubBuzz();
+  } else {
+    state.scrubSnapEl = entry.el;
+  }
+  syncScrubHandle();
+  syncScrubActive();
+}
+
+function scrubEntryAtRatio(ratio) {
+  const entries = state.scrubEntries;
+  if (!entries.length) return null;
+  let best = entries[0];
+  let bestDist = Infinity;
+  for (const entry of entries) {
+    const d = Math.abs(entry.top - ratio);
+    if (d < bestDist) {
+      bestDist = d;
+      best = entry;
+    }
+  }
+  return best;
+}
+
+function scrubStepLandmark(dir) {
+  const entries = state.scrubEntries;
+  if (!entries.length) return;
+  let idx = entries.findIndex((e) => e.el === state.scrubSnapEl);
+  if (idx < 0) {
+    const y = els.transcript.scrollTop + els.transcript.clientHeight * 0.28;
+    const cur = nearestScrubEntry(y);
+    idx = Math.max(0, entries.indexOf(cur));
+  }
+  const next = entries[Math.max(0, Math.min(entries.length - 1, idx + dir))];
+  snapScrubToEntry(next);
+}
+
 function syncScrubHandle() {
   const ratio = scrubScrollRatio();
   const pct = `${ratio * 100}%`;
@@ -429,6 +492,7 @@ function showScrubHint() {
 function enterScrubMode() {
   if (!els.scrub || !scrubWorthShowing()) return;
   state.scrubbing = true;
+  state.scrubSnapEl = null;
   clearTimeout(state.scrubHide);
   els.scrub.hidden = false;
   els.scrub.dataset.active = '1';
@@ -441,6 +505,7 @@ function enterScrubMode() {
 function leaveScrubMode() {
   if (!state.scrubbing) return;
   state.scrubbing = false;
+  state.scrubSnapEl = null;
   setScrubMode('hint');
   // Rebuild so secondary pills regain their resting tops/widths.
   state.scrubTimelineDirty = true;
@@ -476,13 +541,17 @@ function onTranscriptScroll() {
 }
 
 function scrubToClientY(clientY) {
-  const handle = els.scrubHandle;
   const t = els.transcript;
-  if (!handle || !t || !els.scrub) return;
+  if (!t || !els.scrub) return;
   const rect = els.scrub.getBoundingClientRect();
   const pad = 18;
   const usable = Math.max(1, rect.height - pad * 2);
   const ratio = Math.min(1, Math.max(0, (clientY - rect.top - pad) / usable));
+  const entry = scrubEntryAtRatio(ratio);
+  if (entry) {
+    snapScrubToEntry(entry);
+    return;
+  }
   const max = Math.max(0, t.scrollHeight - t.clientHeight);
   const prev = t.style.scrollBehavior;
   t.style.scrollBehavior = 'auto';
@@ -521,22 +590,24 @@ function bindScrubber() {
 
   handle.addEventListener('keydown', (e) => {
     const t = els.transcript;
-    const step = Math.max(80, t.clientHeight * 0.35);
     const keys = ['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End'];
     if (!keys.includes(e.key)) return;
     e.preventDefault();
     enterScrubMode();
+    if (state.scrubTimelineDirty) rebuildScrubTimeline();
+    const entries = state.scrubEntries;
     if (e.key === 'ArrowDown' || e.key === 'PageDown') {
-      t.scrollTop += e.key === 'PageDown' ? t.clientHeight * 0.9 : step;
+      scrubStepLandmark(1);
     } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
-      t.scrollTop -= e.key === 'PageUp' ? t.clientHeight * 0.9 : step;
-    } else if (e.key === 'Home') {
-      t.scrollTop = 0;
-    } else if (e.key === 'End') {
-      t.scrollTop = t.scrollHeight;
+      scrubStepLandmark(-1);
+    } else if (e.key === 'Home' && entries[0]) {
+      snapScrubToEntry(entries[0]);
+    } else if (e.key === 'End' && entries.length) {
+      snapScrubToEntry(entries[entries.length - 1]);
+    } else {
+      syncScrubHandle();
+      syncScrubActive();
     }
-    syncScrubHandle();
-    syncScrubActive();
     clearTimeout(state.scrubHide);
     state.scrubHide = setTimeout(() => leaveScrubMode(), 1200);
   });

@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T06:35:00Z }
+generated: { by: agent, at: 2026-08-21T06:45:00Z }
 ---
 
 # Web app
@@ -126,9 +126,11 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   so the finger never covers the labels. Labels size the pills so the words
   stay readable; density only raises the minimum width (denser stretch →
   slightly longer floor). Crowded user messages are thinned so
-  questions/plans/approvals stay. Release collapses back to the handle,
-  which fades when idle. Short chats never show it. The ↓ jump-to-newest
-  button is unchanged.
+  questions/plans/approvals stay. Dragging snaps to each landmark and buzzes
+  via `navigator.vibrate` when the snap point changes (Android; iOS has no
+  Vibration API). Arrow keys step landmark-to-landmark the same way. Release
+  collapses back to the handle, which fades when idle. Short chats never
+  show it. The ↓ jump-to-newest button is unchanged.
 
 ## Composer
 
