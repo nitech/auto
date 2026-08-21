@@ -15,7 +15,7 @@ Remote control for Cursor's agent. Start at [overview](overview.md).
 * [Desktop threads](concepts/desktop-threads.md) - Reading replies from `state.vscdb`
 * [Tool lanes](concepts/tool-lanes.md) - Activity / file-change / card / hide for tool bubbles
 * [ACP](concepts/acp.md) - Fallback `cursor-agent acp` sessions
-* [Approvals](concepts/approvals.md) - Permissions, question cards, Created Plan, file-review bar
+* [Approvals](concepts/approvals.md) - Permissions, questions, plans, and deliberate Keep / Undo / Redo
 * [Queue](concepts/queue.md) - Messages waiting behind a turn, in Auto or in Cursor
 * [Telegram](concepts/telegram.md) - Bot as a projection of the same host
 * [Web](concepts/web.md) - PWA that caches and replays the transcript, remembers the open chat, and installs to the Home Screen

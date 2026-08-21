@@ -157,6 +157,10 @@ sessions.on('sessions', (list) => broadcast({ type: 'sessions', sessions: list }
 sessions.on('queue', ({ sessionId, ...queue }) =>
   broadcast({ type: 'queue', sessionId, ...queue }, sessionId),
 );
+// File-review Keep / Undo / Redo — sticky after the turn, never an approval.
+sessions.on('review', ({ sessionId, ...review }) =>
+  broadcast({ type: 'review', sessionId, ...review }, sessionId),
+);
 sessions.on('catalog', (catalog) => broadcast({ type: 'catalog', catalog }));
 
 // Terminal output reaches clients as transcript records; these only announce
@@ -309,6 +313,22 @@ const OPS = {
       model: msg.model || '',
     });
     send(ws, { type: 'plan.build', sessionId: id, toolCallId: msg.toolCallId, ...result });
+  },
+
+  async 'review.list'(ws, state, msg) {
+    const id = msg.sessionId || state.sessionId;
+    send(ws, { type: 'review', sessionId: id, ...sessions.reviewing(id) });
+  },
+
+  async 'review.press'(ws, state, msg) {
+    const id = msg.sessionId || state.sessionId;
+    const result = await sessions.reviewPress(id, { name: msg.name });
+    send(ws, {
+      type: 'review',
+      sessionId: id,
+      acted: result,
+      ...sessions.reviewing(id),
+    });
   },
 
   async 'session.create'(ws, state, msg) {

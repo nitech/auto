@@ -1046,7 +1046,7 @@ if (existsSync(SRC)) {
     if (!failed) ok('v2 core: typing into a Cursor window lands in the right chat, or not at all');
 
     // Pressing Cursor's own buttons: stopping a turn, and answering what it asks.
-    const { isApproval, isFileReview } = await import('../src/core/cursor-dom.mjs');
+    const { isApproval, isFileReview, isReviewAction } = await import('../src/core/cursor-dom.mjs');
 
     // Stopping goes by keyboard first, because that is what Cursor's Stop
     // button advertises, and by the button only if the keystroke was ignored.
@@ -1238,12 +1238,30 @@ if (existsSync(SRC)) {
     }
     // The bar offering to review file changes is not a question, and offering
     // "Undo All" to a phone as if it were one is how work gets thrown away.
-    for (const word of ['Keep All', 'Undo All', 'Accept all', 'Reject all', 'Revert']) {
+    for (const word of [
+      'Keep All',
+      'Undo All',
+      'Keep',
+      'Undo',
+      'Redo',
+      'Restore',
+      'Accept all',
+      'Reject all',
+      'Revert',
+    ]) {
       if (isApproval(word)) fail(`${word} belongs to file review, not to approvals`);
       if (!isFileReview(word)) fail(`${word} should be recognised as a file-review control`);
+      if (!isReviewAction(word)) fail(`${word} should be a deliberate review action`);
     }
     if (isFileReview('Run') || isFileReview('Skip')) {
       fail('answering a question is not reviewing files');
+    }
+    // "Review next file" is navigation in the IDE, not Keep / Undo / Redo.
+    if (isReviewAction('Review next file')) {
+      fail('Review next file should not be offered as a review action');
+    }
+    if (isApproval('Redo') || isApproval('Restore')) {
+      fail('post-undo restore belongs to file review, not approvals');
     }
     // A message that begins with "Run…" is a message. Auto asked to approve one
     // of these before the length test existed.

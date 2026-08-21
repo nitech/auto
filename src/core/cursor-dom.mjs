@@ -157,9 +157,16 @@ const APPROVAL_WORDS =
  * looked at, so a phone was offered "Keep All" and "Undo All" as if answering
  * them would get a turn moving again. It would not — and "Undo All" throws away
  * work, which makes offering it by accident the worst button on the screen.
- * File changes deserve their own deliberate action, not a mystery approval.
+ * File changes deserve their own deliberate action (Keep / Undo / Redo from
+ * the phone), not a mystery approval.
+ *
+ * After Undo, Cursor often offers Redo or Restore — those belong here too.
  */
-const REVIEW_WORDS = /^(keep|undo|revert|accept all|reject all|apply|discard)\b/i;
+const REVIEW_WORDS =
+  /^(keep|undo|redo|restore|revert|accept all|reject all|apply|discard)\b/i;
+
+/** Navigation on the review bar — not Keep / Undo / Redo. */
+const REVIEW_NAV = /^review next\b/i;
 
 /** Past this many characters it is a sentence, not a button. */
 const APPROVAL_MAX = 24;
@@ -174,6 +181,15 @@ export function isApproval(label) {
 /** Does this control act on file changes rather than answer a question? */
 export function isFileReview(label) {
   return REVIEW_WORDS.test(String(label || '').trim());
+}
+
+/**
+ * A deliberate Keep / Undo / Redo (etc.) press from Auto — not "Review next
+ * file", which only moves the IDE between diffs.
+ */
+export function isReviewAction(label) {
+  const name = String(label || '').trim();
+  return isFileReview(name) && !REVIEW_NAV.test(name);
 }
 
 const list = (names) => JSON.stringify(names);

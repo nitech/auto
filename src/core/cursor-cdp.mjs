@@ -47,6 +47,7 @@ import {
   answerCard,
   clickAction,
   isApproval,
+  isReviewAction,
   pickerAt,
   planCard,
   queueAct,
@@ -883,10 +884,11 @@ export class CursorCdp {
   /**
    * What a chat is doing, and what it is offering to be pressed.
    *
-   * `asking` is the interesting part: controls whose words mean Cursor is
-   * waiting for a person — an approval to run something, a file edit to keep.
-   * They are reported with the wording the window used, because that wording is
-   * also how they are pressed.
+   * `asking` is approvals Cursor is waiting on (Run, Allow, …). `reviewing` is
+   * the sticky file-review bar (Keep All / Undo All / Redo) — never mixed into
+   * approvals; clients get it as a deliberate action instead.
+   * Labels are the wording the window used, because that wording is also how
+   * they are pressed.
    */
   async waitingOn({ threadId }) {
     return this.#withThread(threadId, async (window) => {
@@ -895,16 +897,14 @@ export class CursorCdp {
       // The queue comes back in the same look: it is the same window, and this
       // runs every couple of seconds for as long as a turn lasts.
       const queue = await window.queue().catch(() => null);
+      const live = (c) => !c.disabled && !c.inMessage;
       return {
         status: 'ok',
         generating: generating || this.#running(threadId),
         asking: controls.filter(
-          (c) =>
-            !c.disabled &&
-            !c.inMessage &&
-            isApproval(named(c)) &&
-            !/^stop\b/i.test(named(c)),
+          (c) => live(c) && isApproval(named(c)) && !/^stop\b/i.test(named(c)),
         ),
+        reviewing: controls.filter((c) => live(c) && isReviewAction(named(c))),
         controls,
         queue,
       };

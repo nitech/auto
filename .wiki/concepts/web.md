@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T18:35:00Z }
+generated: { by: agent, at: 2026-08-21T21:00:00Z }
 ---
 
 # Web app
@@ -129,6 +129,9 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   expires after the gesture so the next open can switch chats on the first
   tap.
 - The [queue](queue.md) above the chat box, with reword / send now / delete.
+- The sticky **file-review** strip (Keep All / Undo All / Redo) above the
+  composer when Cursor still has unreviewed edits — see
+  [approvals](approvals.md). Not mixed into permission cards.
 - Tool calls the way Cursor groups them — see [tool lanes](tool-lanes.md).
 - Diffs, thinking (folded when the block ends, timed from the record so a
   replay says "Thought for 8s" rather than staying "Thinking"), permission

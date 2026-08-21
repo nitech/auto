@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Update**: Desktop file-review bar (Keep All / Undo All / Redo) is a deliberate action on web and Telegram — never an approval; watcher survives the turn.
 * **Update**: Tab favicon crop matches the rail mark (and ICO fills tighter) so the A reads at PC tab size.
 * **Update**: Tab favicon (`icon.svg` / `favicon.ico`) is transparent; home-screen PNGs keep the full-bleed dark tile.
 * **Update**: New chat focuses the composer immediately (and again once the empty session attaches).

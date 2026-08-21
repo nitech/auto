@@ -72,6 +72,9 @@ const els = {
   queue: $('queue'),
   queueCount: $('queue-count'),
   queueList: $('queue-list'),
+  review: $('review'),
+  reviewLabel: $('review-label'),
+  reviewActs: $('review-acts'),
   usage: $('usage'),
   usageSheet: $('usage-sheet'),
   usageBody: $('usage-body'),
@@ -134,6 +137,8 @@ const state = {
   attachments: [],
   /** what is waiting for the turn to end: {owner, waiting, items, hidden} */
   queue: { owner: 'auto', waiting: 0, items: [] },
+  /** Cursor's file-review bar (Keep All / Undo All / Redo) for this chat */
+  review: { actions: [] },
   /** the queued message being reworded, so the row stays an editor while typing */
   editing: null,
   /** Cursor chats dismissed with × this visit, so they do not reappear as "in Cursor" */
@@ -2876,6 +2881,8 @@ function connect() {
       setHistoryLoading(false);
       // Whatever was queued before you looked is still queued.
       sendOp({ op: 'queue.list', sessionId: msg.sessionId });
+      // File-review bar may already be up from a finished turn.
+      sendOp({ op: 'review.list', sessionId: msg.sessionId });
       if (state.focusComposer) {
         state.focusComposer = false;
         focusComposer();
@@ -3009,6 +3016,19 @@ function connect() {
       return;
     }
 
+    if (msg.type === 'review') {
+      if (msg.sessionId && msg.sessionId !== state.sessionId) return;
+      state.review = { actions: msg.actions || [] };
+      if (msg.acted && msg.acted.status !== 'pressed') {
+        render({
+          kind: 'notice',
+          text: msg.acted.reason || `Could not press ${msg.acted.name || 'that'} in Cursor.`,
+        });
+      }
+      renderReview();
+      return;
+    }
+
     if (msg.type === 'error') {
       setHistoryLoading(false);
       render({ kind: 'error', text: msg.message });
@@ -3137,6 +3157,48 @@ function button(face, title, onclick) {
   b.setAttribute('aria-label', title);
   b.onclick = onclick;
   return b;
+}
+
+/**
+ * Cursor's sticky Keep / Undo / Redo bar, above the composer.
+ *
+ * Exact labels from the window — what you tap is what gets pressed. Undo /
+ * Discard look destructive; Keep / Redo do not.
+ */
+function renderReview() {
+  if (!els.review) return;
+  const actions = state.review?.actions || [];
+  const none = !actions.length;
+  els.review.hidden = none;
+  if (none) {
+    els.reviewActs.innerHTML = '';
+    return;
+  }
+
+  els.reviewActs.innerHTML = '';
+  for (const action of actions) {
+    const name = action.name || action;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `review-act ${reviewKind(name)}`;
+    b.textContent = name;
+    b.addEventListener('click', () => {
+      if (els.review.dataset.busy) return;
+      els.review.dataset.busy = '1';
+      for (const btn of els.reviewActs.querySelectorAll('button')) btn.disabled = true;
+      sendOp({ op: 'review.press', sessionId: state.sessionId, name });
+    });
+    els.reviewActs.append(b);
+  }
+  delete els.review.dataset.busy;
+}
+
+function reviewKind(name) {
+  const n = String(name || '').toLowerCase();
+  if (/^(undo|discard|reject|revert)\b/.test(n)) return 'undo';
+  if (/^(redo|restore)\b/.test(n)) return 'redo';
+  if (/^keep\b/.test(n)) return 'keep';
+  return '';
 }
 
 /** Screenshots are half of what you want to say from a phone. */

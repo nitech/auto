@@ -17,7 +17,7 @@ sources:
   - id: clipboard
     resource: /src/core/clipboard.mjs
     title: Image paste via clipboard
-generated: { by: agent, at: 2026-08-21T18:40:00Z }
+generated: { by: agent, at: 2026-08-21T21:00:00Z }
 ---
 
 # The Cursor window
@@ -54,6 +54,11 @@ generated. What a conversation says is excluded, or a message beginning
 
 Queue icon buttons carry no words — those alone are found by `codicon`
 name (VS Code's icon vocabulary).
+
+The sticky **file-review** bar (Keep All / Undo All / Redo) is pressed the
+same way — by the words on it — but never as an approval. A separate
+watcher keeps polling after the turn ends, because that is when the bar
+usually appears. See [approvals](approvals.md).
 
 A question is answered on Cursor's questionnaire toolbar above the chat
 box — a sibling of the `ask_question` bubble, not inside it. Each option

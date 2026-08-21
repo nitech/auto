@@ -190,6 +190,8 @@ export class TelegramBridge extends EventEmitter {
     this.permMessages = new Map();
     /** askId -> Telegram message id, so the buttons can be taken off once answered */
     this.askMessages = new Map();
+    /** sessionId -> Telegram message id for the sticky Keep / Undo / Redo bar */
+    this.reviewMessages = new Map();
     /** askId -> { sessionId, questions, chosen } while a multi-pick is in progress */
     this.asks = new Map();
     /** toolCallId -> latest plan fields, so View Plan sends what we have now */
@@ -832,6 +834,23 @@ export class TelegramBridge extends EventEmitter {
           this.send(`⚠️ ${esc(err.message)}`);
         });
       await answer(payload.label || 'Build');
+      return;
+    }
+
+    if (payload.kind === 'review') {
+      const id = payload.sessionId || this.sessions.activeId;
+      if (!id) {
+        await answer('No active session.');
+        return;
+      }
+      try {
+        const result = await this.sessions.reviewPress(id, { name: payload.name });
+        if (result.status === 'pressed') await answer(payload.name);
+        else await answer((result.reason || result.status || 'gone').slice(0, 190));
+      } catch (err) {
+        await answer(err.message.slice(0, 190));
+        await this.send(`⚠️ ${esc(err.message)}`);
+      }
     }
   }
 
@@ -843,6 +862,13 @@ export class TelegramBridge extends EventEmitter {
       if (sessionId !== this.sessions.activeId) return;
       this.onRecord(sessionId, record).catch((err) =>
         this.emit('log', `render failed: ${err.message}`),
+      );
+    });
+    // Sticky file-review bar — Keep All / Undo All / Redo, never an approval.
+    this.sessions.on('review', ({ sessionId, actions }) => {
+      if (sessionId !== this.sessions.activeId) return;
+      this.#paintReview(sessionId, actions || []).catch((err) =>
+        this.emit('log', `review failed: ${err.message}`),
       );
     });
   }
@@ -1115,6 +1141,44 @@ export class TelegramBridge extends EventEmitter {
     const chosen = Object.values(rec.selections || {}).flat().filter(Boolean);
     const said = chosen.join(', ') || rec.state || 'answered';
     await this.edit(messageId, `❓ <b>Question</b> — ${esc(said)}`, { reply_markup: undefined });
+  }
+
+  /**
+   * Cursor's sticky Keep / Undo / Redo bar as a Telegram message with buttons.
+   *
+   * Labels are exactly what the window shows. When the bar clears (kept or
+   * undone in the IDE or from here), the keyboard comes off.
+   */
+  async #paintReview(sessionId, actions) {
+    const names = (actions || []).map((a) => a.name || a).filter(Boolean);
+    const messageId = this.reviewMessages.get(sessionId);
+
+    if (!names.length) {
+      if (!messageId) return;
+      this.reviewMessages.delete(sessionId);
+      await this.edit(messageId, '📁 <b>File review</b> — done', { reply_markup: { inline_keyboard: [] } });
+      return;
+    }
+
+    const rows = names.map((name) => [
+      {
+        text: name,
+        callback_data: this.tokenFor({
+          kind: 'review',
+          sessionId,
+          name,
+        }),
+      },
+    ]);
+    const text = '📁 <b>Unreviewed edits</b>\n<i>Keep, undo, or redo in Cursor.</i>';
+    if (messageId) {
+      const edited = await this.edit(messageId, text, {
+        reply_markup: { inline_keyboard: rows },
+      });
+      if (edited) return;
+    }
+    const sent = await this.send(text, { reply_markup: { inline_keyboard: rows } });
+    if (sent?.message_id) this.reviewMessages.set(sessionId, sent.message_id);
   }
 
   async #sendPlan(sessionId, rec) {

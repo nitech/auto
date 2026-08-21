@@ -8,7 +8,7 @@ sources:
   - id: telegram
     resource: /src/core/telegram.mjs
     title: Telegram bridge
-generated: { by: agent, at: 2026-08-21T18:40:00Z }
+generated: { by: agent, at: 2026-08-21T21:00:00Z }
 ---
 
 # Telegram
@@ -26,6 +26,7 @@ rule live under [access](access.md).
 | Folded card | Still shows last lines + exit code | Same expectation |
 | Turn clock | Edited message ends with Worked/Thought for | Working… then the same label |
 | Approvals / questions / plans | Inline buttons | Cards |
+| File review (Keep / Undo / Redo) | Inline buttons | Sticky strip above composer |
 | URLs | Tappable `<a>` | Links in markdown and bare http(s) |
 
 Quoting a full build log in Telegram buries the reply it came with — that

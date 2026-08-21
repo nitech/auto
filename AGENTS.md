@@ -132,8 +132,11 @@ goes into the transcript and the agent. The queue is memory only, and stopping
   that needs a tap to find reads as a chat where nothing printed anything.
 - **The file-review bar is not a question.** "Keep All" and "Undo All" sit there
   for as long as a chat has unreviewed edits, and offering them as approvals
-  meant offering to throw work away by accident. They are excluded from the
-  approval vocabulary and belong to a deliberate action instead.
+  meant offering to throw work away by accident. They stay out of the approval
+  vocabulary. Instead Auto watches the sticky bar (including after the turn
+  ends) and offers the same labels on the web and Telegram as a deliberate
+  action — Keep / Undo All, and Redo or Restore after an undo. Pressing one
+  presses that control in Cursor by its words.
 - **Cursor's own approvals go to the phone.** While a desktop turn runs, Auto
   watches the window for controls whose words mean it is waiting for a person,
   parks them in the same broker as an agent's own permission requests, and

@@ -14,7 +14,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: How desktop tools are drawn
-generated: { by: agent, at: 2026-08-20T21:30:00Z }
+generated: { by: agent, at: 2026-08-21T21:00:00Z }
 ---
 
 # Approvals, questions, and plans
@@ -54,8 +54,15 @@ from an approval.
 
 "Keep All" and "Undo All" sit there for as long as a chat has unreviewed
 edits. Offering them as approvals meant offering to throw work away by
-accident. They are excluded from the approval vocabulary and belong to a
-deliberate action instead.
+accident. They are excluded from the approval vocabulary.
+
+They are a **deliberate action** instead. Auto polls the sticky bar on
+desktop chats (including after the turn ends — that is when it usually
+appears), broadcasts the current labels over the WebSocket (`review`), and
+the web / Telegram show Keep / Undo / Redo (whatever Cursor is offering).
+A tap presses that exact label in the window. After Undo, Cursor often
+offers Redo or Restore; those are the same path. "Review next file" is
+IDE navigation and is not offered. ACP sessions have no review bar.
 
 ## Question cards
 
