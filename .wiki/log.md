@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Update**: Scrub plan pills use amber (yellow); labels sit further left so they never touch the grip.
 * **Update**: Scrub snap is magnetic (only near a landmark); labels stay clear of the grip, thinner, active = whiter text only.
 * **Update**: Scrub handle is a flush right-edge grip (rounded on the left, drag ridges, no arrows).
 * **Update**: Scrubbing snaps to landmarks and buzzes (`navigator.vibrate`) on each new snap point.

@@ -2350,8 +2350,8 @@ button.icon.active {
 .scrub-timeline {
   position: absolute;
   top: 0;
-  /* Clear of the grip — labels never sit under the thumb. */
-  right: 40px;
+  /* Clear of the 28px grip — labels must never touch the handle. */
+  right: 52px;
   bottom: 0;
   left: 4px;
   pointer-events: none;
@@ -2382,8 +2382,8 @@ button.icon.active {
 }
 
 .scrub-pill[data-kind='you'] { border-left-color: var(--focus); }
-.scrub-pill[data-kind='question'] { border-left-color: var(--amber); }
-.scrub-pill[data-kind='plan'] { border-left-color: var(--green); }
+.scrub-pill[data-kind='question'] { border-left-color: var(--green); }
+.scrub-pill[data-kind='plan'] { border-left-color: var(--amber); }
 .scrub-pill[data-kind='approval'] { border-left-color: var(--red); }
 
 /* Active = whiter text only; same size as the rest. */
