@@ -1,26 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Auto">
   <title>Auto</title>
   <!--
-    Full-bleed field so iOS and Android can apply their own mask. The mark is
-    scaled ~1.28× around the centre so it fills more of the tile (share sheet /
-    home screen) while staying inside the maskable safe zone. A capital A as
-    two round-capped strokes, inner apex filleted to match the outer join, the
-    dot on the baseline between the feet. Legs are separate strokes so no join
-    edge traces the old sharp V; the fillet pad closes through the solid so its
-    only visible edge is the arc. Geometry is shared with scripts/raster-icon.mjs
-    (MARK_SCALE). Follows the system theme in browsers that honour
-    prefers-color-scheme in SVG icons; the rest keep the dark tile. The PNGs
-    stay dark — home-screen icons do not theme.
+    Glyph-only mark for the tab favicon — transparent field so it sits on the
+    browser chrome. Home-screen / PWA rasters keep a full-bleed dark tile
+    (scripts/raster-icon.mjs). Geometry shared via MARK_SCALE. Follows the
+    system theme in browsers that honour prefers-color-scheme in SVG icons.
   -->
   <style>
     @media (prefers-color-scheme: light) {
-      .bg { fill: #ffffff; }
       .leg, .fillet { stroke: #131720; }
       .fillet { fill: #131720; }
       .dot { fill: #8a5a00; }
     }
   </style>
-  <rect class="bg" width="512" height="512" fill="#0b0d12"/>
   <g transform="translate(256 256) scale(1.28) translate(-256 -256)">
     <path class="leg" d="M140 372 L256 132" fill="none" stroke="#dfe3ea" stroke-width="56" stroke-linecap="round"/>
     <path class="leg" d="M372 372 L256 132" fill="none" stroke="#dfe3ea" stroke-width="56" stroke-linecap="round"/>

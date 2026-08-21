@@ -2378,12 +2378,12 @@ if (existsSync(SRC)) {
     fail('Android install needs 192 and 512 PNG icons');
     failed = true;
   }
-  if (!icon.includes('viewBox="0 0 512 512"') || !icon.includes('#0b0d12') || !icon.includes('#dfe3ea') || !icon.includes('#e5a95a')) {
-    fail('icon.svg must be the full-bleed Auto mark');
+  if (!icon.includes('viewBox="0 0 512 512"') || !icon.includes('#dfe3ea') || !icon.includes('#e5a95a')) {
+    fail('icon.svg must be the Auto mark');
     failed = true;
   }
-  if (/<rect[^>]*\brx=/.test(icon)) {
-    fail('the PWA icon must be full-bleed so iOS/Android can mask it — no rounded rect');
+  if (/<rect\b/.test(icon) || icon.includes('#0b0d12')) {
+    fail('tab favicon (icon.svg) must be transparent — opaque tile belongs on the home-screen PNGs');
     failed = true;
   }
   const pngFiles = ['apple-touch-icon.png', 'icon-192.png', 'icon-512.png'];

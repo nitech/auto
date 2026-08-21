@@ -2,9 +2,10 @@
 /**
  * Raster Auto's SVG mark to the PNGs a phone needs for the Home Screen.
  *
- * SVG favicons work in the tab; iOS still wants a PNG apple-touch-icon, and
- * Android's install prompt still wants 192 and 512. Geometry is copied from
- * src/web/icon.svg — keep the two in step.
+ * SVG tab favicon is glyph-only (transparent); iOS still wants a PNG
+ * apple-touch-icon, and Android's install prompt still wants 192 and 512
+ * on a full-bleed dark tile. Geometry is copied from src/web/icon.svg —
+ * keep the two in step.
  *
  *   node scripts/raster-icon.mjs
  */
@@ -199,7 +200,12 @@ function fillet(px, py, ax, ay, lx, ly, rx, ry, halfW, filletR, overlap) {
   return 0.5 - sd;
 }
 
-function raster(size) {
+/**
+ * @param {number} size
+ * @param {{ transparent?: boolean }} [opts] — tab favicon is transparent;
+ *   home-screen / PWA tiles stay full-bleed dark.
+ */
+function raster(size, { transparent = false } = {}) {
   const px = Buffer.alloc(size * size * 4);
   const s = (size / SRC) * MARK_SCALE;
   const mid = size / 2;
@@ -217,10 +223,17 @@ function raster(size) {
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const i = (y * size + x) * 4;
-      px[i] = HEX.bg[0];
-      px[i + 1] = HEX.bg[1];
-      px[i + 2] = HEX.bg[2];
-      px[i + 3] = 255;
+      if (transparent) {
+        px[i] = 0;
+        px[i + 1] = 0;
+        px[i + 2] = 0;
+        px[i + 3] = 0;
+      } else {
+        px[i] = HEX.bg[0];
+        px[i + 1] = HEX.bg[1];
+        px[i + 2] = HEX.bg[2];
+        px[i + 3] = 255;
+      }
       const sx = x + 0.5;
       const sy = y + 0.5;
       const a = Math.max(
@@ -235,14 +248,24 @@ function raster(size) {
   return px;
 }
 
+/** Source-over onto a possibly transparent destination. */
 function blend(px, i, rgb, a) {
   if (a <= 0) return;
   if (a > 1) a = 1;
-  const ia = 1 - a;
-  px[i] = Math.round(rgb[0] * a + px[i] * ia);
-  px[i + 1] = Math.round(rgb[1] * a + px[i + 1] * ia);
-  px[i + 2] = Math.round(rgb[2] * a + px[i + 2] * ia);
-  px[i + 3] = 255;
+  const srcA = a;
+  const dstA = px[i + 3] / 255;
+  const outA = srcA + dstA * (1 - srcA);
+  if (outA <= 0) {
+    px[i] = 0;
+    px[i + 1] = 0;
+    px[i + 2] = 0;
+    px[i + 3] = 0;
+    return;
+  }
+  px[i] = Math.round((rgb[0] * srcA + px[i] * dstA * (1 - srcA)) / outA);
+  px[i + 1] = Math.round((rgb[1] * srcA + px[i + 1] * dstA * (1 - srcA)) / outA);
+  px[i + 2] = Math.round((rgb[2] * srcA + px[i + 2] * dstA * (1 - srcA)) / outA);
+  px[i + 3] = Math.round(outA * 255);
 }
 
 /** ICO wrapping a single PNG — every current browser reads that, Safari included. */
@@ -273,6 +296,6 @@ for (const t of targets) {
   console.log(`wrote src/web/${t.file} (${t.size}×${t.size}, ${buf.length} bytes)`);
 }
 
-const ico = encodeIco(encodePng(32, 32, raster(32)), 32);
+const ico = encodeIco(encodePng(32, 32, raster(32, { transparent: true })), 32);
 writeFileSync(join(WEB, 'favicon.ico'), ico);
-console.log(`wrote src/web/favicon.ico (32×32, ${ico.length} bytes)`);
+console.log(`wrote src/web/favicon.ico (32×32 transparent, ${ico.length} bytes)`);
