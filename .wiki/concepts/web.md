@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T21:00:00Z }
+generated: { by: agent, at: 2026-08-22T00:25:00Z }
 ---
 
 # Web app
@@ -180,6 +180,11 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   collapses back to the handle, which docks into the right edge as a peek
   when idle (scroll or tap slides it out again). Short chats never
   show it. The ↓ jump-to-newest button is unchanged.
+- Agent prose renders from markdown. The bubble keeps the **raw source** on
+  `data-raw` and paints HTML into an inner `.agent-body`, so a long answer
+  can offer **Copy markdown** at the bottom without destroying that control
+  on every streamed chunk. Short replies skip the button. Code blocks still
+  have their own Copy control.
 
 ## Composer
 

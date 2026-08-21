@@ -1920,6 +1920,34 @@ if (existsSync(SRC)) {
   }
 }
 
+// Long agent answers keep their markdown source on the bubble so a footer
+// button can copy fences and emphasis — not a DOM text scrape.
+{
+  const css = readFileSync(join(ROOT, 'src/web/style.css'), 'utf8');
+  const js = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  let failed = false;
+  if (
+    !js.includes('function syncAgentMdCopy') ||
+    !js.includes('COPY_MD_MIN') ||
+    !js.includes("className = 'copy-md'") ||
+    !js.includes("Copy markdown") ||
+    !js.includes("div('agent-body')") ||
+    !js.includes('streamBody')
+  ) {
+    fail('app.js must keep raw markdown on agent bubbles and offer Copy markdown');
+    failed = true;
+  }
+  if (!js.includes('body.innerHTML = markdown(state.stream.dataset.raw)')) {
+    fail('streaming must rewrite .agent-body, not the outer bubble (or the copy button dies)');
+    failed = true;
+  }
+  if (!css.includes('.copy-md') || !css.includes('.agent-body')) {
+    fail('style.css must style the markdown copy footer and agent body');
+    failed = true;
+  }
+  if (!failed) ok('v2 web: copy agent answer as markdown');
+}
+
 // 1d3. Chat history is not a blank pane while it loads. A long transcript
 // takes a few seconds to replay, and an empty #transcript used to look like
 // the app had frozen.

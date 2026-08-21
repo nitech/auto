@@ -117,6 +117,8 @@ const state = {
   openPlanCard: null,
   stream: null,
   streamKind: null,
+  /** rendered-html child of the live agent bubble (keeps the copy footer intact) */
+  streamBody: null,
   /** the thinking block being written to, so it can be folded when it ends */
   thinking: null,
   /** timestamp of the record currently being drawn, so replayed thinking is timed */
@@ -209,6 +211,8 @@ function resetChatUi() {
   state.reviewCard = null;
   state.review = { actions: [], added: null, removed: null };
   state.stream = null;
+  state.streamKind = null;
+  state.streamBody = null;
   state.thinking = null;
   state.statusEl = null;
   state.turn = null;
@@ -335,10 +339,31 @@ function scrollDown(force = false) {
   }
 }
 
+/** Long enough that "copy the whole answer as markdown" earns a button. */
+const COPY_MD_MIN = 200;
+
+/**
+ * Flash a copy control as done, then restore its label. Shared by code blocks
+ * and the agent-message markdown footer.
+ */
+function flashCopied(btn, idleLabel) {
+  btn.textContent = 'Copied';
+  btn.classList.add('done');
+  clearTimeout(btn._copyFlash);
+  btn._copyFlash = setTimeout(() => {
+    btn.textContent = idleLabel;
+    btn.classList.remove('done');
+  }, 1200);
+}
+
 /**
  * Code is worth taking away, so every block carries a copy button. It lives
  * inside the <pre> and is skipped when reading the text back, which keeps the
  * markup free of a wrapper element that streaming would keep destroying.
+ *
+ * Long agent answers also get a "Copy markdown" footer — the raw source sits
+ * on the bubble as `data-raw`, so the clipboard gets what was written, not a
+ * DOM→text guess that loses fences and emphasis.
  */
 function decorate(root) {
   for (const pre of root.querySelectorAll?.('pre:not([data-copy])') ?? []) {
@@ -357,18 +382,49 @@ function decorate(root) {
         .join('');
       try {
         await navigator.clipboard.writeText(text);
-        b.textContent = 'Copied';
-        b.classList.add('done');
-        setTimeout(() => {
-          b.textContent = 'Copy';
-          b.classList.remove('done');
-        }, 1200);
+        flashCopied(b, 'Copy');
       } catch {
         b.textContent = 'Blocked';
       }
     };
     pre.prepend(b);
   }
+  const msgs =
+    root.matches?.('.msg.agent') ? [root] : [...(root.querySelectorAll?.('.msg.agent') ?? [])];
+  for (const msg of msgs) syncAgentMdCopy(msg);
+}
+
+/**
+ * Keep (or remove) the markdown copy footer as the answer grows. The button
+ * sits outside `.agent-body`, so streaming HTML rewrites never destroy it.
+ */
+function syncAgentMdCopy(msg) {
+  if (!msg?.classList?.contains('agent')) return;
+  const raw = msg.dataset.raw || '';
+  let foot = msg.querySelector(':scope > .copy-md');
+  if (raw.length < COPY_MD_MIN) {
+    foot?.remove();
+    delete msg.dataset.mdCopy;
+    return;
+  }
+  if (foot) return;
+  msg.dataset.mdCopy = '1';
+  foot = document.createElement('button');
+  foot.type = 'button';
+  foot.className = 'copy-md';
+  foot.textContent = 'Copy markdown';
+  foot.setAttribute('aria-label', 'Copy message as markdown');
+  foot.onclick = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(msg.dataset.raw || '');
+      flashCopied(foot, 'Copy markdown');
+    } catch {
+      foot.textContent = 'Blocked';
+    }
+  };
+  msg.append(foot);
 }
 
 /** The jump button only earns its place once you have scrolled away. */
@@ -979,9 +1035,13 @@ function settleRunningTools() {
 
 function add(node, { keepStream = false } = {}) {
   if (!keepStream) {
+    // Stream is closing — give the finished bubble its markdown copy footer
+    // before we drop the pointer (tools/notices arrive without keepStream).
+    if (state.stream?.classList?.contains('agent')) syncAgentMdCopy(state.stream);
     closeThinking();
     state.stream = null;
     state.streamKind = null;
+    state.streamBody = null;
   }
   const stick = nearBottom();
   els.transcript.appendChild(node);
@@ -1142,13 +1202,19 @@ function renderStreaming(rec) {
       add(d, { keepStream: true });
       state.thinking = d;
       state.stream = d.querySelector('.body');
+      state.streamBody = null;
       state.stream.dataset.raw = '';
     } else {
+      // Body holds rendered HTML; the outer bubble keeps data-raw + the copy
+      // footer. Rewriting innerHTML on the outer node would destroy the button.
       const d = div('msg agent');
+      const body = div('agent-body');
+      d.append(body);
       closeThinking();
       add(d, { keepStream: true });
       if (state.turn && !state.turn.answer) state.turn.answer = d;
       state.stream = d;
+      state.streamBody = body;
       state.stream.dataset.raw = '';
     }
   }
@@ -1156,8 +1222,13 @@ function renderStreaming(rec) {
   // A desktop rewrite replaces the bubble; appending would stutter the answer.
   if (rec.replace) state.stream.dataset.raw = rec.text || '';
   else state.stream.dataset.raw += rec.text || '';
-  if (isThought) state.stream.textContent = state.stream.dataset.raw;
-  else state.stream.innerHTML = markdown(state.stream.dataset.raw);
+  if (isThought) {
+    state.stream.textContent = state.stream.dataset.raw;
+  } else {
+    const body = state.streamBody || state.stream.querySelector(':scope > .agent-body') || state.stream;
+    body.innerHTML = markdown(state.stream.dataset.raw);
+    syncAgentMdCopy(state.stream);
+  }
   scrollDown(stick);
 }
 
@@ -1935,6 +2006,7 @@ function withdrawInterruptedTurn() {
   state.withdrawnTurn = true;
   state.stream = null;
   state.streamKind = null;
+  state.streamBody = null;
   state.bundle = null;
   closeThinking();
   dropLiveStatus();

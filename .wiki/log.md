@@ -1,5 +1,8 @@
 # Directory Update Log
 
+## 2026-08-22
+* **Update**: Long agent answers on the web get a **Copy markdown** footer — raw source stays on the bubble (`data-raw` / `.agent-body` split) so streaming does not wipe the button.
+
 ## 2026-08-21
 * **Fix**: Auto no longer force-quits Cursor when the debug port is missing — refuses and falls back to ACP unless `AUTO_ALLOW_CURSOR_RESTART=1`.
 * **Update**: File-review Keep/Undo is a transcript card (+/− headline, scrub landmark), not a sticky composer strip.

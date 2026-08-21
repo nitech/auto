@@ -761,6 +761,34 @@ details.think,
 
 .msg.agent { white-space: normal; overflow-wrap: anywhere; }
 
+.msg.agent .agent-body > :first-child { margin-top: 0; }
+.msg.agent .agent-body > :last-child { margin-bottom: 0; }
+
+/* Long answers: copy the markdown source, not a DOM text scrape. */
+.copy-md {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 12px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.copy-md:hover,
+.copy-md:focus-visible {
+  color: var(--text);
+  border-color: var(--focus);
+  outline: none;
+}
+.copy-md.done {
+  color: var(--green);
+  border-color: var(--ok-border);
+}
+
 .msg.agent p { margin: 0 0 10px; }
 .msg.agent p:last-child { margin-bottom: 0; }
 .msg.agent ul, .msg.agent ol { margin: 0 0 10px; padding-left: 22px; }
@@ -2952,4 +2980,5 @@ pre:hover .copy,
   }
   /* No hover on a phone, so copy is always showing — and worth hitting. */
   .copy { opacity: 1; padding: 7px 10px; }
+  .copy-md { padding: 7px 12px; }
 }
