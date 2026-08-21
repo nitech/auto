@@ -530,9 +530,12 @@ export class TelegramBridge extends EventEmitter {
       case '/stop': {
         if (!active) return this.send('No active session.');
         // A desktop chat can refuse — no window open, no debugging port — and
-        // saying "Interrupted" when nothing was would be a lie.
+        // saying "Interrupted" when nothing was would be a lie. The interrupt
+        // record carries the restored prompt; that is what we say next.
         const stopped = await this.sessions.cancel(active.id);
-        return this.send(stopped ? 'Interrupted.' : 'Nothing was interrupted — see the chat.');
+        return stopped
+          ? undefined
+          : this.send('Nothing was interrupted — see the chat.');
       }
 
       case '/mode': {
@@ -1031,6 +1034,17 @@ export class TelegramBridge extends EventEmitter {
       }
 
       case 'error':
+        if (rec.interrupted && (rec.restore || rec.imageParts?.length)) {
+          // Same gesture as the web composer: the stopped words come back so
+          // they can be edited and sent again. Telegram has no box we control,
+          // so the text itself is the draft.
+          await this.send(
+            rec.restore
+              ? `Interrupted. Edit and send again:\n\n${esc(rec.restore)}`
+              : 'Interrupted. The message is back in the web chat box.',
+          );
+          break;
+        }
         await this.send(`⚠️ ${esc(rec.text || 'error')}`);
         break;
 

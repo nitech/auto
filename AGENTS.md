@@ -155,8 +155,10 @@ goes into the transcript and the agent. The queue is memory only, and stopping
 - **Whether a turn is running comes from the database.** The window is a poor
   witness: the word "Stop" belongs to the bar offering to review file changes,
   so a chat that edited nothing looks idle while it works. Stopping is confirmed
-  by both. Stopping also hands the message back into the chat box, which Auto
-  clears and reports — left there it blocks the next message from a phone.
+  by both. Stopping also hands the message back into Cursor's chat box, which
+  Auto clears (left there it would block the next message from a phone) and
+  puts into Auto's own composer instead — web and Telegram get the words back
+  so they can be edited and sent again.
 - **A finished turn says so.** Cursor writes "Worked for 7m 3s" or "Thought for
   1s" above the answer; Auto does the same, and a turn still going says
   "Working…" at the bottom of the stream. A command left "running…" after the

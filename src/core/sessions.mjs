@@ -758,6 +758,7 @@ export class SessionManager extends EventEmitter {
     if (content.length === 0) return null;
 
     if (!shown) this.#record(id, KIND.userMessage, this.#userMessageFields(text, images));
+    runtime.currentPrompt = this.#userMessageFields(text, images);
     this.#beginTurn(id);
     this.#update(id, { status: STATUS.busy });
     runtime.streamBuffer = '';
@@ -788,6 +789,7 @@ export class SessionManager extends EventEmitter {
       this.#endTurn(id, {
         stopReason: res?.stopReason,
         upstreamError: Boolean(runtime.upstreamErrorFlagged) || silent,
+        interrupted: Boolean(runtime.interrupted),
       });
       this.#update(id, { status: STATUS.idle });
       this.#nextInTurn(id);
@@ -1015,8 +1017,53 @@ export class SessionManager extends EventEmitter {
     // lost upstream.
     runtime.interrupted = true;
     runtime.client.cancel(runtime.acpSessionId);
-    this.#record(id, KIND.error, { text: 'Interrupted by user.', interrupted: true });
+    this.#sayInterrupted(id);
     return true;
+  }
+
+  /**
+   * Put the stopped prompt back where it can be edited.
+   *
+   * Cursor hands the words into its own chat box; Auto clears that so a phone
+   * can still reach the chat, and records the same words on the interrupt so
+   * the web (and Telegram) can fill their box instead — same gesture as
+   * stopping at the keyboard.
+   */
+  #sayInterrupted(id, { putBack } = {}) {
+    const runtime = this.live.get(id);
+    const held = runtime?.currentPrompt || this.#lastUserPrompt(id);
+    const text = (putBack?.trim() || held?.text || '').trim();
+    const imageParts = held?.imageParts;
+    const images = held?.images;
+    if (runtime) runtime.currentPrompt = null;
+    this.#record(id, KIND.error, {
+      text: 'Interrupted by user.',
+      interrupted: true,
+      ...(text || imageParts?.length
+        ? {
+            restore: text,
+            ...(imageParts?.length ? { imageParts, images } : {}),
+          }
+        : {}),
+    });
+  }
+
+  /** The most recent real user prompt in this chat's open transcript. */
+  #lastUserPrompt(id) {
+    const t = this.transcripts.open.get(id);
+    if (!t) return null;
+    const rows = t.readFrom(0, { limit: 200 });
+    for (let i = rows.length - 1; i >= 0; i -= 1) {
+      const rec = rows[i];
+      if (rec.kind !== KIND.userMessage) continue;
+      if (rec.echoed || rec.waiting) continue;
+      return {
+        text: rec.text || '',
+        images: rec.images,
+        imageParts: rec.imageParts,
+      };
+    }
+    return null;
   }
 
   /** Forget what was queued, and say how much. */
@@ -1047,16 +1094,7 @@ export class SessionManager extends EventEmitter {
       .catch((err) => ({ status: 'error', reason: err.message }));
 
     if (result.status === 'stopped') {
-      this.#record(id, KIND.error, { text: 'Interrupted by user.', interrupted: true });
-      if (result.putBack) {
-        // Cursor offers the stopped message back for editing. Nobody is there
-        // to edit it, and leaving it in the box would block the next one.
-        this.#record(id, KIND.notice, {
-          text:
-            `Cursor put the stopped message back in its chat box; Auto took it out so the ` +
-            `chat stays reachable from here. It said: ${result.putBack}`,
-        });
-      }
+      this.#sayInterrupted(id, { putBack: result.putBack });
       this.#update(id, { status: STATUS.idle });
       this.emit('log', `stopped the turn in Cursor's window (${result.how})`);
       return true;
@@ -2060,6 +2098,9 @@ export class SessionManager extends EventEmitter {
       if (!this.#recentUserEcho(id, text)) {
         this.#record(id, KIND.userMessage, this.#userMessageFields(text, images));
       }
+      const runtime = this.live.get(id) || {};
+      runtime.currentPrompt = this.#userMessageFields(text, images);
+      this.live.set(id, runtime);
       // An image that did not make it has to be said out loud: a message asking
       // "what do you think of this?" with nothing attached reads as an agent
       // ignoring the question.

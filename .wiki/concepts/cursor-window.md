@@ -17,7 +17,7 @@ sources:
   - id: clipboard
     resource: /src/core/clipboard.mjs
     title: Image paste via clipboard
-generated: { by: agent, at: 2026-08-18T11:35:00Z }
+generated: { by: agent, at: 2026-08-21T18:40:00Z }
 ---
 
 # The Cursor window
@@ -38,6 +38,10 @@ has scrolled into view.
   messages on screen looked up in the desktop database).
 - **Never leave a mess.** If the box will not send, the typed text is taken
   back out and the message goes to the [bridge](desktop-bridge.md) or its outbox.
+  Stopping a turn also clears Cursor's box: Cursor puts the prompt back there
+  to be edited, which would block the next phone message, so Auto takes those
+  words out and records them on the interrupt for the [web](web.md) / Telegram
+  composer instead.
 
 `force` exists only for putting a window back where it was.
 

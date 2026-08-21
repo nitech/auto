@@ -8,7 +8,7 @@ sources:
   - id: telegram
     resource: /src/core/telegram.mjs
     title: Telegram bridge
-generated: { by: agent, at: 2026-08-17T11:30:00Z }
+generated: { by: agent, at: 2026-08-21T18:40:00Z }
 ---
 
 # Telegram
@@ -47,8 +47,9 @@ already there, so they are not pasted back.
 
 `/mode` and `/model` on a desktop chat press Cursor's own pickers. On ACP
 they use the catalog from `session/new`. `/mode` accepts Agent, Plan,
-Debug, Multitask, and Ask. `/chats` continues a desktop thread. `/restart`
-is `POST /api/restart`.
+Debug, Multitask, and Ask. `/chats` continues a desktop thread. `/stop`
+puts the interrupted prompt back as a draft you can edit and send again.
+`/restart` is `POST /api/restart`.
 
 Plain text is a prompt to the active session. A lettered reply to a
 question card is an answer, not a new prompt. See [approvals](approvals.md).

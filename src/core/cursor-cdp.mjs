@@ -1452,8 +1452,8 @@ export class CursorCdp {
    * again — sensible for someone sitting there, and a trap for anyone who is
    * not. Auto refuses to type over unsent text, so left alone that returned
    * message would make the chat unreachable from a phone until somebody cleared
-   * it by hand. It is safe to take out: it is already in the transcript, and
-   * what was in the box is reported so it can be shown.
+   * it by hand. The words are reported as `putBack` so the host can put them
+   * into Auto's own chat box instead.
    */
   async #tidyUp(window) {
     const putBack = await window.composerText();

@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T15:42:00Z }
+generated: { by: agent, at: 2026-08-21T18:40:00Z }
 ---
 
 # Web app
@@ -141,7 +141,10 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   ends, that line becomes **Worked for 7m 3s** or **Thought for 1s** above
   the answer, the way Cursor labels a finished turn. Commands left
   "running…" after the session goes idle settle to stopped — an idle chip
-  with live cards is a lie.
+  with live cards is a lie. Stopping a turn pulls the prompt back into the
+  composer (and off the stream) so it can be edited and sent again — same
+  gesture as Cursor's own Stop; Cursor's box is cleared so a phone can still
+  reach the chat.
 - While scrolling a long chat, a flush right-edge grip appears (rounded on
   the left, drag ridges — Google Photos style). Grabbing it expands a labeled
   timeline **to the left of the thumb** — your messages, questions, plans, and

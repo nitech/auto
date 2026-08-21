@@ -125,6 +125,10 @@ const state = {
   statusEl: null,
   /** true while history is being painted, so finished turns do not flash Working */
   replaying: false,
+  /** prompt to put back in the box once replay finishes (latest interrupt only) */
+  pendingRestore: null,
+  /** turn was pulled back into the composer — skip the "Worked for…" line */
+  withdrawnTurn: false,
   lastPrompt: '',
   /** images waiting to go with the next prompt: {mimeType, data, url} */
   attachments: [],
@@ -303,6 +307,7 @@ function paintFromCache(snap) {
   }
   paintTranscriptParts(snap.head || [], snap.head?.length ? omitted : 0, snap.records || []);
   state.replaying = false;
+  applyPendingRestore();
   state.liveHead = (snap.head || []).slice();
   state.liveRecords = (snap.records || []).slice();
   state.liveEarlier = omitted || snap.earlier || 0;
@@ -907,6 +912,15 @@ function beginTurn(rec) {
 }
 
 function endTurn(rec) {
+  // A turn that was pulled back into the composer has nothing left to summarise.
+  if (rec?.interrupted || state.withdrawnTurn) {
+    state.withdrawnTurn = false;
+    settleRunningTools();
+    closeThinking();
+    dropLiveStatus();
+    state.turn = null;
+    return;
+  }
   settleRunningTools();
   closeThinking();
   const started = state.turn?.started || rec.ts;
@@ -1871,6 +1885,19 @@ function renderPlan(rec) {
 }
 
 function renderError(rec) {
+  // Stopping puts the prompt back in the box so it can be fixed and sent
+  // again — same gesture as Cursor's own Stop. The interrupted turn leaves
+  // the stream; the words belong in the composer now.
+  if (rec.interrupted && (rec.restore != null || rec.imageParts?.length)) {
+    withdrawInterruptedTurn();
+    const payload = {
+      text: rec.restore || '',
+      imageParts: rec.imageParts || [],
+    };
+    if (state.replaying) state.pendingRestore = payload;
+    else fillComposer(payload);
+    return;
+  }
   const node = div('notice error');
   node.textContent = rec.text || 'error';
   if (rec.retryable && state.lastPrompt) {
@@ -1886,6 +1913,60 @@ function renderError(rec) {
   add(node);
 }
 
+/**
+ * Take the interrupted turn off the stream — user bubble and everything that
+ * followed it this turn — so the prompt can live in the composer instead.
+ */
+function withdrawInterruptedTurn() {
+  state.withdrawnTurn = true;
+  state.stream = null;
+  state.streamKind = null;
+  state.bundle = null;
+  closeThinking();
+  dropLiveStatus();
+  state.turn = null;
+  state.pendingEchoes = [];
+  const nodes = [...els.transcript.children];
+  let from = -1;
+  for (let i = nodes.length - 1; i >= 0; i -= 1) {
+    if (nodes[i].classList?.contains('msg') && nodes[i].classList.contains('user')) {
+      from = i;
+      break;
+    }
+  }
+  if (from < 0) return;
+  for (let i = from; i < nodes.length; i += 1) nodes[i].remove();
+}
+
+/** Put a stopped prompt back in the box, ready to edit and send again. */
+function fillComposer({ text = '', imageParts = [] } = {}) {
+  els.box.value = text;
+  state.attachments = (imageParts || [])
+    .map((part) => {
+      const mimeType = part.mimeType || part.mime || 'image/png';
+      const data = part.data || '';
+      const url = part.url || (data ? `data:${mimeType};base64,${data}` : '');
+      if (!data && !url) return null;
+      return { mimeType, data, url, name: part.name || 'image' };
+    })
+    .filter(Boolean);
+  renderAttachments();
+  autosize();
+  saveDraft();
+  try {
+    els.box.focus();
+  } catch {
+    /* phone browsers may refuse focus without a tap */
+  }
+}
+
+/** After replay, put the latest unreplied interrupt back in the box. */
+function applyPendingRestore() {
+  const payload = state.pendingRestore;
+  state.pendingRestore = null;
+  if (payload && (payload.text || payload.imageParts?.length)) fillComposer(payload);
+}
+
 function render(rec) {
   if (typeof rec.seq === 'number') state.lastSeq = Math.max(state.lastSeq, rec.seq);
   state.now = rec.ts || Date.now();
@@ -1893,6 +1974,9 @@ function render(rec) {
 
   switch (rec.kind) {
     case 'user_message':
+      // A later real send means the restored draft from an older interrupt
+      // should not land in the box after replay finishes.
+      if (state.replaying && !rec.echoed && !rec.waiting) state.pendingRestore = null;
       if (!rec.echoed && !rec.waiting && !takePendingEcho(rec)) renderUser(rec);
       break;
     case 'agent_delta':
@@ -2747,6 +2831,7 @@ function connect() {
         for (const rec of msg.records) render(rec);
       }
       state.replaying = false;
+      applyPendingRestore();
       if (fresh) {
         adoptLive(
           msg.records,

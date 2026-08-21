@@ -1057,7 +1057,8 @@ if (existsSync(SRC)) {
     }
 
     // Cursor hands the stopped message back into the chat box. Left there it
-    // would block the next message from a phone, so it is taken out and told.
+    // would block the next message from a phone, so it is taken out and handed
+    // to Auto's clients to put in their own box.
     const handedBack = new FakeWindow({ threadId: THREAD, hasComposer: true }, { generating: true });
     handedBack.stopTurn = async function stopWithPutBack() {
       this.pressed.push('«keyboard»');
@@ -3278,7 +3279,8 @@ if (existsSync(SRC)) {
     }
 
     // Stopping a turn is allowed to end it in silence; "Interrupted by user."
-    // already covers that, and a second complaint would contradict it.
+    // already covers that, and a second complaint would contradict it. The
+    // interrupt also carries the prompt back so it can be edited and resent.
     say = [];
     holding = true;
     mark = log.seq;
@@ -3287,8 +3289,16 @@ if (existsSync(SRC)) {
     await sessions.cancel(id);
     if (release) release();
     await stopped;
-    if ((await sessions.history(id, mark)).some((r) => /cut off upstream/.test(r.text || ''))) {
+    const afterStop = await sessions.history(id, mark);
+    if (afterStop.some((r) => /cut off upstream/.test(r.text || ''))) {
       fail('a stopped turn should not also be reported as cut off upstream');
+      failed = true;
+    }
+    const interrupted = afterStop.find((r) => r.kind === 'error' && r.interrupted);
+    if (!interrupted || interrupted.restore !== 'the turn that is stopped') {
+      fail(
+        `stopping should put the prompt back on the interrupt: ${JSON.stringify(interrupted)}`,
+      );
       failed = true;
     }
 
