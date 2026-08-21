@@ -56,7 +56,9 @@ const els = {
   folder: $('session-folder'),
   status: $('status'),
   mode: $('mode'),
+  composer: $('composer'),
   composerBox: document.querySelector('.composer-box'),
+  viewChat: $('view-chat'),
   model: $('model'),
   policy: $('policy'),
   conn: $('conn'),
@@ -3093,7 +3095,7 @@ function syncVisualViewport() {
 function fitStandaloneShell() {
   if (!document.documentElement.hasAttribute('data-standalone')) return;
   const app = $('app');
-  const composer = $('composer');
+  const composer = els.composer;
   const vv = window.visualViewport;
   if (app && vv) {
     app.style.top = `${Math.round(vv.offsetTop)}px`;
@@ -3103,6 +3105,26 @@ function fitStandaloneShell() {
     app.style.bottom = 'auto';
   }
   if (composer) composer.style.setProperty('padding-bottom', '8px', 'important');
+  syncComposerHeight();
+}
+
+/**
+ * The composer floats over the transcript. Measure it so the last bubble,
+ * the jump button, and the scrub rail all clear the field — and so messages
+ * can still scroll through the fade underneath.
+ */
+function syncComposerHeight() {
+  const view = els.viewChat;
+  const composer = els.composer;
+  if (!view || !composer) return;
+  const h = Math.ceil(composer.getBoundingClientRect().height);
+  if (!h) return;
+  const prev = view.style.getPropertyValue('--composer-height');
+  const next = `${h}px`;
+  if (prev === next) return;
+  const stick = nearBottom();
+  view.style.setProperty('--composer-height', next);
+  if (stick) scrollDown(true);
 }
 
 {
@@ -3113,6 +3135,10 @@ function fitStandaloneShell() {
   }
   window.addEventListener('resize', syncVisualViewport);
   syncVisualViewport();
+  if (els.composer && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(syncComposerHeight).observe(els.composer);
+  }
+  syncComposerHeight();
 }
 
 /**

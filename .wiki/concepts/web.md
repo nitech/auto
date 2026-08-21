@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T12:50:00Z }
+generated: { by: agent, at: 2026-08-21T13:35:00Z }
 ---
 
 # Web app
@@ -76,6 +76,11 @@ with the keyboard up. The shell is `Cache-Control: no-store`; every
 css/js URL in it is stamped `?v=<size>-<mtime>` on the way out, so a
 change is a new URL and the installed app downloads it instead of
 keeping the first stylesheet it ever saw.
+
+The composer floats over the transcript: no hairline above the box.
+Messages scroll through a short fade and under the field. A measured
+`--composer-height` pads the transcript (and lifts the jump button /
+scrub rail) so the newest line stays readable at the live edge.
 
 Mode and model live beside the composer, as in Cursor; approval policy
 lives in the top bar (and in Settings on a narrow screen). The topbar
