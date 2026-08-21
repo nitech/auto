@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T18:30:00Z }
+generated: { by: agent, at: 2026-08-21T18:35:00Z }
 ---
 
 # Web app
@@ -47,10 +47,11 @@ has nothing to replay yet; opening Auto at `/` (the PWA start URL) reads the
 same id from the browser. Telegram `/switch` does not steal the tab.
 
 Open `http://<tailscale-ip>:4331/`. It is a PWA: `display: standalone`, an
-SVG tab icon (transparent glyph), and PNG icons (180 / 192 / 512) so a phone
-can put it on the Home Screen. The A is scaled up inside a full-bleed dark
-tile on those PNGs so the mark fills more of the preview; the tab favicon
-and `favicon.ico` stay clear of any matte so they sit on the browser chrome.
+SVG tab icon (transparent glyph, cropped tight so it fills a PC tab), and PNG
+icons (180 / 192 / 512) so a phone can put it on the Home Screen. The A is
+scaled up inside a full-bleed dark tile on those PNGs so the mark fills more
+of the preview; the tab favicon and `favicon.ico` stay clear of any matte so
+they sit on the browser chrome.
 
 Three icon tags, and that is deliberate: `favicon.ico` for browsers that do
 not take an SVG, `icon.svg` for modern tabs, `apple-touch-icon.png` for iOS.

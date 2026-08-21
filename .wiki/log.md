@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Update**: Tab favicon crop matches the rail mark (and ICO fills tighter) so the A reads at PC tab size.
 * **Update**: Tab favicon (`icon.svg` / `favicon.ico`) is transparent; home-screen PNGs keep the full-bleed dark tile.
 * **Update**: New chat focuses the composer immediately (and again once the empty session attaches).
 * **Update**: Web scrollbars are thin overlay thumbs — idle-invisible, visible on hover / while scrolling (macOS-style on PC).

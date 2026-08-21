@@ -31,11 +31,16 @@ export const DOT_R = 32;
 export const FILLET_OVERLAP = 2;
 export const SRC = 512;
 /**
- * Scale the A around the tile centre. 1.0 keeps the old ~80% maskable inset;
- * a bit over 1 fills more of the home-screen / share preview without leaving
- * the maskable safe zone (still clear of the outer 10%).
+ * Scale the A around the tile centre on home-screen / PWA PNGs.
+ * 1.0 keeps the old ~80% maskable inset; a bit over 1 fills more of the
+ * preview without leaving the maskable safe zone (still clear of the outer 10%).
  */
 export const MARK_SCALE = 1.28;
+/**
+ * Tab favicon.ico is transparent and has no chrome to fill — scale higher so
+ * the mark reads at 16–32px. Clips would start above ~1.58 on a 32px canvas.
+ */
+export const FAVICON_SCALE = 1.55;
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const WEB = join(ROOT, 'src', 'web');
@@ -202,12 +207,12 @@ function fillet(px, py, ax, ay, lx, ly, rx, ry, halfW, filletR, overlap) {
 
 /**
  * @param {number} size
- * @param {{ transparent?: boolean }} [opts] — tab favicon is transparent;
- *   home-screen / PWA tiles stay full-bleed dark.
+ * @param {{ transparent?: boolean, scale?: number }} [opts] — tab favicon is
+ *   transparent and uses FAVICON_SCALE; home-screen tiles stay full-bleed dark.
  */
-function raster(size, { transparent = false } = {}) {
+function raster(size, { transparent = false, scale = MARK_SCALE } = {}) {
   const px = Buffer.alloc(size * size * 4);
-  const s = (size / SRC) * MARK_SCALE;
+  const s = (size / SRC) * scale;
   const mid = size / 2;
   const srcMid = SRC / 2;
   const map = (v) => mid + (v - srcMid) * s;
@@ -296,6 +301,6 @@ for (const t of targets) {
   console.log(`wrote src/web/${t.file} (${t.size}×${t.size}, ${buf.length} bytes)`);
 }
 
-const ico = encodeIco(encodePng(32, 32, raster(32, { transparent: true })), 32);
+const ico = encodeIco(encodePng(32, 32, raster(32, { transparent: true, scale: FAVICON_SCALE })), 32);
 writeFileSync(join(WEB, 'favicon.ico'), ico);
-console.log(`wrote src/web/favicon.ico (32×32 transparent, ${ico.length} bytes)`);
+console.log(`wrote src/web/favicon.ico (32×32 transparent ×${FAVICON_SCALE}, ${ico.length} bytes)`);

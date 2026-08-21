@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Auto">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="96 88 320 328" role="img" aria-label="Auto">
   <title>Auto</title>
   <!--
-    Glyph-only mark for the tab favicon — transparent field so it sits on the
-    browser chrome. Home-screen / PWA rasters keep a full-bleed dark tile
-    (scripts/raster-icon.mjs). Geometry shared via MARK_SCALE. Follows the
-    system theme in browsers that honour prefers-color-scheme in SVG icons.
+    Glyph-only tab favicon — transparent field, viewBox cropped to the mark
+    (same crop as the rail brand-mark) so it reads at 16px. Home-screen /
+    PWA rasters stay on a full 512 dark tile with MARK_SCALE
+    (scripts/raster-icon.mjs). Themes with prefers-color-scheme.
   -->
   <style>
     @media (prefers-color-scheme: light) {
@@ -13,12 +13,10 @@
       .dot { fill: #8a5a00; }
     }
   </style>
-  <g transform="translate(256 256) scale(1.28) translate(-256 -256)">
-    <path class="leg" d="M140 372 L256 132" fill="none" stroke="#dfe3ea" stroke-width="56" stroke-linecap="round"/>
-    <path class="leg" d="M372 372 L256 132" fill="none" stroke="#dfe3ea" stroke-width="56" stroke-linecap="round"/>
-    <!-- Fillet pad: arc is the hole ceiling; top edge sits buried in the solid. -->
-    <path class="fillet" d="M230.79 248.5 A28 28 0 0 1 281.21 248.5 L295 155 L217 155 Z"
-          fill="#dfe3ea"/>
-    <circle class="dot" cx="256" cy="372" r="32" fill="#e5a95a"/>
-  </g>
+  <path class="leg" d="M140 372 L256 132" fill="none" stroke="#dfe3ea" stroke-width="56" stroke-linecap="round"/>
+  <path class="leg" d="M372 372 L256 132" fill="none" stroke="#dfe3ea" stroke-width="56" stroke-linecap="round"/>
+  <!-- Fillet pad: arc is the hole ceiling; top edge sits buried in the solid. -->
+  <path class="fillet" d="M230.79 248.5 A28 28 0 0 1 281.21 248.5 L295 155 L217 155 Z"
+        fill="#dfe3ea"/>
+  <circle class="dot" cx="256" cy="372" r="32" fill="#e5a95a"/>
 </svg>

@@ -2378,12 +2378,12 @@ if (existsSync(SRC)) {
     fail('Android install needs 192 and 512 PNG icons');
     failed = true;
   }
-  if (!icon.includes('viewBox="0 0 512 512"') || !icon.includes('#dfe3ea') || !icon.includes('#e5a95a')) {
-    fail('icon.svg must be the Auto mark');
+  if (!icon.includes('viewBox="96 88 320 328"') || !icon.includes('#dfe3ea') || !icon.includes('#e5a95a')) {
+    fail('icon.svg must be the Auto mark, cropped like the rail brand-mark');
     failed = true;
   }
-  if (/<rect\b/.test(icon) || icon.includes('#0b0d12')) {
-    fail('tab favicon (icon.svg) must be transparent — opaque tile belongs on the home-screen PNGs');
+  if (/<rect\b/.test(icon) || icon.includes('#0b0d12') || /scale\(/.test(icon)) {
+    fail('tab favicon (icon.svg) must be a tight transparent crop — no opaque tile or MARK_SCALE pad');
     failed = true;
   }
   const pngFiles = ['apple-touch-icon.png', 'icon-192.png', 'icon-512.png'];
