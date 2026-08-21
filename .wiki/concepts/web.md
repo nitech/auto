@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T09:22:00Z }
+generated: { by: agent, at: 2026-08-21T12:05:00Z }
 ---
 
 # Web app
@@ -133,7 +133,8 @@ meta also asks for `interactive-widget=resizes-content` where supported.
 - While scrolling a long chat, a flush right-edge grip appears (rounded on
   the left, drag ridges — Google Photos style). Grabbing it expands a labeled
   timeline **to the left of the thumb** — your messages, questions, plans, and
-  approvals. The timeline spans the chat pane and keeps 32px of air beyond the
+  approvals — and the chat text fades slightly so the pills lead. The timeline
+  spans the chat pane and keeps 32px of air beyond the
   28px grip, so the finger never covers the labels without disconnecting them
   visually. It is a rotary wheel: moving the grip down moves the evenly spaced
   label stack up. Every landmark remains on the wheel, including those beyond

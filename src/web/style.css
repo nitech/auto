@@ -601,6 +601,12 @@ button.icon {
   align-items: center;
   gap: 14px;
   scroll-behavior: smooth;
+  transition: opacity 0.18s ease;
+}
+
+/* While the labeled timeline is open, chat steps back so the pills lead. */
+.scroller:has(#chat-scrub[data-mode='scrub']) #transcript {
+  opacity: 0.42;
 }
 
 /* A column of flex items that scrolls will shrink them to fit the space it has
