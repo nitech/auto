@@ -161,9 +161,18 @@ const APPROVAL_WORDS =
  * the phone), not a mystery approval.
  *
  * After Undo, Cursor often offers Redo or Restore — those belong here too.
+ *
+ * Prefix match excludes these from approvals (a chat titled "Undo and redo…"
+ * must not become an approval). The deliberate phone action is stricter:
+ * only short, exact button labels — see `isReviewAction`.
  */
 const REVIEW_WORDS =
   /^(keep|undo|redo|restore|revert|accept all|reject all|apply|discard)\b/i;
+
+/** Exact Keep / Undo / Redo (etc.) button labels Cursor shows on the bar. */
+const REVIEW_ACTION =
+  /^(keep|undo|redo|restore|revert|apply|discard)(\s+all)?$/i;
+const REVIEW_ACTION_ALL = /^(accept|reject)\s+all$/i;
 
 /** Navigation on the review bar — not Keep / Undo / Redo. */
 const REVIEW_NAV = /^review next\b/i;
@@ -184,12 +193,16 @@ export function isFileReview(label) {
 }
 
 /**
- * A deliberate Keep / Undo / Redo (etc.) press from Auto — not "Review next
- * file", which only moves the IDE between diffs.
+ * A deliberate Keep / Undo / Redo press from Auto.
+ *
+ * Exact short labels only — a chat or plan titled "Undo and redo feature plan"
+ * starts with Undo and used to appear as a red Undo button on the phone.
+ * "Review next file" is IDE navigation, not Keep / Undo / Redo.
  */
 export function isReviewAction(label) {
   const name = String(label || '').trim();
-  return isFileReview(name) && !REVIEW_NAV.test(name);
+  if (!name || name.length > APPROVAL_MAX || REVIEW_NAV.test(name)) return false;
+  return REVIEW_ACTION.test(name) || REVIEW_ACTION_ALL.test(name);
 }
 
 const list = (names) => JSON.stringify(names);

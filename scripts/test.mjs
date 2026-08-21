@@ -1263,6 +1263,17 @@ if (existsSync(SRC)) {
     if (isApproval('Redo') || isApproval('Restore')) {
       fail('post-undo restore belongs to file review, not approvals');
     }
+    // A chat or plan titled "Undo and redo…" starts with Undo — must not become
+    // a phone button. Prefix still keeps it out of the approval vocabulary.
+    if (isReviewAction('Undo and redo feature plan')) {
+      fail('a chat title starting with Undo is not a review button');
+    }
+    if (isApproval('Undo and redo feature plan')) {
+      fail('a chat title starting with Undo must not be an approval either');
+    }
+    if (isReviewAction('Keep these changes forever please')) {
+      fail('a sentence starting with Keep is not a review button');
+    }
     // A message that begins with "Run…" is a message. Auto asked to approve one
     // of these before the length test existed.
     if (isApproval('Run exactly this command and wait for it: powershell -NoProfile')) {

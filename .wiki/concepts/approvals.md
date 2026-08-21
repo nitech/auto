@@ -14,7 +14,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: How desktop tools are drawn
-generated: { by: agent, at: 2026-08-21T21:00:00Z }
+generated: { by: agent, at: 2026-08-21T21:10:00Z }
 ---
 
 # Approvals, questions, and plans
@@ -61,8 +61,9 @@ desktop chats (including after the turn ends — that is when it usually
 appears), broadcasts the current labels over the WebSocket (`review`), and
 the web / Telegram show Keep / Undo / Redo (whatever Cursor is offering).
 A tap presses that exact label in the window. After Undo, Cursor often
-offers Redo or Restore; those are the same path. "Review next file" is
-IDE navigation and is not offered. ACP sessions have no review bar.
+offers Redo or Restore; those are the same path. Only short exact button
+labels count — a chat titled "Undo and redo…" is not Undo. "Review next
+file" is IDE navigation and is not offered. ACP sessions have no review bar.
 
 ## Question cards
 
