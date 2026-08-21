@@ -2333,8 +2333,8 @@ button.icon.active {
  * Chat scrubber — Google Photos style. Two modes:
  *   hint  — only the edge grip while scrolling
  *   scrub — labeled timeline expands left of the thumb (never under it)
- * Pill labels size to their text so they stay readable; density only raises
- * the minimum width.
+ * Idle docks the grip into the right edge (a peek remains); scrolling or
+ * tapping slides it fully out again. No fade-away.
  */
 #chat-scrub {
   position: absolute;
@@ -2344,14 +2344,13 @@ button.icon.active {
   bottom: var(--composer-height, 120px);
   z-index: 4;
   pointer-events: none;
-  opacity: 0;
-  transform: translateX(6px);
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  /* ~8px of the 28px grip stays visible when docked. */
+  transform: translateX(20px);
+  transition: transform 0.22s ease;
 }
 
 #chat-scrub[hidden] { display: none; }
 #chat-scrub[data-active] {
-  opacity: 1;
   transform: none;
 }
 
@@ -2523,6 +2522,7 @@ button.icon.active {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
 }
 
 /* Copy sits on the block it copies, quiet until you go looking for it. */

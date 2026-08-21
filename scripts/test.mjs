@@ -2545,6 +2545,7 @@ if (existsSync(SRC)) {
     !css.includes("[data-mode='scrub']") ||
     !css.includes('border-radius: 12px 0 0 12px') ||
     !css.includes('radial-gradient') ||
+    !css.includes('translateX(20px)') ||
     !css.includes(".scroller:has(#chat-scrub[data-mode='scrub']) #transcript")
   ) {
     fail('style.css must style hint and scrub modes, and fade chat while scrubbing');

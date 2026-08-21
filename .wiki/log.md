@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Update**: Idle scrub grip docks into the right edge as a peek (no fade); scroll or tap slides it out.
 * **Fix**: Session-rail accordion scrolls again — overflow is on the list, not a nested `<details>` body that never got a height.
 * **Update**: Chats / Projects accordion rows collapse on a second tap (both may be closed); open state still remembered.
 * **Update**: Session rail is a Chats / Projects accordion (two rows; exclusive open; remembered) so Projects is not buried under a collapsed details at the bottom of the chat list.

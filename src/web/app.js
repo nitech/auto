@@ -657,6 +657,7 @@ function showScrubHint() {
   syncScrubHandle();
   clearTimeout(state.scrubHide);
   if (!state.scrubbing) {
+    // Dock to a right-edge peek — do not remove from the pane.
     state.scrubHide = setTimeout(() => hideScrub(), 1400);
   }
 }
@@ -689,6 +690,10 @@ function leaveScrubMode() {
   state.scrubHide = setTimeout(() => hideScrub(), 900);
 }
 
+/**
+ * Idle = docked peek on the right edge. Force tears it down (short chat /
+ * session switch). Tapping the peek or scrolling slides it back out.
+ */
 function hideScrub(force = false) {
   if (!els.scrub) return;
   if (state.scrubbing && !force) return;
@@ -696,15 +701,11 @@ function hideScrub(force = false) {
   state.scrubHide = null;
   delete els.scrub.dataset.active;
   setScrubMode('hint');
-  if (force) {
+  if (force || !scrubWorthShowing()) {
     state.scrubbing = false;
     state.scrubPointer = false;
     state.scrubDriveRatio = null;
     els.scrub.hidden = true;
-  } else {
-    state.scrubHide = setTimeout(() => {
-      if (!state.scrubbing) els.scrub.hidden = true;
-    }, 320);
   }
 }
 

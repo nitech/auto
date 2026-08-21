@@ -160,7 +160,8 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   edge sits behind the wheel so transcript text cannot wash out the pills.
   Dragging moves freely and only snaps when the finger is a few pixels from a
   landmark (with a haptic tick). Arrow keys step landmark-to-landmark. Release
-  collapses back to the handle, which fades when idle. Short chats never
+  collapses back to the handle, which docks into the right edge as a peek
+  when idle (scroll or tap slides it out again). Short chats never
   show it. The ↓ jump-to-newest button is unchanged.
 
 ## Composer
