@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T15:50:00Z }
+generated: { by: agent, at: 2026-08-21T16:05:00Z }
 ---
 
 # Web app
@@ -140,8 +140,10 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   with live cards is a lie.
 - While scrolling a long chat, a flush right-edge grip appears (rounded on
   the left, drag ridges — Google Photos style). Grabbing it expands a labeled
-  timeline **to the left of the thumb** — your messages, questions, plans, and
-  approvals — and the chat text dims hard so the pills lead. Labels
+  timeline **to the left of the thumb** — your messages, the agent's finished
+  answers (violet), questions, plans, and approvals — and the chat text dims
+  hard so the pills lead. Answers are tagged only when a turn ends; empty
+  tool-only turns are skipped. Labels
   follow the finger continuously; only the chat content snaps to landmarks,
   so the wheel does not jitter under a magnetic latch. Label motion is linear
   along the rail (index × finger), independent of how much chat text sits

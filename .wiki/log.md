@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Update**: Scrub TOC includes finished agent answers (violet), tagged when a turn ends.
 * **Fix**: Session-rail accordion scrolls again — overflow is on the list, not a nested `<details>` body that never got a height.
 * **Update**: Chats / Projects accordion rows collapse on a second tap (both may be closed); open state still remembered.
 * **Update**: Session rail is a Chats / Projects accordion (two rows; exclusive open; remembered) so Projects is not buried under a collapsed details at the bottom of the chat list.
