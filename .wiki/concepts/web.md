@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T07:45:00Z }
+generated: { by: agent, at: 2026-08-21T08:00:00Z }
 ---
 
 # Web app
@@ -125,10 +125,11 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   timeline **to the left of the thumb** — your messages, questions, plans, and
   approvals. The timeline spans the chat pane and keeps 32px of air beyond the
   28px grip, so the finger never covers the labels without disconnecting them
-  visually. Pills have a vertical fisheye: narrowest at the top and bottom,
-  progressively wider toward screen centre, with a short width transition.
-  Active only changes text colour. Crowded user messages are thinned so
-  questions/plans/approvals stay. Dragging moves freely and only snaps when
+  visually. It is a rotary wheel: moving the grip down moves the evenly spaced
+  label stack up. Every landmark remains on the wheel, including those beyond
+  the viewport. Pill widths follow a semicircle (`sqrt(r²-y²)`), widest at
+  vertical centre and tapering/fading to nothing at the top and bottom; active
+  only changes text colour. Dragging moves freely and only snaps when
   the finger is a few pixels from a landmark (with a haptic tick); labels stay
   pinned beside the grip — thinner pills, active = whiter text only. Arrow
   keys step landmark-to-landmark. Release collapses back to the handle, which

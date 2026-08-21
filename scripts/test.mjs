@@ -2293,8 +2293,9 @@ if (existsSync(SRC)) {
     !js.includes('function showScrubHint') ||
     !js.includes('function enterScrubMode') ||
     !js.includes('function rebuildScrubTimeline') ||
-    !js.includes('function scrubPillWidth') ||
-    !js.includes('function thinScrubLandmarks') ||
+    !js.includes('function scrubWheelProgress') ||
+    !js.includes('function layoutScrubWheel') ||
+    !js.includes('Math.sqrt(Math.max(0, 1 - normalized * normalized))') ||
     !js.includes('function snapScrubToEntry') ||
     !js.includes('function scrubBuzz') ||
     !js.includes('SCRUB_SNAP_PX') ||

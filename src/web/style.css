@@ -2364,9 +2364,9 @@ button.icon.active {
   position: absolute;
   right: 0;
   transform: translateY(-50%);
-  width: max-content;
+  width: 18px;
   max-width: min(180px, 52vw);
-  min-width: 88px;
+  min-width: 0;
   padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid var(--line-2);
@@ -2380,7 +2380,13 @@ button.icon.active {
   text-overflow: ellipsis;
   box-sizing: border-box;
   box-shadow: var(--shadow-sm);
-  transition: width 0.2s ease, color 0.12s ease, background-color 0.12s ease;
+  will-change: top, width, opacity;
+  transition:
+    top 0.08s linear,
+    width 0.1s ease-out,
+    opacity 0.12s ease-out,
+    color 0.12s ease,
+    background-color 0.12s ease;
 }
 
 .scrub-pill[data-kind='you'] { border-left-color: var(--focus); }

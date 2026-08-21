@@ -269,49 +269,16 @@ function scrubScrollRatio() {
 }
 
 /**
- * Drop crowded user messages so pills stay readable; questions / plans /
- * approvals always stay. Prefer landmarks near the current scroll position.
- */
-function thinScrubLandmarks(entries, railPx) {
-  const minGap = 18;
-  if (entries.length <= 1 || railPx <= 0) return entries;
-
-  const must = (e) => e.kind !== 'you';
-  const kept = entries.filter(must);
-  const users = entries.filter((e) => e.kind === 'you');
-  const ratio = scrubScrollRatio();
-
-  const fits = (list) => {
-    const sorted = [...list].sort((a, b) => a.top - b.top);
-    for (let i = 1; i < sorted.length; i++) {
-      if ((sorted[i].top - sorted[i - 1].top) * railPx < minGap) return false;
-    }
-    return true;
-  };
-
-  if (fits([...kept, ...users])) return entries;
-
-  const ranked = [...users].sort((a, b) => Math.abs(a.top - ratio) - Math.abs(b.top - ratio));
-  const chosen = [];
-  for (const u of ranked) {
-    const trial = [...kept, ...chosen, u];
-    if (fits(trial)) chosen.push(u);
-  }
-  return [...kept, ...chosen].sort((a, b) => a.top - b.top);
-}
-
-/**
- * Build timeline pills. Their width has a vertical fisheye: narrow at the
- * screen edges, increasingly wider toward the middle. Active only changes
- * colour, never geometry.
+ * Build every landmark into a rotary timeline. More entries than fit are
+ * deliberate: the wheel moves them through the viewport and fades its ends.
  */
 function rebuildScrubTimeline() {
   if (!els.scrubTimeline) return;
   const t = els.transcript;
   const h = t.scrollHeight || 1;
-  const railPx = els.scrub.getBoundingClientRect().height || t.clientHeight;
+  const maxScroll = Math.max(1, t.scrollHeight - t.clientHeight);
   const marks = scrubLandmarks();
-  const raw = marks.map((el, i) => {
+  const entries = marks.map((el, i) => {
     const topPx = el.offsetTop;
     const nextTop = i + 1 < marks.length ? marks[i + 1].offsetTop : h;
     const span = Math.max(1, nextTop - topPx);
@@ -320,10 +287,10 @@ function rebuildScrubTimeline() {
       kind: scrubKindOf(el),
       top: topPx / h,
       spanFrac: span / h,
+      snapRatio: scrubScrollTopFor(el) / maxScroll,
       label: scrubLabel(el),
     };
   });
-  const entries = thinScrubLandmarks(raw, railPx);
   els.scrubTimeline.replaceChildren();
   state.scrubEntries = [];
 
@@ -331,22 +298,12 @@ function rebuildScrubTimeline() {
     const pill = document.createElement('div');
     pill.className = 'scrub-pill';
     pill.dataset.kind = entry.kind;
-    pill.style.top = `${entry.top * 100}%`;
     paintScrubPill(pill, entry);
     els.scrubTimeline.append(pill);
     state.scrubEntries.push({ ...entry, pill });
-    requestAnimationFrame(() => {
-      if (pill.isConnected) pill.style.width = `${scrubPillWidth(entry)}px`;
-    });
   }
   state.scrubTimelineDirty = false;
-}
-
-function scrubPillWidth(entry) {
-  const proximity = 1 - Math.min(1, Math.abs(entry.top - 0.5) * 2);
-  const curved = proximity * proximity;
-  const density = Math.min(10, entry.spanFrac * 100);
-  return Math.round(96 + curved * 70 + density);
+  requestAnimationFrame(layoutScrubWheel);
 }
 
 function paintScrubPill(pill, entry) {
@@ -357,7 +314,53 @@ function paintScrubPill(pill, entry) {
     pill.replaceChildren(text);
   }
   text.textContent = scrubClip(entry.label.text, 48);
-  pill.style.width = '88px';
+  pill.style.width = '18px';
+  pill.style.opacity = '0';
+}
+
+/**
+ * Convert real transcript progress into fractional landmark index. This keeps
+ * labels evenly spaced on the wheel while preserving where each one snaps.
+ */
+function scrubWheelProgress(ratio) {
+  const entries = state.scrubEntries;
+  if (entries.length <= 1) return 0;
+  if (ratio <= entries[0].snapRatio) return 0;
+  for (let i = 1; i < entries.length; i++) {
+    const here = entries[i].snapRatio;
+    if (ratio > here) continue;
+    const before = entries[i - 1].snapRatio;
+    const span = here - before;
+    return span > 0 ? i - 1 + (ratio - before) / span : i;
+  }
+  return entries.length - 1;
+}
+
+/**
+ * Counter-scroll the label wheel. Its left edge traces a semicircle: width is
+ * sqrt(r²-y²), widest at vertical centre and zero at the top/bottom.
+ */
+function layoutScrubWheel() {
+  if (!state.scrubbing || !els.scrubTimeline) return;
+  const entries = state.scrubEntries;
+  if (!entries.length) return;
+  const height = els.scrubTimeline.clientHeight;
+  const centre = height / 2;
+  const radius = Math.max(1, centre - 6);
+  const gap = 34;
+  const progress = scrubWheelProgress(scrubScrollRatio());
+  const activeIndex = Math.max(0, Math.min(entries.length - 1, Math.round(progress)));
+
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    const y = centre + (i - progress) * gap;
+    const normalized = Math.min(1, Math.abs(y - centre) / radius);
+    const circle = Math.sqrt(Math.max(0, 1 - normalized * normalized));
+    entry.pill.style.top = `${y}px`;
+    entry.pill.style.width = `${Math.round(18 + circle * 162)}px`;
+    entry.pill.style.opacity = String(Math.pow(circle, 0.75));
+    entry.pill.classList.toggle('active', i === activeIndex);
+  }
 }
 
 function nearestScrubEntry(y) {
@@ -458,15 +461,7 @@ function syncScrubHandle() {
 }
 
 function syncScrubActive() {
-  if (!state.scrubbing || !els.scrubTimeline) return;
-  const t = els.transcript;
-  const y = t.scrollTop + t.clientHeight * 0.28;
-  const active = nearestScrubEntry(y);
-  for (const entry of state.scrubEntries) {
-    // Labels stay pinned to their landmark — never slide under the thumb.
-    entry.pill.classList.toggle('active', entry === active);
-    entry.pill.style.top = `${entry.top * 100}%`;
-  }
+  layoutScrubWheel();
 }
 
 function setScrubMode(mode) {
