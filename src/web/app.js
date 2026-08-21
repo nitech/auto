@@ -301,8 +301,9 @@ function thinScrubLandmarks(entries, railPx) {
 }
 
 /**
- * Build timeline pills. Density sets a *minimum* width; labels stay the same
- * size when active (only the text colour changes).
+ * Build timeline pills. Their width has a vertical fisheye: narrow at the
+ * screen edges, increasingly wider toward the middle. Active only changes
+ * colour, never geometry.
  */
 function rebuildScrubTimeline() {
   if (!els.scrubTimeline) return;
@@ -334,12 +335,18 @@ function rebuildScrubTimeline() {
     paintScrubPill(pill, entry);
     els.scrubTimeline.append(pill);
     state.scrubEntries.push({ ...entry, pill });
+    requestAnimationFrame(() => {
+      if (pill.isConnected) pill.style.width = `${scrubPillWidth(entry)}px`;
+    });
   }
   state.scrubTimelineDirty = false;
 }
 
-function scrubPillMinWidth(spanFrac) {
-  return Math.round(88 + spanFrac * 40);
+function scrubPillWidth(entry) {
+  const proximity = 1 - Math.min(1, Math.abs(entry.top - 0.5) * 2);
+  const curved = proximity * proximity;
+  const density = Math.min(10, entry.spanFrac * 100);
+  return Math.round(96 + curved * 70 + density);
 }
 
 function paintScrubPill(pill, entry) {
@@ -349,9 +356,8 @@ function paintScrubPill(pill, entry) {
     text.className = 'scrub-text';
     pill.replaceChildren(text);
   }
-  text.textContent = scrubClip(entry.label.text, 40);
-  pill.style.width = '';
-  pill.style.minWidth = `${scrubPillMinWidth(entry.spanFrac)}px`;
+  text.textContent = scrubClip(entry.label.text, 48);
+  pill.style.width = '88px';
 }
 
 function nearestScrubEntry(y) {
