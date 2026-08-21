@@ -2415,11 +2415,44 @@ button.icon.active {
 .scrub-pill[data-kind='plan'] { border-left-color: var(--amber); }
 .scrub-pill[data-kind='approval'] { border-left-color: var(--red); }
 
-/* Active = whiter text only; same size as the rest. */
+/* Active sits in the spotlight: brighter fill, stronger type, kind-coloured ring. */
 .scrub-pill.active {
   color: var(--text);
   background: var(--bg-3);
-  z-index: 1;
+  font-weight: 650;
+  z-index: 2;
+  border-color: color-mix(in srgb, var(--focus) 55%, var(--line-2));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--focus) 35%, transparent),
+    0 6px 18px color-mix(in srgb, var(--bg) 55%, transparent);
+}
+
+.scrub-pill.active[data-kind='you'] {
+  border-color: color-mix(in srgb, var(--focus) 70%, var(--line-2));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--focus) 40%, transparent),
+    0 6px 18px color-mix(in srgb, var(--focus) 18%, transparent);
+}
+
+.scrub-pill.active[data-kind='question'] {
+  border-color: color-mix(in srgb, var(--green) 70%, var(--line-2));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--green) 40%, transparent),
+    0 6px 18px color-mix(in srgb, var(--green) 16%, transparent);
+}
+
+.scrub-pill.active[data-kind='plan'] {
+  border-color: color-mix(in srgb, var(--amber) 70%, var(--line-2));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--amber) 40%, transparent),
+    0 6px 18px color-mix(in srgb, var(--amber) 16%, transparent);
+}
+
+.scrub-pill.active[data-kind='approval'] {
+  border-color: color-mix(in srgb, var(--red) 70%, var(--line-2));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--red) 40%, transparent),
+    0 6px 18px color-mix(in srgb, var(--red) 16%, transparent);
 }
 
 .scrub-pill .scrub-text {

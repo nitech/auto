@@ -356,10 +356,12 @@ function layoutScrubWheel() {
     const y = centre + (i - progress) * gap;
     const normalized = Math.min(1, Math.abs(y - centre) / radius);
     const circle = Math.sqrt(Math.max(0, 1 - normalized * normalized));
+    const active = i === activeIndex;
     entry.pill.style.top = `${y}px`;
     entry.pill.style.width = `${Math.round(18 + circle * 162)}px`;
-    entry.pill.style.opacity = String(Math.pow(circle, 0.75));
-    entry.pill.classList.toggle('active', i === activeIndex);
+    // Active stays fully readable even when slightly off-centre.
+    entry.pill.style.opacity = String(active ? Math.max(0.95, Math.pow(circle, 0.75)) : Math.pow(circle, 0.75));
+    entry.pill.classList.toggle('active', active);
   }
 }
 

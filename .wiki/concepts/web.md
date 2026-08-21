@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T08:15:00Z }
+generated: { by: agent, at: 2026-08-21T08:25:00Z }
 ---
 
 # Web app
@@ -129,10 +129,11 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   label stack up. Every landmark remains on the wheel, including those beyond
   the viewport. Pill widths follow a semicircle (`sqrt(r²-y²)`), widest at
   vertical centre and tapering/fading to nothing at the top and bottom; active
-  only changes text colour. A radial veil anchored on the right edge sits
-  behind the wheel so transcript text cannot wash out the pills. Dragging
-  moves freely and only snaps when the finger is a few pixels from a landmark
-  (with a haptic tick). Arrow keys step landmark-to-landmark. Release
+  only changes text colour — now with a kind-coloured ring and brighter fill
+  so the centre label reads as the focus. A radial veil anchored on the right
+  edge sits behind the wheel so transcript text cannot wash out the pills.
+  Dragging moves freely and only snaps when the finger is a few pixels from a
+  landmark (with a haptic tick). Arrow keys step landmark-to-landmark. Release
   collapses back to the handle, which fades when idle. Short chats never
   show it. The ↓ jump-to-newest button is unchanged.
 
