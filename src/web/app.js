@@ -2142,6 +2142,10 @@ function railAccordion(id, label, open) {
   details.append(summary, body);
 
   details.addEventListener('toggle', () => {
+    // Clearing the rail fires toggle on every open <details> as it leaves the
+    // tree. Those are not user collapses — believing them wrote "none" into
+    // storage, so the next paint always came back with both rows shut.
+    if (!details.isConnected) return;
     if (details.open) {
       rememberRailSection(id);
       for (const other of els.rail.querySelectorAll('.rail-section')) {
@@ -3368,12 +3372,20 @@ function bindRailSwipe() {
       rail.style.transform = '';
     }
     if (!dragged) return;
-    // A swipe that ends on a row must not attach or archive it.
+    // A swipe that ends on a row must not attach or archive it. preventDefault
+    // on touchmove often cancels that gesture's click entirely, so a bare
+    // once-listener would sit until the *next* open and eat the first tap —
+    // the hamburger then looked like it refused to switch chats. Bound the
+    // guard to this gesture only.
     const eat = (ev) => {
       ev.stopPropagation();
       ev.preventDefault();
+      clearTimeout(eatTimer);
     };
     rail.addEventListener('click', eat, { capture: true, once: true });
+    const eatTimer = setTimeout(() => {
+      rail.removeEventListener('click', eat, true);
+    }, 400);
   };
 
   const onMove = (e) => {
@@ -3388,9 +3400,11 @@ function bindRailSwipe() {
     lastT = p.t;
 
     if (mode === 'maybe') {
-      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      // Match the archive × slop: a normal tap jitters a few pixels, and
+      // treating that as a swipe both closes nothing and eats the row click.
+      if (Math.abs(dx) < 16 && Math.abs(dy) < 16) return;
       // Vertical scroll of the list wins; swiping right has nowhere to go.
-      if (dx > -6 || Math.abs(dy) >= Math.abs(dx)) {
+      if (dx > -10 || Math.abs(dy) >= Math.abs(dx)) {
         mode = 'idle';
         return;
       }

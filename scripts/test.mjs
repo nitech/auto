@@ -2497,6 +2497,27 @@ if (existsSync(SRC)) {
   if (!failed) ok('v2 web: session × archives on first tap, swipe closes rail');
 }
 
+// Rail accordion memory + chat taps must survive a redraw and a left swipe.
+{
+  const js = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  let failed = false;
+  const accordion = js.slice(js.indexOf('function railAccordion'), js.indexOf('function renderRail'));
+  if (!accordion.includes('isConnected')) {
+    fail('rebuilding the rail must not treat teardown toggles as "close both"');
+    failed = true;
+  }
+  if (!js.includes('RAIL_SECTION_KEY') || !js.includes('rememberRailSection')) {
+    fail('which accordion row is open must be remembered');
+    failed = true;
+  }
+  const swipe = js.slice(js.indexOf('function bindRailSwipe'), js.indexOf("$('rail-toggle')"));
+  if (!swipe.includes('removeEventListener') || !swipe.includes('400')) {
+    fail('a swipe click-guard must expire so the next open can switch chats');
+    failed = true;
+  }
+  if (!failed) ok('v2 web: rail accordion remembers open row; swipe does not block next chat tap');
+}
+
 // Filtering projects on a phone must keep the list above the soft keyboard.
 // iOS leaves the layout viewport alone, so a bottom sheet pinned with inset:0
 // would put short result lists under the keys.

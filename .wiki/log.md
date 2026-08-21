@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Fix**: Session-rail hamburger — accordion open state survived redraws (teardown `toggle` no longer writes "neither"); swipe click-guard expires so the next open switches chats on the first tap.
 * **Update**: Idle scrub grip docks into the right edge as a peek (no fade); scroll or tap slides it out.
 * **Fix**: Session-rail accordion scrolls again — overflow is on the list, not a nested `<details>` body that never got a height.
 * **Update**: Chats / Projects accordion rows collapse on a second tap (both may be closed); open state still remembered.
