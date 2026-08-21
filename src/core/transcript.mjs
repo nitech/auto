@@ -9,10 +9,13 @@
 import { EventEmitter } from 'node:events';
 import {
   appendFileSync,
+  closeSync,
   createReadStream,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readSync,
   statSync,
 } from 'node:fs';
 import { createInterface } from 'node:readline';
@@ -45,6 +48,56 @@ export const KIND = {
 
 /** Records kept in memory for fast replay; older ones are read back from disk. */
 const MEMORY_TAIL = 4000;
+
+/** How far into a log we will look for the opening prompt. */
+const OPENING_SCAN_MAX = 80;
+
+/** The first real user message — not an echo or a queued placeholder. */
+export function isOpeningUser(rec) {
+  return Boolean(
+    rec &&
+      rec.kind === KIND.userMessage &&
+      !rec.echoed &&
+      !rec.waiting,
+  );
+}
+
+/**
+ * From the start of a record list, keep everything through the first real
+ * user message. That is the prompt the conversation exists for.
+ */
+export function collectOpening(records, max = OPENING_SCAN_MAX) {
+  const out = [];
+  for (const rec of records || []) {
+    out.push(rec);
+    if (isOpeningUser(rec)) return out;
+    if (out.length >= max) return [];
+  }
+  return [];
+}
+
+/**
+ * Decide what a client gets: optional pinned opening, a bounded tail, the
+ * catch-up hole (`earlier`), and how many records sit between head and tail
+ * (`omitted`) for the on-screen notice.
+ */
+export function replayWindow(opening, records, fromSeq = 0) {
+  const tail = Array.isArray(records) ? records.slice() : [];
+  const headIn = Array.isArray(opening) ? opening : [];
+  const earlier = tail.length ? Math.max(0, tail[0].seq - 1 - fromSeq) : 0;
+
+  if (!headIn.length) {
+    return { head: [], records: tail, earlier, omitted: 0 };
+  }
+  const headEnd = headIn.at(-1).seq;
+  // Tail already includes the opening (short chat).
+  if (tail.length && tail[0].seq <= headIn[0].seq) {
+    return { head: [], records: tail, earlier, omitted: 0 };
+  }
+  const trimmed = tail.filter((r) => r.seq > headEnd);
+  const omitted = trimmed.length ? Math.max(0, trimmed[0].seq - headEnd - 1) : 0;
+  return { head: headIn, records: trimmed, earlier, omitted };
+}
 
 export class Transcript extends EventEmitter {
   /**
@@ -134,6 +187,51 @@ export class Transcript extends EventEmitter {
       }
     }
     return cut(out);
+  }
+
+  /**
+   * Records from the start of the log through the first real user message.
+   * Reads only as far as needed so a multi-megabyte transcript is not loaded
+   * just to find the opening prompt.
+   */
+  openingFromStart() {
+    const oldestInMemory = this.tail.length ? this.tail[0].seq : Infinity;
+    if (oldestInMemory <= 1) {
+      return collectOpening(this.tail);
+    }
+    if (!existsSync(this.path)) return collectOpening(this.tail);
+
+    const out = [];
+    let fd;
+    try {
+      fd = openSync(this.path, 'r');
+      let buf = '';
+      const chunk = Buffer.alloc(64 * 1024);
+      while (out.length < OPENING_SCAN_MAX) {
+        const n = readSync(fd, chunk, 0, chunk.length, null);
+        if (n === 0) break;
+        buf += chunk.toString('utf8', 0, n);
+        let nl;
+        while ((nl = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, nl);
+          buf = buf.slice(nl + 1);
+          if (!line.trim()) continue;
+          try {
+            const rec = JSON.parse(line);
+            out.push(rec);
+            if (isOpeningUser(rec)) return out;
+            if (out.length >= OPENING_SCAN_MAX) return [];
+          } catch {
+            /* skip torn line */
+          }
+        }
+      }
+    } catch {
+      return [];
+    } finally {
+      if (fd != null) closeSync(fd);
+    }
+    return [];
   }
 }
 

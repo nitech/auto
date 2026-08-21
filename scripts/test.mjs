@@ -158,7 +158,7 @@ if (existsSync(SRC)) {
 if (existsSync(SRC)) {
   const tmp = mkdtempSync(join(tmpdir(), 'auto-test-'));
   try {
-    const { Transcript, KIND } = await import('../src/core/transcript.mjs');
+    const { Transcript, KIND, collectOpening, replayWindow } = await import('../src/core/transcript.mjs');
     const { mapUpdate } = await import('../src/core/map-updates.mjs');
 
     const t = await new Transcript(tmp, 'sess-1').open();
@@ -173,7 +173,9 @@ if (existsSync(SRC)) {
     // A long transcript must travel in bounded pieces. Sending one whole was
     // 28,000 records in a single message, and the browser never came back.
     const long = await new Transcript(tmp, 'sess-long').open();
-    for (let i = 0; i < 5000; i += 1) long.append(KIND.agentDelta, { text: `d${i}` });
+    long.append(KIND.sessionStart, {});
+    long.append(KIND.userMessage, { text: 'start here' });
+    for (let i = 0; i < 4998; i += 1) long.append(KIND.agentDelta, { text: `d${i}` });
 
     const capped = long.readFrom(0, { limit: 100 });
     if (capped.length !== 100) fail(`a limited read should return 100, got ${capped.length}`);
@@ -183,6 +185,22 @@ if (existsSync(SRC)) {
     }
     if (capped.some((r, i) => i && r.seq !== capped[i - 1].seq + 1)) {
       fail('a limited read should stay in order and without gaps');
+    }
+    // The opening prompt must still travel with a bounded replay, or the top
+    // of a long chat (and its scrub landmark) disappears.
+    const opening = long.openingFromStart();
+    if (opening.at(-1)?.text !== 'start here') {
+      fail(`openingFromStart should find the first prompt, got ${JSON.stringify(opening)}`);
+    }
+    const window = replayWindow(opening, capped, 0);
+    if (window.head.at(-1)?.text !== 'start here' || window.records[0].seq !== 4901) {
+      fail(`replayWindow should pin the opening above the tail, got ${JSON.stringify(window)}`);
+    }
+    if (window.omitted !== 4901 - opening.at(-1).seq - 1) {
+      fail(`replayWindow omitted should count the middle, got ${window.omitted}`);
+    }
+    if (collectOpening([{ kind: KIND.userMessage, echoed: true }, { kind: KIND.userMessage, text: 'real' }]).at(-1)?.text !== 'real') {
+      fail('collectOpening should skip echoed user messages');
     }
     // Records older than the memory tail must still be reachable by number,
     // or "load earlier" would have nothing to load.
@@ -1804,10 +1822,26 @@ if (existsSync(SRC)) {
         { seq: 12 },
       ],
       5,
+      [],
       2,
     );
     if (snap.lastSeq !== 12 || snap.earlier !== 6 || snap.records.length !== 2) {
       fail(`makeSnap should trim and bump earlier, got ${JSON.stringify(snap)}`);
+      failed = true;
+    }
+    const pinned = makeSnap(
+      [
+        { seq: 10 },
+        { seq: 11 },
+      ],
+      3,
+      [
+        { seq: 1, kind: 'session_start' },
+        { seq: 2, kind: 'user_message', text: 'hi' },
+      ],
+    );
+    if (!pinned.head?.length || pinned.head.at(-1).seq !== 2 || pinned.omitted !== 3) {
+      fail(`makeSnap should keep a pinned opening, got ${JSON.stringify(pinned)}`);
       failed = true;
     }
     memoryPut('s1', saveCache('s1', [{ seq: 1 }, { seq: 2 }], 0));
@@ -1822,11 +1856,15 @@ if (existsSync(SRC)) {
       fail('app.js must use the transcript cache module');
       failed = true;
     }
+    if (!app.includes('paintTranscriptParts') || !app.includes('ensureOpening')) {
+      fail('app.js must paint the pinned opening prompt above the omitted middle');
+      failed = true;
+    }
     if (!app.includes('function paintFromCache') || !app.includes('async function boot')) {
       fail('app.js must paint from cache before connect on boot');
       failed = true;
     }
-    if (!app.includes('memoryGet(sessionId)') || !app.includes('fromSeq: warm.lastSeq')) {
+    if (!app.includes('memoryGet(sessionId)') || !app.includes('cacheAttachSeq')) {
       fail('attach must use a warm memory cache and catch up from its lastSeq');
       failed = true;
     }

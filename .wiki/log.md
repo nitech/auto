@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Update**: Long-chat replay pins the opening prompt above the newest tail so the first message (and its scrub landmark) stay visible.
 * **Update**: Web client caches the transcript tail (memory + IndexedDB) so reload and chat switch paint immediately, then catch up from `lastSeq`.
 * **Update**: Active scrub label is brighter (kind-coloured ring, stronger type) and stays opaque near centre.
 * **Update**: Scrub mode draws a radial veil behind the label wheel so chat text cannot wash out the pills.

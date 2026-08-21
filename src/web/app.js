@@ -92,7 +92,9 @@ const state = {
   lastSeq: 0,
   /** records currently drawn for this session (tail only) — fed into the cache */
   liveRecords: [],
-  /** how many records sit before liveRecords[0], for the "earlier" notice */
+  /** pinned opening prompt (through the first real user message) */
+  liveHead: [],
+  /** how many records sit between liveHead and liveRecords (omitted middle) */
   liveEarlier: 0,
   /** painted from cache; attached must still restore tool tabs even on catch-up */
   paintedFromCache: false,
@@ -205,20 +207,61 @@ function noteLiveRecord(rec) {
 }
 
 function persistLive(sessionId) {
-  if (!sessionId || !state.liveRecords.length) return;
-  const snap = saveCache(sessionId, state.liveRecords, state.liveEarlier);
+  if (!sessionId || !(state.liveRecords.length || state.liveHead.length)) return;
+  const snap = saveCache(sessionId, state.liveRecords, state.liveEarlier, state.liveHead);
   if (snap) scheduleDiskSave(sessionId, snap);
 }
 
-function adoptLive(records, earlier = 0) {
-  const snap = makeSnap(records, earlier);
+function adoptLive(records, earlier = 0, head = null) {
+  const pinned = head == null ? state.liveHead : head;
+  const snap = makeSnap(records, earlier, pinned);
+  state.liveHead = (snap.head || []).slice();
   state.liveRecords = snap.records.slice();
-  state.liveEarlier = snap.earlier;
+  state.liveEarlier = snap.omitted || snap.earlier || 0;
   state.lastSeq = snap.lastSeq;
-  if (state.sessionId && snap.records.length) {
-    saveCache(state.sessionId, snap.records, snap.earlier);
+  if (state.sessionId && (snap.records.length || snap.head.length)) {
+    saveCache(state.sessionId, snap.records, state.liveEarlier, snap.head);
     scheduleDiskSave(state.sessionId, snap);
   }
+}
+
+/** fromSeq for a cached snap. */
+function cacheAttachSeq(snap) {
+  return snap?.lastSeq || 0;
+}
+
+/** Paint opening + optional omission notice + tail into an empty transcript. */
+function paintTranscriptParts(head, omitted, records) {
+  for (const rec of head || []) render(rec);
+  const note = earlierNotice(omitted);
+  if (note) add(note);
+  for (const rec of records || []) render(rec);
+}
+
+/**
+ * Prepend the opening prompt when catch-up brought it and the pane never had it
+ * (e.g. a cache from before opening prompts were pinned).
+ */
+function ensureOpening(head, omitted) {
+  if (!head?.length || state.liveHead.length) return;
+  const keep = [...els.transcript.childNodes].filter(
+    (n) => !(n.nodeType === 1 && n.dataset?.earlier),
+  );
+  els.transcript.innerHTML = '';
+  state.replaying = true;
+  for (const rec of head) render(rec);
+  const gap =
+    omitted > 0
+      ? omitted
+      : Math.max(0, (state.liveRecords[0]?.seq || 0) - head.at(-1).seq - 1);
+  const note = earlierNotice(gap);
+  if (note) add(note);
+  state.replaying = false;
+  for (const n of keep) els.transcript.appendChild(n);
+  state.liveHead = head.slice();
+  state.liveEarlier = gap;
+  persistLive(state.sessionId);
+  markScrubDirty();
 }
 
 /**
@@ -227,22 +270,24 @@ function adoptLive(records, earlier = 0) {
  * in the early buffer until then.
  */
 function paintFromCache(snap) {
-  if (!snap?.records?.length) return;
+  if (!snap?.records?.length && !snap?.head?.length) return;
   resetChatUi();
   state.paintedFromCache = true;
   state.liveRecords = [];
+  state.liveHead = [];
   state.liveEarlier = 0;
   state.lastSeq = 0;
   state.replaying = true;
-  if (snap.earlier > 0) {
-    const note = div('notice');
-    note.textContent = `${snap.earlier.toLocaleString()} earlier records are not shown.`;
-    add(note);
+  const omitted = snap.omitted || (snap.head?.length ? snap.earlier : 0) || 0;
+  if (!snap.head?.length && snap.earlier > 0) {
+    const note = earlierNotice(snap.earlier);
+    if (note) add(note);
   }
-  for (const rec of snap.records) render(rec);
+  paintTranscriptParts(snap.head || [], snap.head?.length ? omitted : 0, snap.records || []);
   state.replaying = false;
-  state.liveRecords = snap.records.slice();
-  state.liveEarlier = snap.earlier || 0;
+  state.liveHead = (snap.head || []).slice();
+  state.liveRecords = (snap.records || []).slice();
+  state.liveEarlier = omitted || snap.earlier || 0;
   state.lastSeq = snap.lastSeq || state.lastSeq;
   if (state.turn) endTurn({ ts: state.now || Date.now() });
   else settleRunningTools();
@@ -2418,8 +2463,8 @@ function attach(sessionId) {
     return;
   }
   // Keep the chat we are leaving so switching back is instant.
-  if (state.sessionId && state.liveRecords.length) {
-    const snap = saveCache(state.sessionId, state.liveRecords, state.liveEarlier);
+  if (state.sessionId && (state.liveRecords.length || state.liveHead.length)) {
+    const snap = saveCache(state.sessionId, state.liveRecords, state.liveEarlier, state.liveHead);
     if (snap) {
       scheduleDiskSave(state.sessionId, snap);
       flushDiskSave(state.sessionId);
@@ -2436,25 +2481,26 @@ function attach(sessionId) {
 
   // Memory is sync — paint it before the old chat can linger as the wrong one.
   const warm = memoryGet(sessionId);
-  if (warm?.records?.length) {
+  if (warm?.records?.length || warm?.head?.length) {
     paintFromCache(warm);
     setHistoryLoading(false);
-    sendOp({ op: 'attach', sessionId, fromSeq: warm.lastSeq || 0 });
+    sendOp({ op: 'attach', sessionId, fromSeq: cacheAttachSeq(warm) });
     return;
   }
 
   state.lastSeq = 0;
   state.liveRecords = [];
+  state.liveHead = [];
   state.liveEarlier = 0;
   resetChatUi();
   setHistoryLoading(true);
   // Disk may still have it (e.g. after a reload that only warmed this tab's chat).
   loadCache(sessionId).then((cached) => {
     if (state.sessionId !== sessionId) return;
-    if (cached?.records?.length) {
+    if (cached?.records?.length || cached?.head?.length) {
       paintFromCache(cached);
       setHistoryLoading(false);
-      sendOp({ op: 'attach', sessionId, fromSeq: cached.lastSeq || 0 });
+      sendOp({ op: 'attach', sessionId, fromSeq: cacheAttachSeq(cached) });
       return;
     }
     sendOp({ op: 'attach', sessionId, fromSeq: 0 });
@@ -2549,6 +2595,7 @@ function connect() {
       if (fresh) {
         resetChatUi();
         state.liveRecords = [];
+        state.liveHead = [];
         state.liveEarlier = 0;
       }
       renderModels(msg.catalog?.models);
@@ -2564,20 +2611,34 @@ function connect() {
       // Cache paint skipped tool tabs (host-owned panes). Restore them on the
       // first attach even when the transcript only caught up.
       if (fresh || fromCache) restoreViews(rememberedViews(msg.sessionId));
-      // Say what is not on screen, so the top of a long chat reads as the middle
-      // of a conversation rather than the beginning of one.
-      if (fresh && msg.earlier > 0) {
-        const note = div('notice');
-        note.textContent = `${msg.earlier.toLocaleString()} earlier records are not shown.`;
-        add(note);
+      // Opening prompt first (when the tail alone would hide it), then the
+      // omission notice, then the newest stretch.
+      if (fresh) {
+        const omitted =
+          msg.omitted != null
+            ? msg.omitted
+            : msg.head?.length
+              ? msg.earlier
+              : 0;
+        if (!msg.head?.length && msg.earlier > 0) {
+          const note = earlierNotice(msg.earlier);
+          if (note) add(note);
+        }
+        paintTranscriptParts(msg.head || [], msg.head?.length ? omitted : 0, msg.records);
+      } else {
+        ensureOpening(msg.head || [], msg.omitted || 0);
+        for (const rec of msg.records) render(rec);
       }
-      for (const rec of msg.records) render(rec);
       state.replaying = false;
       if (fresh) {
-        adoptLive(msg.records, msg.earlier || 0);
+        adoptLive(
+          msg.records,
+          msg.head?.length ? msg.omitted || 0 : msg.earlier || 0,
+          msg.head || [],
+        );
       } else if (msg.records.length) {
         const merged = mergeRecords(state.liveRecords, msg.records);
-        adoptLive(merged, state.liveEarlier);
+        adoptLive(merged, state.liveEarlier, state.liveHead);
       } else if (state.sessionId) {
         persistLive(state.sessionId);
       }
@@ -3527,7 +3588,7 @@ async function boot() {
   if (id) {
     try {
       const cached = await loadCache(id);
-      if (cached?.records?.length) {
+      if (cached?.records?.length || cached?.head?.length) {
         state.sessionId = id;
         paintFromCache(cached);
         setHistoryLoading(false);

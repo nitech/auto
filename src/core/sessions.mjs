@@ -22,7 +22,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { AcpClient } from '../acp/client.mjs';
-import { TranscriptStore, KIND } from './transcript.mjs';
+import { TranscriptStore, KIND, replayWindow } from './transcript.mjs';
 import { mapUpdate } from './map-updates.mjs';
 import { PermissionBroker, POLICY } from './permissions.mjs';
 import { TerminalRegistry } from './terminals.mjs';
@@ -475,6 +475,19 @@ export class SessionManager extends EventEmitter {
   async history(id, fromSeq = 0, limit = 0) {
     const t = await this.transcripts.get(id);
     return t.readFrom(fromSeq, { limit });
+  }
+
+  /**
+   * What a client should paint on attach: pinned opening prompt, bounded tail,
+   * and how many records sit in the gap. See transcript.replayWindow.
+   */
+  async replay(id, fromSeq = 0, limit = 0) {
+    const t = await this.transcripts.get(id);
+    const records = t.readFrom(fromSeq, { limit });
+    // Catch-up from a mid-chat seq still needs the opening when the client
+    // never had it (old cache, or a tab that only ever saw the tail).
+    const opening = t.openingFromStart();
+    return replayWindow(opening, records, fromSeq);
   }
 
   /**

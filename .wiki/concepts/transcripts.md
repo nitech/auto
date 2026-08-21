@@ -14,7 +14,7 @@ sources:
   - id: cache
     resource: /src/web/transcript-cache.js
     title: Client transcript cache
-generated: { by: agent, at: 2026-08-21T08:40:00Z }
+generated: { by: agent, at: 2026-08-21T08:50:00Z }
 ---
 
 # Transcripts
@@ -67,6 +67,11 @@ whole file. A chat that has run for days is tens of megabytes; sending it as
 one WebSocket message locked the tab. Older records stay on disk and can be
 asked for by sequence number. A reconnect that claims a `fromSeq` ahead of
 the log is started over — that transcript was reset behind it.
+
+The **opening prompt** (everything through the first real user message) is
+always pinned above that tail. Between them the client shows how many records
+were omitted. Without that pin, a long chat lost its first message — and the
+scrubber landmark for it — because only the newest stretch travelled.
 
 ## Client cache
 

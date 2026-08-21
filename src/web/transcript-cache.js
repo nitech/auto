@@ -23,8 +23,10 @@ const memory = new Map();
 /**
  * @typedef {{
  *   records: object[],
+ *   head?: object[],
  *   lastSeq: number,
  *   earlier: number,
+ *   omitted?: number,
  *   savedAt: number,
  * }} CacheSnap
  */
@@ -79,15 +81,26 @@ export function appendLive(records, rec, limit = CACHE_LIMIT) {
 }
 
 /** Build a cache snapshot from a record list (and how many sit before it). */
-export function makeSnap(records, earlier = 0, limit = CACHE_LIMIT) {
-  const before = Array.isArray(records) ? records.length : 0;
-  const trimmed = trimTail(records, limit);
+export function makeSnap(records, earlier = 0, head = [], limit = CACHE_LIMIT) {
+  const pinned = Array.isArray(head) ? head.filter((r) => r && typeof r.seq === 'number') : [];
+  const headEnd = pinned.length ? pinned.at(-1).seq : 0;
+  const body = (Array.isArray(records) ? records : []).filter(
+    (r) => r && typeof r.seq === 'number' && r.seq > headEnd,
+  );
+  const before = body.length;
+  const trimmed = trimTail(body, limit);
   const dropped = before - trimmed.length;
-  const lastSeq = trimmed.length ? trimmed[trimmed.length - 1].seq : 0;
+  const lastSeq = trimmed.length
+    ? trimmed[trimmed.length - 1].seq
+    : headEnd || 0;
+  const omittedBase = Math.max(0, earlier || 0);
   return {
+    head: pinned,
     records: trimmed,
     lastSeq: typeof lastSeq === 'number' ? lastSeq : 0,
-    earlier: Math.max(0, (earlier || 0) + dropped),
+    // Prefer omitted (gap after head) when we have a pinned opening.
+    earlier: omittedBase + dropped,
+    omitted: pinned.length ? omittedBase + dropped : 0,
     savedAt: Date.now(),
   };
 }
@@ -104,8 +117,10 @@ export function memoryPut(sessionId, snap) {
   memory.delete(sessionId);
   memory.set(sessionId, {
     records: snap.records || [],
+    head: snap.head || [],
     lastSeq: snap.lastSeq || 0,
     earlier: snap.earlier || 0,
+    omitted: snap.omitted || 0,
     savedAt: snap.savedAt || Date.now(),
   });
   while (memory.size > MAX_SESSIONS) {
@@ -156,11 +171,13 @@ export async function diskGet(sessionId) {
     try {
       const tx = db.transaction(STORE, 'readonly');
       const row = await idbReq(tx.objectStore(STORE).get(sessionId));
-      if (!row || !Array.isArray(row.records) || !row.records.length) return null;
+      if (!row || (!row.records?.length && !row.head?.length)) return null;
       return {
         records: row.records,
+        head: row.head || [],
         lastSeq: row.lastSeq || 0,
         earlier: row.earlier || 0,
+        omitted: row.omitted || 0,
         savedAt: row.savedAt || 0,
       };
     } finally {
@@ -183,8 +200,10 @@ export async function diskPut(sessionId, snap) {
         store.put({
           sessionId,
           records: snap.records || [],
+          head: snap.head || [],
           lastSeq: snap.lastSeq || 0,
           earlier: snap.earlier || 0,
+          omitted: snap.omitted || 0,
           savedAt: snap.savedAt || Date.now(),
         }),
       );
@@ -232,9 +251,9 @@ export async function diskClear(sessionId) {
 export async function loadCache(sessionId) {
   if (!sessionId) return null;
   const warm = memoryGet(sessionId);
-  if (warm?.records?.length) return warm;
+  if (warm?.records?.length || warm?.head?.length) return warm;
   const cold = await diskGet(sessionId);
-  if (cold?.records?.length) {
+  if (cold?.records?.length || cold?.head?.length) {
     memoryPut(sessionId, cold);
     return cold;
   }
@@ -242,10 +261,10 @@ export async function loadCache(sessionId) {
 }
 
 /** Write memory immediately; schedule disk (caller may also flush). */
-export function saveCache(sessionId, records, earlier = 0) {
+export function saveCache(sessionId, records, earlier = 0, head = []) {
   if (!sessionId) return null;
-  const snap = makeSnap(records, earlier);
-  if (!snap.records.length) return snap;
+  const snap = makeSnap(records, earlier, head);
+  if (!snap.records.length && !snap.head.length) return snap;
   memoryPut(sessionId, snap);
   return snap;
 }
@@ -254,7 +273,7 @@ export function saveCache(sessionId, records, earlier = 0) {
 const diskTimers = new Map();
 
 export function scheduleDiskSave(sessionId, snap, delayMs = 800) {
-  if (!sessionId || !snap?.records?.length) return;
+  if (!sessionId || !(snap?.records?.length || snap?.head?.length)) return;
   const prev = diskTimers.get(sessionId);
   if (prev) clearTimeout(prev);
   diskTimers.set(
@@ -274,6 +293,6 @@ export function flushDiskSave(sessionId) {
     if (t) clearTimeout(t);
     diskTimers.delete(id);
     const snap = memoryGet(id);
-    if (snap?.records?.length) diskPut(id, snap);
+    if (snap?.records?.length || snap?.head?.length) diskPut(id, snap);
   }
 }

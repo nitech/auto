@@ -207,21 +207,25 @@ const OPS = {
     // behind it. Start it over rather than leaving it showing the impossible.
     const asked = msg.fromSeq || 0;
     const fromSeq = asked > (await sessions.transcript(id)).seq ? 0 : asked;
-    const records = await sessions.history(id, fromSeq, REPLAY_LIMIT);
-    // Sequence numbers are handed out one at a time with no gaps, so the first
-    // record sent says exactly how much of the conversation sits behind it.
-    const earlier = records.length ? records[0].seq - 1 - fromSeq : 0;
+    // Bounded tail plus the opening prompt — a long chat used to lose the
+    // first message (and its scrub landmark) because only the newest records
+    // travelled. The gap between them is counted as `earlier`.
+    const window = await sessions.replay(id, fromSeq, REPLAY_LIMIT);
     send(ws, {
       type: 'attached',
       sessionId: id,
       meta: sessions.get(id),
-      records,
+      records: window.records,
+      head: window.head,
       // Whether this payload replaces what the client has or adds to it.
       // Catching up from a sequence number appends; a replay from the start
       // stands in for the lot, and saying so is what stops a reconnect drawing
       // the same conversation twice.
       replaced: !fromSeq,
-      earlier: Math.max(0, earlier),
+      // Catch-up hole (forces a redraw when the host skipped records). Not the
+      // intentional gap between the pinned opening and the tail — that is omitted.
+      earlier: Math.max(0, window.earlier),
+      omitted: Math.max(0, window.omitted),
       pending: sessions.permissions.list(id),
       terminals: sessions.terminals.list(id),
       terminalsAvailable: sessions.terminals.available,
