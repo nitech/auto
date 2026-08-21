@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T18:40:00Z }
+generated: { by: agent, at: 2026-08-21T18:20:00Z }
 ---
 
 # Web app
@@ -85,7 +85,9 @@ scrub rail) so the newest line stays readable at the live edge.
 Mode and model live beside the composer, as in Cursor; approval policy
 lives in the top bar (and in Settings on a narrow screen). The topbar
 also has **New chat** — one tap starts an empty conversation in the open
-session's folder (`session.create`), without the project picker. Settings
+session's folder (`session.create`), without the project picker, and puts
+the caret in the composer as soon as you tap (again once the empty chat
+attaches). Settings
 is a row at the bottom of the session rail — a gear and the word Settings —
 and opens a full-screen page. Above it sit the Browser and Terminals
 toggles (optional panes; once open, the view tabs switch between them).
@@ -95,6 +97,9 @@ a status dot beside it. The same label leads the browser tab title
 (`hostname · Auto`) so which PC this is stays visible in the chrome. The
 dot is green when the WebSocket is up; words like Connected /
 Reconnecting… stay on the dot's label and in Settings → Host.
+
+Scrollbars are thin overlay thumbs: idle-invisible, visible on hover and
+while scrolling (macOS-style), so Windows does not keep a wide gutter.
 
 On a phone the session rail is a drawer. × on a row archives that session
 on the first tap (the row used to eat it, so it felt like it needed two).

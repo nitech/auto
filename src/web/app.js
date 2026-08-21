@@ -145,6 +145,8 @@ const state = {
   /** latest usage snapshot for the dial / dialog */
   usage: null,
   usageTimer: null,
+  /** after session.create, put the caret in the box once the chat is attached */
+  focusComposer: false,
   /** this machine: OS hostname, optional nick, label for the rail */
   host: { hostname: '', nick: null, label: '' },
   /** chat scrubber: visible while scrolling a long transcript */
@@ -1938,6 +1940,19 @@ function withdrawInterruptedTurn() {
   for (let i = from; i < nodes.length; i += 1) nodes[i].remove();
 }
 
+/** Put the caret in the message box — new chats and restored drafts both want this. */
+function focusComposer() {
+  try {
+    els.box.focus({ preventScroll: true });
+  } catch {
+    try {
+      els.box.focus();
+    } catch {
+      /* phone browsers may refuse focus without a tap */
+    }
+  }
+}
+
 /** Put a stopped prompt back in the box, ready to edit and send again. */
 function fillComposer({ text = '', imageParts = [] } = {}) {
   els.box.value = text;
@@ -1953,11 +1968,7 @@ function fillComposer({ text = '', imageParts = [] } = {}) {
   renderAttachments();
   autosize();
   saveDraft();
-  try {
-    els.box.focus();
-  } catch {
-    /* phone browsers may refuse focus without a tap */
-  }
+  focusComposer();
 }
 
 /** After replay, put the latest unreplied interrupt back in the box. */
@@ -2385,7 +2396,7 @@ function projectHeader(project, count) {
   add.title = `New session in ${project.name || 'this folder'}`;
   add.onclick = (e) => {
     e.stopPropagation();
-    if (project.path) sendOp({ op: 'session.create', folder: project.path });
+    if (project.path) createSession(project.path);
   };
 
   // Tapping the project is the phone-sized target: go to its newest session,
@@ -2394,7 +2405,7 @@ function projectHeader(project, count) {
     if (!project.path) return;
     const mine = state.sessions.filter((s) => sameFolder(s.folder, project.path));
     if (mine.length) attach(mine[0].id);
-    else sendOp({ op: 'session.create', folder: project.path });
+    else createSession(project.path);
   });
 
   head.append(name, note, add);
@@ -2865,6 +2876,10 @@ function connect() {
       setHistoryLoading(false);
       // Whatever was queued before you looked is still queued.
       sendOp({ op: 'queue.list', sessionId: msg.sessionId });
+      if (state.focusComposer) {
+        state.focusComposer = false;
+        focusComposer();
+      }
       return;
     }
 
@@ -3294,6 +3309,32 @@ function syncComposerHeight() {
 }
 
 /**
+ * Mark a scroller `.is-scrolling` while the finger/wheel is moving so the
+ * thin overlay thumb (CSS) appears the way macOS shows bars on scroll.
+ */
+function bindOverlayScrollbars() {
+  const timers = new WeakMap();
+  document.addEventListener(
+    'scroll',
+    (e) => {
+      const el = e.target;
+      if (!(el instanceof Element)) return;
+      el.classList.add('is-scrolling');
+      const prev = timers.get(el);
+      if (prev) clearTimeout(prev);
+      timers.set(
+        el,
+        setTimeout(() => {
+          el.classList.remove('is-scrolling');
+          timers.delete(el);
+        }, 800),
+      );
+    },
+    { capture: true, passive: true },
+  );
+}
+
+/**
  * Starting a session is choosing where it works. The list is Cursor's own
  * project list rather than anything Auto invented, and a folder can always be
  * typed by hand for the project nobody has opened in a while. When that folder
@@ -3370,6 +3411,9 @@ function createSession(folder) {
   const path = String(folder || '').trim();
   if (!path) return;
   setNewbie(false);
+  // Focus now (user gesture) and again after attach lands the empty chat.
+  state.focusComposer = true;
+  focusComposer();
   sendOp({ op: 'session.create', folder: path });
 }
 
@@ -3804,6 +3848,7 @@ initWorkspace();
 onViewsChange((snap) => rememberViews(state.sessionId, snap));
 initTerminals(sendOp);
 initBrowser(sendOp);
+bindOverlayScrollbars();
 // Opening a pane from the rail should reveal it — close the drawer first.
 for (const id of ['browser-toggle', 'term-toggle']) {
   const btn = $(id);
