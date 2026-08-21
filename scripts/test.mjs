@@ -2558,14 +2558,21 @@ if (existsSync(SRC)) {
     !js.includes('function rebuildScrubTimeline') ||
     !js.includes('function scrubWheelProgress') ||
     !js.includes('function layoutScrubWheel') ||
+    !js.includes('function scrubLayoutRatio') ||
     !js.includes('Math.sqrt(Math.max(0, 1 - normalized * normalized))') ||
     !js.includes('function snapScrubToEntry') ||
     !js.includes('function scrubBuzz') ||
     !js.includes('SCRUB_SNAP_PX') ||
     !js.includes('navigator.vibrate') ||
-    !js.includes(".msg.user, .ask, .created-plan, .perm")
+    !js.includes(".msg.user, .ask, .created-plan, .perm") ||
+    !js.includes('scrubDriveRatio') ||
+    !js.includes('scrubPointer')
   ) {
-    fail('app.js must drive the two-mode scrubber from transcript landmarks');
+    fail('app.js must drive the two-mode scrubber from transcript landmarks; labels follow the finger while chat snaps');
+    failed = true;
+  }
+  if (!css.includes('max-width: min(260px') && !css.includes('max-width:min(260px')) {
+    fail('scrub pills must be wide enough to read a short sentence');
     failed = true;
   }
   if (!failed) ok('v2 web: chat scroll scrubber');

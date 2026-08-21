@@ -149,6 +149,10 @@ const state = {
   scrubEntries: [],
   /** landmark currently snapped to while scrubbing (for haptic edges) */
   scrubSnapEl: null,
+  /** finger is on the grip — layout follows the finger, not snapped scrollTop */
+  scrubPointer: false,
+  /** 0–1 along the rail while scrubPointer; labels read this, chat may snap */
+  scrubDriveRatio: null,
 };
 
 // ------------------------------------------------------------------ helpers
@@ -417,6 +421,18 @@ function scrubScrollRatio() {
 }
 
 /**
+ * Where the wheel and handle sit. While a finger drives the grip, that is the
+ * finger — not scrolled/snapped chat — so labels glide even when the transcript
+ * latches onto a landmark.
+ */
+function scrubLayoutRatio() {
+  if (state.scrubPointer && typeof state.scrubDriveRatio === 'number') {
+    return state.scrubDriveRatio;
+  }
+  return scrubScrollRatio();
+}
+
+/**
  * Build every landmark into a rotary timeline. More entries than fit are
  * deliberate: the wheel moves them through the viewport and fades its ends.
  */
@@ -461,8 +477,8 @@ function paintScrubPill(pill, entry) {
     text.className = 'scrub-text';
     pill.replaceChildren(text);
   }
-  text.textContent = scrubClip(entry.label.text, 48);
-  pill.style.width = '18px';
+  text.textContent = scrubClip(entry.label.text, 72);
+  pill.style.width = '22px';
   pill.style.opacity = '0';
 }
 
@@ -496,7 +512,7 @@ function layoutScrubWheel() {
   const centre = height / 2;
   const radius = Math.max(1, centre - 6);
   const gap = 34;
-  const progress = scrubWheelProgress(scrubScrollRatio());
+  const progress = scrubWheelProgress(scrubLayoutRatio());
   const activeIndex = Math.max(0, Math.min(entries.length - 1, Math.round(progress)));
 
   for (let i = 0; i < entries.length; i++) {
@@ -509,7 +525,8 @@ function layoutScrubWheel() {
     // while width/colour eased, and half a pill sat past the clip edge.
     const onWheel = normalized < 1;
     entry.pill.style.top = `${y}px`;
-    entry.pill.style.width = `${Math.round(18 + circle * 162)}px`;
+    // Widest ~260px at centre — room for a readable sentence fragment.
+    entry.pill.style.width = `${Math.round(22 + circle * 238)}px`;
     entry.pill.style.visibility = onWheel ? 'visible' : 'hidden';
     // Active stays fully readable even when slightly off-centre.
     entry.pill.style.opacity = String(
@@ -604,7 +621,7 @@ function scrubStepLandmark(dir) {
 }
 
 function syncScrubHandle() {
-  const ratio = scrubScrollRatio();
+  const ratio = scrubLayoutRatio();
   const pct = `${ratio * 100}%`;
   if (els.scrubHandle) {
     els.scrubHandle.style.top = pct;
@@ -664,6 +681,8 @@ function enterScrubMode() {
 function leaveScrubMode() {
   if (!state.scrubbing) return;
   state.scrubbing = false;
+  state.scrubPointer = false;
+  state.scrubDriveRatio = null;
   state.scrubSnapEl = null;
   setScrubMode('hint');
   // Rebuild so secondary pills regain their resting tops/widths.
@@ -681,6 +700,8 @@ function hideScrub(force = false) {
   setScrubMode('hint');
   if (force) {
     state.scrubbing = false;
+    state.scrubPointer = false;
+    state.scrubDriveRatio = null;
     els.scrub.hidden = true;
   } else {
     state.scrubHide = setTimeout(() => {
@@ -708,6 +729,8 @@ function scrubToClientY(clientY) {
   const pad = 24;
   const usable = Math.max(1, rect.height - pad * 2);
   const ratio = Math.min(1, Math.max(0, (clientY - rect.top - pad) / usable));
+  // Labels and the grip follow the finger; chat may still snap underneath.
+  state.scrubDriveRatio = ratio;
   const max = Math.max(0, t.scrollHeight - t.clientHeight);
   const prev = t.style.scrollBehavior;
   t.style.scrollBehavior = 'auto';
@@ -728,8 +751,16 @@ function scrubToClientY(clientY) {
 
   const { entry, distPx } = nearestScrubByScrollRatio(ratio);
   if (entry && distPx <= SCRUB_SNAP_PX) {
+    // Snap the transcript only — leave scrubDriveRatio alone so the wheel
+    // does not jump to the latch point and jitter under the finger.
+    if (state.scrubSnapEl !== entry.el) {
+      state.scrubSnapEl = entry.el;
+      scrubBuzz();
+    }
+    t.scrollTop = scrubScrollTopFor(entry.el);
     t.style.scrollBehavior = prev;
-    snapScrubToEntry(entry);
+    syncScrubHandle();
+    syncScrubActive();
     return;
   }
   // Free scrub — clear the latch once the finger leaves the snap zone so the
@@ -750,6 +781,7 @@ function bindScrubber() {
   const start = (e) => {
     if (!scrubWorthShowing()) return;
     e.preventDefault();
+    state.scrubPointer = true;
     enterScrubMode();
     scrubToClientY(e.clientY);
     handle.setPointerCapture?.(e.pointerId);
@@ -761,6 +793,8 @@ function bindScrubber() {
   };
   const end = () => {
     if (!state.scrubbing) return;
+    state.scrubPointer = false;
+    state.scrubDriveRatio = null;
     leaveScrubMode();
   };
 
