@@ -14,7 +14,7 @@ sources:
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: How desktop tools are drawn
-generated: { by: agent, at: 2026-08-21T21:10:00Z }
+generated: { by: agent, at: 2026-08-21T21:20:00Z }
 ---
 
 # Approvals, questions, and plans
@@ -59,11 +59,16 @@ accident. They are excluded from the approval vocabulary.
 They are a **deliberate action** instead. Auto polls the sticky bar on
 desktop chats (including after the turn ends — that is when it usually
 appears), broadcasts the current labels over the WebSocket (`review`), and
-the web / Telegram show Keep / Undo / Redo (whatever Cursor is offering).
-A tap presses that exact label in the window. After Undo, Cursor often
-offers Redo or Restore; those are the same path. Only short exact button
-labels count — a chat titled "Undo and redo…" is not Undo. "Review next
-file" is IDE navigation and is not offered. ACP sessions have no review bar.
+the web shows a **Review changes** card at the end of the turn (scrub
+landmark) with Keep / Undo / Redo. The headline is +/− from that turn's
+edits when Cursor reported line counts — not the words "Unreviewed edits".
+Telegram gets the same headline and buttons. A tap presses that exact label
+in the window. After Undo, Cursor often offers Redo or Restore; those are
+the same path. Only short exact button labels count — a chat titled "Undo
+and redo…" is not Undo. "Review next file" is IDE navigation and is not
+offered. ACP sessions have no review bar. Git commit does not clear
+Cursor's review bar by itself; Keep / Undo still apply to unreviewed agent
+diffs in the IDE.
 
 ## Question cards
 

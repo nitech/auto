@@ -16,7 +16,7 @@ import { join, dirname } from 'node:path';
 import { listProjects, workspaceIdFor } from './projects.mjs';
 import { desktopChats } from './desktop-chats.mjs';
 import { optionLetter, parseQuestionReply } from './questions.mjs';
-import { classifyTool, displayLabel, foldTools, isCreatedPlan, planFields, turnCopy } from './desktop-tool-ui.mjs';
+import { classifyTool, displayLabel, foldTools, isCreatedPlan, planFields, reviewHeadline, turnCopy } from './desktop-tool-ui.mjs';
 import { linkify } from '../web/markdown.js';
 
 const LIMIT = 4096;
@@ -865,9 +865,9 @@ export class TelegramBridge extends EventEmitter {
       );
     });
     // Sticky file-review bar — Keep All / Undo All / Redo, never an approval.
-    this.sessions.on('review', ({ sessionId, actions }) => {
+    this.sessions.on('review', ({ sessionId, actions, added, removed }) => {
       if (sessionId !== this.sessions.activeId) return;
-      this.#paintReview(sessionId, actions || []).catch((err) =>
+      this.#paintReview(sessionId, actions || [], { added, removed }).catch((err) =>
         this.emit('log', `review failed: ${err.message}`),
       );
     });
@@ -1144,19 +1144,26 @@ export class TelegramBridge extends EventEmitter {
   }
 
   /**
-   * Cursor's sticky Keep / Undo / Redo bar as a Telegram message with buttons.
+   * Cursor's Keep / Undo / Redo as a Telegram message with buttons.
    *
-   * Labels are exactly what the window shows. When the bar clears (kept or
-   * undone in the IDE or from here), the keyboard comes off.
+   * Headline is +/− from this turn's edits when known. When the bar clears,
+   * the keyboard comes off.
    */
-  async #paintReview(sessionId, actions) {
+  async #paintReview(sessionId, actions, stats = {}) {
     const names = (actions || []).map((a) => a.name || a).filter(Boolean);
     const messageId = this.reviewMessages.get(sessionId);
+    const headline = reviewHeadline(
+      stats.added != null || stats.removed != null
+        ? { added: stats.added || 0, removed: stats.removed || 0 }
+        : null,
+    );
 
     if (!names.length) {
       if (!messageId) return;
       this.reviewMessages.delete(sessionId);
-      await this.edit(messageId, '📁 <b>File review</b> — done', { reply_markup: { inline_keyboard: [] } });
+      await this.edit(messageId, `📁 <b>${esc(headline)}</b> — done`, {
+        reply_markup: { inline_keyboard: [] },
+      });
       return;
     }
 
@@ -1170,7 +1177,7 @@ export class TelegramBridge extends EventEmitter {
         }),
       },
     ]);
-    const text = '📁 <b>Unreviewed edits</b>\n<i>Keep, undo, or redo in Cursor.</i>';
+    const text = `📁 <b>${esc(headline)}</b>\n<i>Keep, undo, or redo in Cursor.</i>`;
     if (messageId) {
       const edited = await this.edit(messageId, text, {
         reply_markup: { inline_keyboard: rows },

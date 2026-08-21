@@ -134,8 +134,9 @@ goes into the transcript and the agent. The queue is memory only, and stopping
   for as long as a chat has unreviewed edits, and offering them as approvals
   meant offering to throw work away by accident. They stay out of the approval
   vocabulary. Instead Auto watches the sticky bar (including after the turn
-  ends) and offers the same labels on the web and Telegram as a deliberate
-  action — Keep / Undo All, and Redo or Restore after an undo. Pressing one
+  ends) and shows a Review changes card at the end of the turn on the web
+  (scrub landmark, +/− from that turn's edits) and the same actions on
+  Telegram — Keep / Undo All, and Redo or Restore after an undo. Pressing one
   presses that control in Cursor by its words.
 - **Cursor's own approvals go to the phone.** While a desktop turn runs, Auto
   watches the window for controls whose words mean it is waiting for a person,

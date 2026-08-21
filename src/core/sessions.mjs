@@ -32,7 +32,7 @@ import { DesktopOutbox } from './desktop-outbox.mjs';
 import { ThreadWatcher, readThread, readContextUsage, realTitle, UNTITLED_THREAD, SETTLE_LOOKS, isHarnessPrompt } from './desktop-threads.mjs';
 import { accountUsage } from './cursor-usage.mjs';
 import { labelsForAnswer, indexesForAnswer } from './questions.mjs';
-import { classifyTool } from './desktop-tool-ui.mjs';
+import { classifyTool, editStatsForTurn } from './desktop-tool-ui.mjs';
 
 /** Same words, even when Cursor stores a different apostrophe or spacing. */
 export function echoKey(text) {
@@ -1686,8 +1686,14 @@ export class SessionManager extends EventEmitter {
   reviewing(id) {
     const meta = this.meta.get(id);
     if (!meta || meta.kind !== 'desktop') return { actions: [] };
-    const actions = this.live.get(id)?.review?.actions || [];
-    return { actions: actions.map((name) => ({ name })) };
+    const held = this.live.get(id)?.review || {};
+    const actions = held.actions || [];
+    const out = { actions: actions.map((name) => ({ name })) };
+    if (held.added != null || held.removed != null) {
+      out.added = held.added || 0;
+      out.removed = held.removed || 0;
+    }
+    return out;
   }
 
   /**
@@ -1796,13 +1802,37 @@ export class SessionManager extends EventEmitter {
       )];
     }
 
-    const signature = actions.map((n) => n.toLowerCase()).join('\0');
+    const stats = await this.#editStatsForSession(id);
+    const signature = [
+      actions.map((n) => n.toLowerCase()).join('\0'),
+      stats ? `${stats.added}:${stats.removed}` : '',
+    ].join('|');
     const prev = runtime.review?.signature ?? null;
-    runtime.review = { actions, signature };
+    runtime.review = {
+      actions,
+      signature,
+      added: stats?.added,
+      removed: stats?.removed,
+    };
     if (signature !== prev) {
-      this.emit('review', { sessionId: id, actions: actions.map((name) => ({ name })) });
+      this.emit('review', {
+        sessionId: id,
+        actions: actions.map((name) => ({ name })),
+        ...(stats || {}),
+      });
     }
     return actions;
+  }
+
+  /** +/− for edits in the open turn, from the transcript tail. */
+  async #editStatsForSession(id) {
+    try {
+      const store = await this.transcript(id);
+      const records = store.readFrom(0, { limit: 400 });
+      return editStatsForTurn(records);
+    } catch {
+      return null;
+    }
   }
 
   /**

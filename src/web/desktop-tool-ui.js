@@ -254,6 +254,44 @@ export function editCopy(count, oneLabel) {
 }
 
 /**
+ * Sum +/− for file edits in the current turn (after the last user message /
+ * turn_start). Prefer Cursor's editLinesAdded/Removed on each edit tool.
+ * Dedupes by toolCallId so a tool_update does not double-count.
+ *
+ * @returns {{ added: number, removed: number } | null}
+ */
+export function editStatsForTurn(records = []) {
+  let added = 0;
+  let removed = 0;
+  let saw = false;
+  const counted = new Set();
+  for (let i = records.length - 1; i >= 0; i -= 1) {
+    const rec = records[i];
+    if (!rec) continue;
+    if (rec.kind === 'turn_start' || rec.kind === 'user_message') break;
+    if (rec.kind !== 'tool_call' && rec.kind !== 'tool_update') continue;
+    const key = rec.toolCallId || `seq:${rec.seq}`;
+    if (counted.has(key)) continue;
+    counted.add(key);
+    const stats = fileStats(rec);
+    if (!stats) continue;
+    added += stats.added;
+    removed += stats.removed;
+    saw = true;
+  }
+  return saw ? { added, removed } : null;
+}
+
+/** Headline for the Keep / Undo card: "+12 −3" or a plain fallback. */
+export function reviewHeadline(stats) {
+  if (!stats || (stats.added == null && stats.removed == null)) return 'Edits';
+  const a = Number(stats.added) || 0;
+  const r = Number(stats.removed) || 0;
+  if (!a && !r) return 'Edits';
+  return `+${a} −${r}`;
+}
+
+/**
  * How long a spell of work lasted, the way Cursor writes it: "8s", "7m 3s".
  * Counts stay separate from the units so a renderer can draw them louder.
  */

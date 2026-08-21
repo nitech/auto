@@ -3659,6 +3659,49 @@ if (existsSync(SRC)) {
     );
     check('no clock yet', turnCopy({ durationMs: 0, worked: true }).label, 'Done');
 
+    const { editStatsForTurn, reviewHeadline } = await import('../src/core/desktop-tool-ui.mjs');
+    const stats = editStatsForTurn([
+      { kind: 'user_message', text: 'go' },
+      {
+        kind: 'tool_call',
+        toolCallId: 'e1',
+        title: 'edit_file_v2',
+        rawInput: { editLinesAdded: 10, editLinesRemoved: 2 },
+      },
+      {
+        kind: 'tool_update',
+        toolCallId: 'e1',
+        title: 'edit_file_v2',
+        rawInput: { editLinesAdded: 12, editLinesRemoved: 3 },
+      },
+      {
+        kind: 'tool_call',
+        toolCallId: 'e2',
+        title: 'edit_file_v2',
+        rawInput: { added: 1, removed: 0 },
+      },
+    ]);
+    check('edit stats prefer latest update, sum files', stats, { added: 13, removed: 3 });
+    check('review headline', reviewHeadline(stats), '+13 −3');
+    check('review headline fallback', reviewHeadline(null), 'Edits');
+    check(
+      'edit stats stop at previous turn',
+      editStatsForTurn([
+        {
+          kind: 'tool_call',
+          toolCallId: 'old',
+          rawInput: { editLinesAdded: 99, editLinesRemoved: 99 },
+        },
+        { kind: 'user_message', text: 'next' },
+        {
+          kind: 'tool_call',
+          toolCallId: 'new',
+          rawInput: { editLinesAdded: 2, editLinesRemoved: 1 },
+        },
+      ]),
+      { added: 2, removed: 1 },
+    );
+
     const diff = diffFromPrecomputed(
       {
         lines: [

@@ -25,10 +25,12 @@ import {
   classifyTool,
   displayLabel,
   editCopy,
+  editStatsForTurn,
   fileStats,
   groupTally,
   isCreatedPlan,
   planFields,
+  reviewHeadline,
   turnCopy,
 } from './desktop-tool-ui.js';
 import {
@@ -72,9 +74,6 @@ const els = {
   queue: $('queue'),
   queueCount: $('queue-count'),
   queueList: $('queue-list'),
-  review: $('review'),
-  reviewLabel: $('review-label'),
-  reviewActs: $('review-acts'),
   usage: $('usage'),
   usageSheet: $('usage-sheet'),
   usageBody: $('usage-body'),
@@ -137,8 +136,9 @@ const state = {
   attachments: [],
   /** what is waiting for the turn to end: {owner, waiting, items, hidden} */
   queue: { owner: 'auto', waiting: 0, items: [] },
-  /** Cursor's file-review bar (Keep All / Undo All / Redo) for this chat */
-  review: { actions: [] },
+  /** Cursor's file-review Keep/Undo card for this chat (transcript landmark) */
+  review: { actions: [], added: null, removed: null },
+  reviewCard: null,
   /** the queued message being reworded, so the row stays an editor while typing */
   editing: null,
   /** Cursor chats dismissed with × this visit, so they do not reappear as "in Cursor" */
@@ -206,6 +206,8 @@ function resetChatUi() {
   state.bundle = null;
   state.permCards.clear();
   state.askCards.clear();
+  state.reviewCard = null;
+  state.review = { actions: [], added: null, removed: null };
   state.stream = null;
   state.thinking = null;
   state.statusEl = null;
@@ -380,7 +382,7 @@ function syncToBottom() {
  * chat, not every tool card. Order matches the DOM.
  */
 function scrubLandmarks() {
-  return [...els.transcript.querySelectorAll('.msg.user, .ask, .created-plan, .perm')];
+  return [...els.transcript.querySelectorAll('.msg.user, .ask, .created-plan, .perm, .file-review')];
 }
 
 function scrubKindOf(el) {
@@ -388,6 +390,7 @@ function scrubKindOf(el) {
   if (el.classList.contains('ask')) return 'question';
   if (el.classList.contains('created-plan')) return 'plan';
   if (el.classList.contains('perm')) return 'approval';
+  if (el.classList.contains('file-review')) return 'review';
   return '';
 }
 
@@ -412,6 +415,10 @@ function scrubLabel(el) {
   if (el.classList.contains('perm')) {
     const t = el.querySelector('.what')?.textContent?.trim() || '';
     return { kind: 'Approval', text: t || 'Needs a decision' };
+  }
+  if (el.classList.contains('file-review')) {
+    const t = el.querySelector('.what')?.textContent?.trim() || '';
+    return { kind: 'Review', text: t || 'Edits' };
   }
   return { kind: '', text: '' };
 }
@@ -3018,14 +3025,18 @@ function connect() {
 
     if (msg.type === 'review') {
       if (msg.sessionId && msg.sessionId !== state.sessionId) return;
-      state.review = { actions: msg.actions || [] };
+      state.review = {
+        actions: msg.actions || [],
+        added: msg.added ?? null,
+        removed: msg.removed ?? null,
+      };
       if (msg.acted && msg.acted.status !== 'pressed') {
         render({
           kind: 'notice',
           text: msg.acted.reason || `Could not press ${msg.acted.name || 'that'} in Cursor.`,
         });
       }
-      renderReview();
+      renderFileReview();
       return;
     }
 
@@ -3160,45 +3171,78 @@ function button(face, title, onclick) {
 }
 
 /**
- * Cursor's sticky Keep / Undo / Redo bar, above the composer.
+ * Cursor's Keep / Undo / Redo as the last block of a finished turn.
  *
- * Exact labels from the window — what you tap is what gets pressed. Undo /
- * Discard look destructive; Keep / Redo do not.
+ * Lives in the transcript (and the scrub timeline), not stuck above the
+ * composer. Headline is +/− from this turn's edits when Cursor reported them.
  */
-function renderReview() {
-  if (!els.review) return;
+function renderFileReview() {
   const actions = state.review?.actions || [];
-  const none = !actions.length;
-  els.review.hidden = none;
-  if (none) {
-    els.reviewActs.innerHTML = '';
+  let stats =
+    state.review?.added != null || state.review?.removed != null
+      ? { added: state.review.added || 0, removed: state.review.removed || 0 }
+      : null;
+  if (!stats) {
+    const records = [...(state.liveHead || []), ...(state.liveRecords || [])];
+    stats = editStatsForTurn(records);
+  }
+  const headline = reviewHeadline(stats);
+
+  if (!actions.length) {
+    const card = state.reviewCard;
+    if (card?.isConnected) {
+      card.classList.add('resolved');
+      const what = card.querySelector('.what');
+      if (what) what.textContent = headline === 'Edits' ? 'Reviewed' : `${headline} · done`;
+      card.querySelector('.opts').innerHTML = '<span class="outcome">done</span>';
+      markScrubDirty();
+    }
     return;
   }
 
-  els.reviewActs.innerHTML = '';
+  let card = state.reviewCard;
+  if (!card || !card.isConnected) {
+    card = div('file-review');
+    card.innerHTML = `
+      <div class="head">Review changes</div>
+      <div class="what"></div>
+      <div class="opts"></div>`;
+    state.reviewCard = card;
+    add(card);
+  } else {
+    // Keep it at the end of the stream when the turn just finished.
+    els.transcript.appendChild(card);
+  }
+
+  card.classList.remove('resolved');
+  card.querySelector('.what').textContent = headline;
+  const opts = card.querySelector('.opts');
+  opts.innerHTML = '';
   for (const action of actions) {
     const name = action.name || action;
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = `review-act ${reviewKind(name)}`;
     b.textContent = name;
+    b.className = reviewKind(name);
     b.addEventListener('click', () => {
-      if (els.review.dataset.busy) return;
-      els.review.dataset.busy = '1';
-      for (const btn of els.reviewActs.querySelectorAll('button')) btn.disabled = true;
+      if (card.dataset.busy) return;
+      card.dataset.busy = '1';
+      for (const btn of opts.querySelectorAll('button')) btn.disabled = true;
       sendOp({ op: 'review.press', sessionId: state.sessionId, name });
     });
-    els.reviewActs.append(b);
+    opts.appendChild(b);
   }
-  delete els.review.dataset.busy;
+  delete card.dataset.busy;
+  markScrubDirty();
+  scrollDown(nearBottom());
 }
 
 function reviewKind(name) {
   const n = String(name || '').toLowerCase();
-  if (/^(undo|discard|reject|revert)\b/.test(n)) return 'undo';
-  if (/^(redo|restore)\b/.test(n)) return 'redo';
-  if (/^keep\b/.test(n)) return 'keep';
-  return '';
+  if (/^(undo|discard|reject|revert)\b/.test(n)) return 'deny';
+  if (/^(redo|restore)\b/.test(n)) return 'allow';
+  if (/^keep\b/.test(n)) return 'allow';
+  return 'allow';
 }
 
 /** Screenshots are half of what you want to say from a phone. */

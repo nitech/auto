@@ -695,6 +695,7 @@ button.icon {
 .ask,
 .plan,
 .created-plan,
+.file-review,
 .notice,
 details.think,
 .turn-status {
@@ -1060,6 +1061,46 @@ details.think .body {
 .perm button.deny:hover { background: var(--danger-bg); }
 .perm.resolved { opacity: 0.55; }
 .perm .outcome { font-size: 12.5px; color: var(--muted); }
+
+/* File-review Keep / Undo — last block of a turn, scrub landmark */
+.file-review {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel, var(--bg));
+}
+.file-review .head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  margin-bottom: 4px;
+}
+.file-review .what {
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 10px;
+}
+.file-review .opts { display: flex; gap: 8px; flex-wrap: wrap; }
+.file-review button {
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+.file-review button.allow { border-color: var(--ok-border); color: var(--green); }
+.file-review button.allow:hover { background: var(--ok-bg); }
+.file-review button.deny { border-color: var(--danger-border); color: var(--red); }
+.file-review button.deny:hover { background: var(--danger-bg); }
+.file-review button:disabled { opacity: 0.5; cursor: default; }
+.file-review.resolved { opacity: 0.55; }
+.file-review .outcome { font-size: 12.5px; color: var(--muted); }
 
 /* question — an approval is a row of buttons, this is a card of sentences */
 
@@ -2512,6 +2553,7 @@ button.icon.active {
 .scrub-pill[data-kind='question'] { border-left-color: var(--green); }
 .scrub-pill[data-kind='plan'] { border-left-color: var(--amber); }
 .scrub-pill[data-kind='approval'] { border-left-color: var(--red); }
+.scrub-pill[data-kind='review'] { border-left-color: var(--focus); }
 
 /* Active sits in the spotlight: brighter fill, stronger type, kind-coloured ring. */
 .scrub-pill.active {
@@ -2551,6 +2593,13 @@ button.icon.active {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--red) 40%, transparent),
     0 6px 18px color-mix(in srgb, var(--red) 16%, transparent);
+}
+
+.scrub-pill.active[data-kind='review'] {
+  border-color: color-mix(in srgb, var(--focus) 70%, var(--line-2));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--focus) 40%, transparent),
+    0 6px 18px color-mix(in srgb, var(--focus) 16%, transparent);
 }
 
 .scrub-pill .scrub-text {
@@ -2674,53 +2723,6 @@ pre:hover .copy,
 .queued-act:hover { color: var(--text); border-color: var(--focus); }
 .queued-act:last-child:hover { color: var(--red); border-color: var(--danger-border); }
 .queue-note { padding: 8px 10px; color: var(--faint); font-size: 12px; }
-
-/* ------------------------------------------- file-review Keep / Undo / Redo */
-#review {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 8px 10px;
-  margin-bottom: 8px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel, var(--bg));
-}
-#review[hidden] { display: none; }
-#review-label {
-  flex: 1 1 auto;
-  font-size: 12px;
-  color: var(--faint);
-}
-#review-acts {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-.review-act {
-  font: inherit;
-  font-size: 13px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--bg);
-  color: var(--text);
-  cursor: pointer;
-}
-.review-act:hover { border-color: var(--focus); }
-.review-act:disabled { opacity: 0.5; cursor: default; }
-.review-act.keep,
-.review-act.redo {
-  border-color: var(--focus);
-  color: var(--text);
-}
-.review-act.undo,
-.review-act.discard {
-  color: var(--red);
-  border-color: var(--danger-border, var(--red));
-}
 
 /* Thumbnails live inside the composer border, above the text — not a strip
    parked on the footer outside the field. */
