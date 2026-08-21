@@ -2101,12 +2101,14 @@ function conversations() {
   return rows.sort((a, b) => b.at - a.at);
 }
 
-/** Which accordion row the rail shows: chats (default) or projects. */
+/** Which accordion row the rail shows: chats, projects, or neither. */
 const RAIL_SECTION_KEY = 'auto.railSection';
 
 function railSection() {
   try {
-    return localStorage.getItem(RAIL_SECTION_KEY) === 'projects' ? 'projects' : 'chats';
+    const v = localStorage.getItem(RAIL_SECTION_KEY);
+    if (v === 'projects' || v === 'none') return v;
+    return 'chats';
   } catch {
     return 'chats';
   }
@@ -2114,16 +2116,18 @@ function railSection() {
 
 function rememberRailSection(which) {
   try {
-    localStorage.setItem(RAIL_SECTION_KEY, which === 'projects' ? 'projects' : 'chats');
+    localStorage.setItem(
+      RAIL_SECTION_KEY,
+      which === 'projects' || which === 'none' ? which : 'chats',
+    );
   } catch {
     /* private mode */
   }
 }
 
 /**
- * One of the two category rows. Opening one closes the other so the rail is
- * always either the conversation list or the project list — never both, and
- * never neither.
+ * One of the two category rows. Opening one closes the other; tapping an
+ * open row collapses it (both may be closed).
  */
 function railAccordion(id, label, open) {
   const details = document.createElement('details');
@@ -2144,9 +2148,8 @@ function railAccordion(id, label, open) {
       }
       return;
     }
-    // Closing the open row would leave an empty rail — bounce it back open.
     const anyOpen = [...els.rail.querySelectorAll('.rail-section')].some((d) => d.open);
-    if (!anyOpen) details.open = true;
+    if (!anyOpen) rememberRailSection('none');
   });
 
   return { details, body };

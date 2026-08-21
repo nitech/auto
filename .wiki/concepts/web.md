@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T15:45:00Z }
+generated: { by: agent, at: 2026-08-21T15:50:00Z }
 ---
 
 # Web app
@@ -115,7 +115,8 @@ meta also asks for `interactive-widget=resizes-content` where supported.
 - The session rail as two accordion rows — **Chats** (date-grouped Auto
   sessions and Cursor's recent chats) and **Projects** (folders Cursor
   knows, plus per-folder desktop chats). Opening one closes the other;
-  which row was open is remembered in the browser.
+  tapping an open row collapses it. Which row was open (or neither) is
+  remembered in the browser.
 - The [queue](queue.md) above the chat box, with reword / send now / delete.
 - Tool calls the way Cursor groups them — see [tool lanes](tool-lanes.md).
 - Diffs, thinking (folded when the block ends, timed from the record so a

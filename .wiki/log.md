@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Update**: Chats / Projects accordion rows collapse on a second tap (both may be closed); open state still remembered.
 * **Update**: Session rail is a Chats / Projects accordion (two rows; exclusive open; remembered) so Projects is not buried under a collapsed details at the bottom of the chat list.
 * **Update**: Web composer floats over the transcript — no hairline above the box; messages scroll through a fade underneath, with `--composer-height` clearing the live edge.
 * **Update**: Scrub labels move linearly with the finger (even landmark spacing on the wheel), independent of how much chat text sits between landmarks — that uneven mapping was what made the timeline jump.
