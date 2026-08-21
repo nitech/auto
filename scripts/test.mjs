@@ -2559,7 +2559,8 @@ if (existsSync(SRC)) {
     !js.includes('function scrubWheelProgress') ||
     !js.includes('function layoutScrubWheel') ||
     !js.includes('function scrubLayoutRatio') ||
-    !js.includes('Math.sqrt(Math.max(0, 1 - normalized * normalized))') ||
+    !js.includes('translateX(') ||
+    !js.includes('tuck * 108') ||
     !js.includes('function snapScrubToEntry') ||
     !js.includes('function scrubBuzz') ||
     !js.includes('SCRUB_SNAP_PX') ||
@@ -2568,7 +2569,11 @@ if (existsSync(SRC)) {
     !js.includes('scrubDriveRatio') ||
     !js.includes('scrubPointer')
   ) {
-    fail('app.js must drive the two-mode scrubber from transcript landmarks; labels follow the finger while chat snaps');
+    fail('app.js must drive the scrubber: labels tuck under the grip, chat snaps');
+    failed = true;
+  }
+  if (!css.includes('opacity: 0.18') || !css.includes(".scroller:has(#chat-scrub[data-mode='scrub']) #transcript")) {
+    fail('chat must dim strongly while the scrub timeline is open');
     failed = true;
   }
   if (!css.includes('max-width: min(260px') && !css.includes('max-width:min(260px')) {

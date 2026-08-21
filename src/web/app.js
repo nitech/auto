@@ -478,8 +478,8 @@ function paintScrubPill(pill, entry) {
     pill.replaceChildren(text);
   }
   text.textContent = scrubClip(entry.label.text, 72);
-  pill.style.width = '22px';
   pill.style.opacity = '0';
+  pill.style.transform = 'translateY(-50%) translateX(110%)';
 }
 
 /**
@@ -501,8 +501,9 @@ function scrubWheelProgress(ratio) {
 }
 
 /**
- * Counter-scroll the label wheel. Its left edge traces a semicircle: width is
- * sqrt(r²-y²), widest at vertical centre and zero at the top/bottom.
+ * Counter-scroll the label wheel. Fixed-width pills tuck under the grip:
+ * they slide out from the right below the handle and slide back into the
+ * right above it — no width resize with scroll.
  */
 function layoutScrubWheel() {
   if (!state.scrubbing || !els.scrubTimeline) return;
@@ -519,18 +520,18 @@ function layoutScrubWheel() {
     const entry = entries[i];
     const y = centre + (i - progress) * gap;
     const normalized = Math.min(1, Math.abs(y - centre) / radius);
-    const circle = Math.sqrt(Math.max(0, 1 - normalized * normalized));
     const active = i === activeIndex;
-    // Past the semicircle: hide hard. Opacity alone still painted a ghost
-    // while width/colour eased, and half a pill sat past the clip edge.
+    // Past the rim: hide hard so a tucked pill cannot ghost past the clip.
     const onWheel = normalized < 1;
+    // Ease toward the rim so the tuck under the handle starts gently.
+    const tuck = normalized * normalized;
     entry.pill.style.top = `${y}px`;
-    // Widest ~260px at centre — room for a readable sentence fragment.
-    entry.pill.style.width = `${Math.round(22 + circle * 238)}px`;
+    entry.pill.style.transform = onWheel
+      ? `translateY(-50%) translateX(${(tuck * 108).toFixed(1)}%)`
+      : 'translateY(-50%) translateX(110%)';
     entry.pill.style.visibility = onWheel ? 'visible' : 'hidden';
-    // Active stays fully readable even when slightly off-centre.
     entry.pill.style.opacity = String(
-      !onWheel ? 0 : active ? Math.max(0.95, Math.pow(circle, 0.75)) : Math.pow(circle, 0.75),
+      !onWheel ? 0 : active ? 1 : Math.max(0.65, 1 - tuck * 0.4),
     );
     entry.pill.classList.toggle('active', active);
   }

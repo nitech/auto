@@ -604,9 +604,9 @@ button.icon {
   transition: opacity 0.18s ease;
 }
 
-/* While the labeled timeline is open, chat steps back so the pills lead. */
+/* While the labeled timeline is open, chat steps well back so the pills lead. */
 .scroller:has(#chat-scrub[data-mode='scrub']) #transcript {
-  opacity: 0.42;
+  opacity: 0.18;
 }
 
 /* A column of flex items that scrolls will shrink them to fit the space it has
@@ -2344,7 +2344,7 @@ button.icon.active {
 
 /*
  * Soft veil behind the label wheel so transcript text cannot fight the pills.
- * Anchored on the right edge — same buried-circle idea as the widths.
+ * Anchored on the right edge — labels tuck under the grip from that side.
  */
 #chat-scrub[data-mode='scrub']::before {
   content: '';
@@ -2393,7 +2393,7 @@ button.icon.active {
   position: absolute;
   right: 0;
   transform: translateY(-50%);
-  width: 22px;
+  width: max-content;
   max-width: min(260px, 72vw);
   min-width: 0;
   padding: 5px 12px;
@@ -2409,10 +2409,9 @@ button.icon.active {
   text-overflow: ellipsis;
   box-sizing: border-box;
   box-shadow: var(--shadow-sm);
-  will-change: top, width, opacity;
-  /* top/width must track the finger with no lag — a delayed top + live opacity
-   * lets fully readable labels slide in from past the pane ends. Colour alone
-   * can ease when a pill becomes active. */
+  will-change: top, transform, opacity;
+  /* top/transform track the finger with no lag. Colour alone can ease when
+   * a pill becomes active. */
   transition:
     color 0.12s ease,
     background-color 0.12s ease;

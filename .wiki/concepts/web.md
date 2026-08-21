@@ -23,7 +23,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-21T12:15:00Z }
+generated: { by: agent, at: 2026-08-21T12:30:00Z }
 ---
 
 # Web app
@@ -133,19 +133,18 @@ meta also asks for `interactive-widget=resizes-content` where supported.
 - While scrolling a long chat, a flush right-edge grip appears (rounded on
   the left, drag ridges — Google Photos style). Grabbing it expands a labeled
   timeline **to the left of the thumb** — your messages, questions, plans, and
-  approvals — and the chat text fades slightly so the pills lead. Labels
+  approvals — and the chat text dims hard so the pills lead. Labels
   follow the finger continuously; only the chat content snaps to landmarks,
   so the wheel does not jitter under a magnetic latch. The timeline
   spans the chat pane and keeps 32px of air beyond the
   28px grip, so the finger never covers the labels without disconnecting them
   visually. It is a rotary wheel: moving the grip down moves the evenly spaced
   label stack up. Every landmark remains on the wheel, including those beyond
-  the viewport. Pill widths follow a semicircle (`sqrt(r²-y²)`), widest at
-  vertical centre (~260px) and tapering/fading to nothing at the top and bottom; past
-  that radius each pill is `visibility: hidden` and the timeline clips
-  (`overflow: hidden`). Pill `top` updates with no CSS transition so opacity
-  and position stay locked while the grip moves fast — a delayed top used to
-  let readable labels slide in from past the pane ends. Active only changes
+  the viewport. Pills keep a fixed width (~260px max) and tuck under the grip
+  — they slide out from the right below the handle and slide back into the
+  right above it. Past the rim each pill is `visibility: hidden` and the
+  timeline clips (`overflow: hidden`). Pill `top` and `translateX` update with
+  no CSS transition so they stay locked to the finger. Active only changes
   text colour — now with a kind-coloured ring and brighter fill
   so the centre label reads as the focus. A radial veil anchored on the right
   edge sits behind the wheel so transcript text cannot wash out the pills.

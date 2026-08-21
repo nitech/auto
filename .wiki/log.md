@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Update**: Scrub labels keep a fixed width and tuck under the grip (slide out below the handle, slide away above it); chat dims harder (18%) while scrubbing.
 * **Update**: Scrub labels are wider (~260px) and follow the finger continuously; only the chat content snaps to landmarks, so the wheel no longer jitters under the magnetic latch.
 * **Update**: Chat text fades slightly while the scrub timeline is open so the landmark pills lead.
 * **Fix**: Fast scrubbing no longer lets timeline labels slide past the top/bottom of the pane — pill `top` tracks instantly, off-wheel pills hide hard, and the timeline clips.
