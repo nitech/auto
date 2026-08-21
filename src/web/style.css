@@ -258,27 +258,21 @@ html[data-standalone] #app {
 
 #session-list {
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
   padding: 4px 8px 8px;
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-height: 0;
+  -webkit-overflow-scrolling: touch;
 }
 
-/* Chats and Projects share the rail as two accordion rows — both headers
-   stay visible; only the open section scrolls. */
+/* Chats and Projects are two accordion rows. The list itself scrolls —
+   nested overflow on <details> never got a height bound, so the rail
+   could not scroll. */
 .rail-section {
   flex: 0 0 auto;
   border-radius: 8px;
-}
-
-.rail-section[open] {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
 }
 
 .rail-section > summary {
@@ -301,16 +295,11 @@ html[data-standalone] #app {
 .rail-section > summary:hover { background: var(--bg-3); }
 
 .rail-section-body {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding-bottom: 4px;
 }
-
-#app.rail-dragging .rail-section-body { overflow: hidden; }
 
 /* Projects head their sessions, the way the desktop groups them. */
 .project {
