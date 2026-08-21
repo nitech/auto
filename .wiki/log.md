@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-21
+* **Update**: Usage sheet omits the chat cost line when Cursor wrote no figure — no more "Est. cost not recorded yet".
 * **Update**: Stopping a turn puts the prompt back in Auto's composer (and off the stream) so it can be edited and resent — Cursor's box is still cleared so a phone can reach the chat; Telegram gets the words as a draft.
 * **Fix**: Session-rail hamburger — accordion open state survived redraws (teardown `toggle` no longer writes "neither"); swipe click-guard expires so the next open switches chats on the first tap.
 * **Update**: Idle scrub grip docks into the right edge as a peek (no fade); scroll or tap slides it out.

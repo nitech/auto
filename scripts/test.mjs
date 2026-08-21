@@ -2179,7 +2179,11 @@ if (existsSync(SRC)) {
     failed = true;
   }
   if (!js.includes('contextTokensUsed') || !js.includes('Est. ') || !js.includes('usage-hero-cost')) {
-    fail('usage sheet must show context tokens used/max and estimated chat cost');
+    fail('usage sheet must show context tokens used/max and estimated chat cost when Cursor wrote one');
+    failed = true;
+  }
+  if (js.includes('cost not recorded yet')) {
+    fail('usage sheet must not show an empty cost placeholder');
     failed = true;
   }
   const pickerCss = css.slice(css.indexOf('.composer-controls select {'));

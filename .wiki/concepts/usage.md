@@ -17,7 +17,7 @@ sources:
   - id: web
     resource: /src/web/app.js
     title: Dial and usage sheet
-generated: { by: agent, at: 2026-08-17T08:10:00Z }
+generated: { by: agent, at: 2026-08-21T19:05:00Z }
 ---
 
 # Usage dial and account quotas
@@ -45,7 +45,9 @@ From `composerData:<threadId>` in Cursor's `state.vscdb`:
   still read Auto-select on a desktop chat whose picker is a named model,
   because Auto only records `model` after a change made through Auto
 - `usageData.*.costInCents` — summed across every model key Cursor wrote
-  (not only `default`), shown as estimated cost for this chat; often empty
+  (not only `default`). Shown as estimated cost for this chat **only when
+  Cursor wrote a figure**; otherwise the line is omitted (Cursor often leaves
+  `usageData` empty)
 - bubble `tokenCount`s summed when present; usually zero on recent builds
 
 The IDE chat chrome does not show last-sent model separately from the picker.

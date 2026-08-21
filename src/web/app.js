@@ -3937,13 +3937,11 @@ function renderUsageSheet(msg) {
     <div class="usage-hero-copy">
       <strong>${Number.isFinite(pct) ? `${Math.round(pct)}%` : '—'}</strong>
       <span>${tokenLine || `of context used${session.maxMode ? ' · Max Mode' : ''}`}</span>
-      <span class="usage-hero-cost">${
+      ${
         session.costCents != null
-          ? `Est. ${money(session.costCents / 100)} this chat`
-          : Number.isFinite(pct)
-            ? 'Est. cost not recorded yet'
-            : ''
-      }</span>
+          ? `<span class="usage-hero-cost">Est. ${money(session.costCents / 100)} this chat</span>`
+          : ''
+      }
     </div>
   </div>`);
   if (hasTokens && session.contextAssumed) {
