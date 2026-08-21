@@ -206,7 +206,8 @@ function decorate(root) {
 
 /** The jump button only earns its place once you have scrolled away. */
 function syncToBottom() {
-  els.toBottom.hidden = nearBottom();
+  // Scrubbing owns the right edge — the ↓ would fight the grip.
+  els.toBottom.hidden = state.scrubbing || nearBottom();
 }
 
 /**
@@ -500,6 +501,7 @@ function enterScrubMode() {
   clearTimeout(state.scrubHide);
   els.scrub.hidden = false;
   els.scrub.dataset.active = '1';
+  els.toBottom.hidden = true;
   if (state.scrubTimelineDirty) rebuildScrubTimeline();
   setScrubMode('scrub');
   syncScrubHandle();
@@ -513,6 +515,7 @@ function leaveScrubMode() {
   setScrubMode('hint');
   // Rebuild so secondary pills regain their resting tops/widths.
   state.scrubTimelineDirty = true;
+  syncToBottom();
   state.scrubHide = setTimeout(() => hideScrub(), 900);
 }
 
@@ -534,13 +537,14 @@ function hideScrub(force = false) {
 }
 
 function onTranscriptScroll() {
-  els.toBottom.hidden = nearBottom();
-  if (state.replaying) return;
   if (state.scrubbing) {
+    els.toBottom.hidden = true;
     syncScrubHandle();
     syncScrubActive();
     return;
   }
+  els.toBottom.hidden = nearBottom();
+  if (state.replaying) return;
   showScrubHint();
 }
 
