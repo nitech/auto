@@ -368,16 +368,11 @@ function syncToBottom() {
  * chat, not every tool card. Order matches the DOM.
  */
 function scrubLandmarks() {
-  return [
-    ...els.transcript.querySelectorAll(
-      '.msg.user, .ask, .created-plan, .perm, .msg.agent[data-scrub="answer"]',
-    ),
-  ];
+  return [...els.transcript.querySelectorAll('.msg.user, .ask, .created-plan, .perm')];
 }
 
 function scrubKindOf(el) {
   if (el.classList.contains('user')) return 'you';
-  if (el.dataset.scrub === 'answer') return 'answer';
   if (el.classList.contains('ask')) return 'question';
   if (el.classList.contains('created-plan')) return 'plan';
   if (el.classList.contains('perm')) return 'approval';
@@ -390,12 +385,6 @@ function scrubLabel(el) {
     if (t) return { kind: 'You', text: t };
     if (el.querySelector('.thumbs, .cap')) return { kind: 'You', text: 'Image' };
     return { kind: 'You', text: 'Message' };
-  }
-  if (el.dataset.scrub === 'answer') {
-    const t = String(el.dataset.raw || el.textContent || '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    return { kind: 'Answer', text: t || 'Answer' };
   }
   if (el.classList.contains('ask')) {
     const t =
@@ -451,7 +440,6 @@ function scrubLayoutRatio() {
  */
 function rebuildScrubTimeline() {
   if (!els.scrubTimeline) return;
-  ensureAnswerLandmarks();
   const t = els.transcript;
   const h = t.scrollHeight || 1;
   const maxScroll = Math.max(1, t.scrollHeight - t.clientHeight);
@@ -931,38 +919,9 @@ function endTurn(rec) {
   const answer = state.turn?.answer;
   if (answer?.isConnected) answer.before(el);
   else if (!el.isConnected) add(el, { keepStream: true });
-  // Final prose only — unfinished streams stay off the scrub TOC.
-  markAnswerLandmark(answer);
   state.statusEl = null;
   state.turn = null;
   decorate(els.transcript);
-}
-
-/**
- * Tag a finished agent bubble so the scrub wheel can jump to it. Empty or
- * near-empty replies are skipped (tool-only turns).
- */
-function markAnswerLandmark(el) {
-  if (!el?.isConnected) return;
-  const text = String(el.dataset.raw || el.textContent || '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (text.length < 8) return;
-  if (el.dataset.scrub === 'answer') return;
-  el.dataset.scrub = 'answer';
-  markScrubDirty();
-}
-
-/**
- * After a replay (or a rebuild), pair each finished turn-status with the
- * agent bubble that follows it — Cursor writes "Worked for…" just above the
- * answer.
- */
-function ensureAnswerLandmarks() {
-  for (const status of els.transcript.querySelectorAll('.turn-status:not(.live)')) {
-    const ans = status.nextElementSibling;
-    if (ans?.classList.contains('agent')) markAnswerLandmark(ans);
-  }
 }
 
 /**

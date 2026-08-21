@@ -2467,7 +2467,6 @@ button.icon.active {
 }
 
 .scrub-pill[data-kind='you'] { border-left-color: var(--focus); }
-.scrub-pill[data-kind='answer'] { border-left-color: var(--violet); }
 .scrub-pill[data-kind='question'] { border-left-color: var(--green); }
 .scrub-pill[data-kind='plan'] { border-left-color: var(--amber); }
 .scrub-pill[data-kind='approval'] { border-left-color: var(--red); }
@@ -2489,13 +2488,6 @@ button.icon.active {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--focus) 40%, transparent),
     0 6px 18px color-mix(in srgb, var(--focus) 18%, transparent);
-}
-
-.scrub-pill.active[data-kind='answer'] {
-  border-color: color-mix(in srgb, var(--violet) 70%, var(--line-2));
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--violet) 40%, transparent),
-    0 6px 18px color-mix(in srgb, var(--violet) 16%, transparent);
 }
 
 .scrub-pill.active[data-kind='question'] {
