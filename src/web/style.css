@@ -591,6 +591,8 @@ html[data-standalone] #app {
   align-items: center;
   gap: 10px;
   padding: max(10px, env(safe-area-inset-top, 0px)) 16px 10px;
+  border-top: none;
+  border-bottom: 1px solid var(--line);
   background: var(--bg);
 }
 
@@ -2055,7 +2057,7 @@ html[data-standalone] .composer-controls select {
   /* Full-width baseline; active tab paints over the segment under itself. */
   background:
     linear-gradient(var(--line), var(--line)) left bottom / 100% 1px no-repeat,
-    var(--bg-2);
+    var(--bg);
   overflow-x: auto;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
@@ -2072,6 +2074,7 @@ html[data-standalone] .composer-controls select {
   height: 26px;
   padding: 0 10px;
   border: 1px solid transparent;
+  border-top: none;
   /* Transparent bottom lets the strip baseline show under inactive tabs. */
   border-bottom: 1px solid transparent;
   border-radius: 6px 6px 0 0;
@@ -2092,6 +2095,7 @@ html[data-standalone] .composer-controls select {
 .view-tab.active {
   background: var(--bg);
   border-color: var(--line);
+  border-top: none;
   /* Same colour as the panel — covers the baseline under this tab only. */
   border-bottom-color: var(--bg);
   color: var(--text);
