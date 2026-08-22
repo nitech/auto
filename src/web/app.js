@@ -47,6 +47,10 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
+/** Build stamped into index.html; compared to the host on reconnect and poll. */
+const WEB_BUILD = document.querySelector('meta[name="auto-build"]')?.content || '';
+let updateBannerShown = false;
+
 const els = {
   app: $('app'),
   rail: $('session-list'),
@@ -2833,6 +2837,30 @@ function attach(sessionId) {
   });
 }
 
+/**
+ * The host fingerprints every file under src/web. When it changes — after a
+ * deploy or restart — the running PWA still has the old shell and may be
+ * drawing records with stale code; say so and offer a reload.
+ */
+function noteWebBuild(build) {
+  if (!build || !WEB_BUILD || build === WEB_BUILD || updateBannerShown) return;
+  updateBannerShown = true;
+  const bar = $('update-banner');
+  if (!bar) return;
+  bar.hidden = false;
+}
+
+async function checkWebBuild() {
+  try {
+    const res = await fetch('/api/health', { cache: 'no-store' });
+    if (!res.ok) return;
+    const body = await res.json();
+    if (body.webBuild) noteWebBuild(body.webBuild);
+  } catch {
+    /* host may be restarting */
+  }
+}
+
 /** Rail header + Settings Host both read from this. */
 function setConn(kind, label) {
   els.conn.className = kind === 'ok' ? 'dot ok'
@@ -2878,6 +2906,7 @@ function connect() {
     const msg = JSON.parse(e.data);
 
     if (msg.type === 'hello') {
+      if (msg.webBuild) noteWebBuild(msg.webBuild);
       state.sessions = msg.sessions;
       if (msg.chats) state.chats = msg.chats;
       if (msg.host) applyHost(msg.host);
@@ -4044,7 +4073,10 @@ document.addEventListener('visibilitychange', () => {
   }
   if (state.ws?.readyState !== 1) connect();
   if (state.sessionId) refreshUsage();
+  checkWebBuild();
 });
+$('update-reload')?.addEventListener('click', () => location.reload());
+setInterval(checkWebBuild, 5 * 60 * 1000);
 window.addEventListener('pagehide', () => {
   if (state.sessionId) flushDiskSave(state.sessionId);
 });

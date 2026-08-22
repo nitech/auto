@@ -1,6 +1,7 @@
 # Directory Update Log
 
 ## 2026-08-22
+* **Update**: PWA detects a newer web build (`webBuild` fingerprint) on reconnect and foreground poll, and shows a reload banner when the host has moved on.
 * **Fix**: Scrubber scrolls the chat so the active landmark's message sits at the top of the viewport (was ~28% down and only snapped in a narrow rail band).
 * **Fix**: Markdown table columns cap at 28em with word wrap — scroll only when wrapped columns still overflow, not `max-content` no-wrap.
 * **Fix**: Mermaid bomb errors — fences must start a line (so `` ` ```mermaid ` `` in prose is not a diagram), `$…$` no longer runs inside inline code, and failed parses show source text instead of Mermaid's error SVG.

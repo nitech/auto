@@ -2626,11 +2626,23 @@ if (existsSync(SRC)) {
     fail('the host must fingerprint css/js in the shell and not let iOS store a stale index.html');
     failed = true;
   }
+  if (!server.includes('webBuildId') || !server.includes('webBuild:')) {
+    fail('the host must expose a web build id so the PWA can detect a newer shell');
+    failed = true;
+  }
+  if (!html.includes('name="auto-build"') || !html.includes('id="update-banner"')) {
+    fail('the PWA shell must carry its build id and an update banner');
+    failed = true;
+  }
+  if (!js.includes('noteWebBuild') || !js.includes('checkWebBuild') || !js.includes('/api/health')) {
+    fail('the web client must poll for a newer build and show a reload banner');
+    failed = true;
+  }
   if (!failed) ok('v2 web: Home Screen install (favicon, Apple tags, icons)');
 }
 
 {
-  const { stampHtml } = await import('../src/web/stamp.mjs');
+  const { stampHtml, stampBuild, webBuildId } = await import('../src/web/stamp.mjs');
   const out = stampHtml(
     '<link href="/style.css" /><script src="/app.js"></script><link href="/style.css?v=old" /><link href="/apple-touch-icon.png" /><link href="/icon.svg" />',
     (p) => ({ '/style.css': 'aaa', '/app.js': 'bbb' }[p] || 'x'),
@@ -2643,6 +2655,17 @@ if (existsSync(SRC)) {
     fail(`icon URLs must stay clean, got ${out}`);
   } else {
     ok('v2 web: css/js URLs are fingerprinted from size+mtime');
+  }
+
+  const tag = (p) => ({ '/app.js': 'a', '/style.css': 'b' }[p] || 'x');
+  const build = webBuildId(tag);
+  const built = stampBuild('<meta name="auto-build" content="" />', build);
+  if (!built.includes(`content="${build}"`)) {
+    fail(`stampBuild must inject the web build id, got ${built}`);
+  } else if (webBuildId((p) => (p === '/app.js' ? 'new' : tag(p))) === build) {
+    fail('webBuildId must change when an asset tag changes');
+  } else {
+    ok('v2 web: web build id fingerprints first-party assets');
   }
 }
 
@@ -5084,8 +5107,10 @@ try {
       fail('/api/health should say how many agents run and how many chats are watched');
     } else if (body.live > body.sessions) {
       fail(`/api/health claims ${body.live} live of ${body.sessions} sessions`);
+    } else if (typeof body.webBuild !== 'string' || !body.webBuild) {
+      fail('/api/health should include a webBuild fingerprint for update detection');
     } else {
-      ok(`host reports ${body.live} live agent(s), ${body.watching} watched chat(s)`);
+      ok(`host reports ${body.live} live agent(s), ${body.watching} watched chat(s), webBuild ${body.webBuild}`);
     }
 
     // The client is cached and revalidated rather than re-sent. Half a megabyte

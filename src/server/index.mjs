@@ -25,7 +25,7 @@ import {
   gateState,
   storageAvailable,
 } from '../core/desktop-bridge-gate.mjs';
-import { fileTag, stampHtml } from '../web/stamp.mjs';
+import { fileTag, stampBuild, stampHtml, webBuildId } from '../web/stamp.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
@@ -567,7 +567,8 @@ function serveStatic(req, res) {
   const ext = rel.slice(rel.lastIndexOf('.'));
   try {
     if (rel === '/index.html') {
-      const html = stampHtml(readFileSync(file, 'utf8'), assetTag);
+      const build = webBuildId(assetTag);
+      const html = stampBuild(stampHtml(readFileSync(file, 'utf8'), assetTag), build);
       const etag = `W/"${createHash('sha1').update(html).digest('base64url').slice(0, 16)}"`;
       const headers = {
         'Content-Type': CONTENT_TYPES['.html'],
@@ -656,6 +657,7 @@ async function route(req, res) {
       watching: sessions.watchingCount(),
       activeId: sessions.activeId,
       telegram: telegram.running,
+      webBuild: webBuildId(assetTag),
       ...hostIdentity.snapshot(),
     });
   }
@@ -748,6 +750,7 @@ wss.on('connection', async (ws, req) => {
     policies: Object.values(POLICY),
     chats: recentChats(),
     host: hostIdentity.snapshot(),
+    webBuild: webBuildId(assetTag),
   });
   // A client says which chat it was in, in the URL, because the first thing
   // this socket does is replay and there is no room for a question first. A

@@ -29,7 +29,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-22T15:40:00Z }
+generated: { by: agent, at: 2026-08-22T16:00:00Z }
 ---
 
 # Web app
@@ -83,7 +83,12 @@ the visual viewport and forces 8px under the composer — never
 with the keyboard up. The shell is `Cache-Control: no-store`; every
 css/js URL in it is stamped `?v=<size>-<mtime>` on the way out, so a
 change is a new URL and the installed app downloads it instead of
-keeping the first stylesheet it ever saw.
+keeping the first stylesheet it ever saw. A `webBuild` fingerprint hashes
+every first-party file under `src/web`; it is stamped into
+`<meta name="auto-build">`, returned by `/api/health`, and sent on the
+WebSocket `hello`. The client compares that to what it loaded: on mismatch
+(a host restart after a deploy) it shows a reload banner, and polls again
+when the tab comes back to the foreground.
 
 The composer floats over the transcript: no hairline above the box.
 Messages scroll through a short fade and under the field. A measured

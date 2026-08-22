@@ -596,6 +596,37 @@ html[data-standalone] #app {
   background: var(--bg);
 }
 
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.update-banner[hidden] {
+  display: none;
+}
+
+.update-banner button {
+  flex: 0 0 auto;
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--primary-fg);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.update-banner button:hover {
+  background: var(--primary-hover);
+}
+
 /* The title outranks the pickers: it keeps a floor of its own so a long model
    name cannot squeeze it to nothing, which is what used to happen. */
 .titles {

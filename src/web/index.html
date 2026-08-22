@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Auto" />
+<meta name="auto-build" content="" />
 <title>Auto</title>
 <link rel="manifest" href="/manifest.webmanifest" />
 <!-- Three tags cover every browser: .ico for old ones and Safari, the SVG for
@@ -159,6 +160,11 @@
         </svg>
       </button>
     </header>
+
+    <div id="update-banner" class="update-banner" hidden role="status">
+      <span>A new version is available — reload to refresh the app and transcript.</span>
+      <button type="button" id="update-reload">Reload</button>
+    </div>
 
     <!-- Chat is always first; browser and each shell open as closable tabs. -->
     <nav id="view-tabs" class="view-tabs" hidden role="tablist" aria-label="Views"></nav>
