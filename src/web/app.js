@@ -18,6 +18,7 @@ import {
 } from './terminals.js';
 import { lineDiff, collapseContext, diffStats } from './diff.js';
 import { renderMarkdown, linkify } from './markdown.js';
+import { enrichMarkdown } from './enrich.js';
 import { initBrowser, onFrame, onStatus } from './browser.js';
 import { initWorkspace, isOpen as workspaceIsOpen, showChat, onViewsChange, restoreViews } from './workspace.js';
 import {
@@ -416,6 +417,7 @@ function decorate(root) {
   const msgs =
     root.matches?.('.msg.agent') ? [root] : [...(root.querySelectorAll?.('.msg.agent') ?? [])];
   for (const msg of msgs) syncAgentMdCopy(msg);
+  enrichMarkdown(root);
 }
 
 /**
@@ -548,8 +550,8 @@ function rebuildScrubTimeline() {
   const maxScroll = Math.max(1, t.scrollHeight - t.clientHeight);
   const marks = scrubLandmarks();
   const entries = marks.map((el, i) => {
-    const topPx = el.offsetTop;
-    const nextTop = i + 1 < marks.length ? marks[i + 1].offsetTop : h;
+    const topPx = scrubScrollTopFor(el);
+    const nextTop = i + 1 < marks.length ? scrubScrollTopFor(marks[i + 1]) : h;
     const span = Math.max(1, nextTop - topPx);
     return {
       el,
@@ -637,27 +639,37 @@ function layoutScrubWheel() {
   }
 }
 
-function nearestScrubEntry(y) {
+/** Scroll position that puts a landmark's top flush with the viewport top. */
+function scrubScrollTopFor(el) {
+  const t = els.transcript;
+  const max = Math.max(0, t.scrollHeight - t.clientHeight);
+  const top = el.getBoundingClientRect().top - t.getBoundingClientRect().top + t.scrollTop;
+  return Math.max(0, Math.min(max, Math.round(top)));
+}
+
+/** Wheel/finger ratio → the landmark index highlighted on the rail. */
+function activeScrubIndex(ratio) {
+  const entries = state.scrubEntries;
+  if (!entries.length) return 0;
+  const progress = scrubWheelProgress(ratio);
+  return Math.max(0, Math.min(entries.length - 1, Math.round(progress)));
+}
+
+/** Which landmark best matches the transcript's current scroll position. */
+function nearestScrubEntryByScrollTop(scrollTop = els.transcript.scrollTop) {
   const entries = state.scrubEntries;
   if (!entries.length) return null;
   let best = entries[0];
   let bestDist = Infinity;
   for (const entry of entries) {
-    const mid = entry.el.offsetTop + entry.el.offsetHeight / 2;
-    const d = Math.abs(mid - y);
+    const top = scrubScrollTopFor(entry.el);
+    const d = Math.abs(top - scrollTop);
     if (d < bestDist) {
       bestDist = d;
       best = entry;
     }
   }
   return best;
-}
-
-/** Scroll so the landmark sits at the same reading line used for “active”. */
-function scrubScrollTopFor(el) {
-  const t = els.transcript;
-  const max = Math.max(0, t.scrollHeight - t.clientHeight);
-  return Math.max(0, Math.min(max, el.offsetTop - t.clientHeight * 0.28));
 }
 
 /** Short tick on phones that expose Vibration API (Android Chrome; iOS no-ops). */
@@ -689,32 +701,12 @@ function snapScrubToEntry(entry, { buzz = true } = {}) {
   syncScrubActive();
 }
 
-function nearestScrubByScrollRatio(ratio) {
-  const entries = state.scrubEntries;
-  const t = els.transcript;
-  const max = Math.max(1, t.scrollHeight - t.clientHeight);
-  if (!entries.length) return { entry: null, distPx: Infinity };
-  let best = entries[0];
-  let bestDist = Infinity;
-  for (const entry of entries) {
-    const snapRatio = scrubScrollTopFor(entry.el) / max;
-    const d = Math.abs(snapRatio - ratio);
-    if (d < bestDist) {
-      bestDist = d;
-      best = entry;
-    }
-  }
-  const rail = els.scrub?.getBoundingClientRect().height || t.clientHeight;
-  return { entry: best, distPx: bestDist * Math.max(1, rail - 48) };
-}
-
 function scrubStepLandmark(dir) {
   const entries = state.scrubEntries;
   if (!entries.length) return;
   let idx = entries.findIndex((e) => e.el === state.scrubSnapEl);
   if (idx < 0) {
-    const y = els.transcript.scrollTop + els.transcript.clientHeight * 0.28;
-    const cur = nearestScrubEntry(y);
+    const cur = nearestScrubEntryByScrollTop();
     idx = Math.max(0, entries.indexOf(cur));
   }
   const next = entries[Math.max(0, Math.min(entries.length - 1, idx + dir))];
@@ -851,26 +843,20 @@ function scrubToClientY(clientY) {
     return;
   }
 
-  const { entry, distPx } = nearestScrubByScrollRatio(ratio);
-  if (entry && distPx <= SCRUB_SNAP_PX) {
-    // Snap the transcript only — leave scrubDriveRatio alone so the wheel
-    // does not jump to the latch point and jitter under the finger.
-    if (state.scrubSnapEl !== entry.el) {
+  const entries = state.scrubEntries;
+  if (entries.length) {
+    const entry = entries[activeScrubIndex(ratio)];
+    if (entry && state.scrubSnapEl !== entry.el) {
       state.scrubSnapEl = entry.el;
       scrubBuzz();
+    } else if (entry) {
+      state.scrubSnapEl = entry.el;
     }
+    // Active pill on the wheel → that landmark's message at the viewport top.
     t.scrollTop = scrubScrollTopFor(entry.el);
-    t.style.scrollBehavior = prev;
-    syncScrubHandle();
-    syncScrubActive();
-    return;
+  } else {
+    t.scrollTop = ratio * max;
   }
-  // Free scrub — clear the latch once the finger leaves the snap zone so the
-  // next approach can buzz again.
-  if (state.scrubSnapEl && distPx > SCRUB_SNAP_PX * 1.6) {
-    state.scrubSnapEl = null;
-  }
-  t.scrollTop = ratio * max;
   t.style.scrollBehavior = prev;
   syncScrubHandle();
   syncScrubActive();
@@ -1266,6 +1252,7 @@ function renderStreaming(rec) {
     const floor = Math.max(body.offsetHeight, parseFloat(body.style.minHeight) || 0);
     body.innerHTML = markdown(state.stream.dataset.raw);
     body.style.minHeight = `${Math.max(floor, body.offsetHeight)}px`;
+    enrichMarkdown(body);
   }
   scrollDown(stick);
 }
@@ -1872,6 +1859,7 @@ function openPlanView(card) {
   els.planBody.innerHTML = fields.markdown
     ? markdown(fields.markdown)
     : '<p class="sheet-note">No plan text yet.</p>';
+  enrichMarkdown(els.planBody);
   els.planBody.scrollTop = 0;
   fillPlanModels(els.planBuildModel);
   const fromCard = card.querySelector('.build-model')?.value;
@@ -1985,7 +1973,10 @@ function paintCreatedPlan(card, rec) {
   // streams more of it in.
   if (!els.planSheet.hidden && card.rec?.toolCallId && card.rec.toolCallId === state.openPlanId) {
     els.planSheetTitle.textContent = fields.name || 'Plan';
-    if (fields.markdown) els.planBody.innerHTML = markdown(fields.markdown);
+    if (fields.markdown) {
+      els.planBody.innerHTML = markdown(fields.markdown);
+      enrichMarkdown(els.planBody);
+    }
   }
   paintPlanActions(card);
 }

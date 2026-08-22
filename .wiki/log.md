@@ -1,6 +1,10 @@
 # Directory Update Log
 
 ## 2026-08-22
+* **Fix**: Scrubber scrolls the chat so the active landmark's message sits at the top of the viewport (was ~28% down and only snapped in a narrow rail band).
+* **Fix**: Markdown table columns cap at 28em with word wrap — scroll only when wrapped columns still overflow, not `max-content` no-wrap.
+* **Fix**: Mermaid bomb errors — fences must start a line (so `` ` ```mermaid ` `` in prose is not a diagram), `$…$` no longer runs inside inline code, and failed parses show source text instead of Mermaid's error SVG.
+* **Update**: Web markdown now renders Mermaid diagrams, KaTeX math, and GitHub callouts (`> [!NOTE]` etc.) — `markdown.js` emits containers, `enrich.js` paints them from `/vendor/mermaid.mjs` and `/vendor/katex.mjs`.
 * **Fix**: Streaming answers no longer jump the scroll — stick-to-bottom is instant (coalesced), `#transcript` dropped CSS smooth scroll, and live agent bubbles pin min-height so incomplete markdown cannot collapse.
 * **Update**: Markdown copy on long agent answers is a quiet right-aligned clipboard icon (check on success), not a text label.
 * **Update**: Long agent answers on the web get a **Copy markdown** footer — raw source stays on the bubble (`data-raw` / `.agent-body` split) so streaming does not wipe the button.

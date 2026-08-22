@@ -815,19 +815,24 @@ details.think,
 .msg.agent del { color: var(--faint); }
 .msg.agent hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 
-/* A wide table scrolls within the bubble rather than crushing the chat. */
-.msg.agent table {
-  display: block;
+/* Tables: cells wrap within a column cap; the wrap scrolls when columns add up. */
+.msg.agent .table-wrap {
   max-width: 100%;
   overflow-x: auto;
-  border-collapse: collapse;
+  -webkit-overflow-scrolling: touch;
   margin: 0 0 10px;
+}
+.msg.agent .table-wrap table {
+  border-collapse: collapse;
   font-size: 13px;
 }
 .msg.agent th, .msg.agent td {
   border: 1px solid var(--line-2);
   padding: 4px 9px;
   text-align: left;
+  max-width: 28em;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 .msg.agent th { background: var(--bg-3); font-weight: 600; }
 
@@ -838,6 +843,70 @@ details.think,
   color: var(--muted);
 }
 .msg.agent blockquote p:last-child { margin-bottom: 0; }
+
+/* Mermaid diagrams — source text until enrich.js paints SVG. */
+.diagram {
+  margin: 8px 0;
+  padding: 11px 13px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+.diagram:not([data-rendered]) {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre;
+}
+.diagram svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+.diagram.diagram-error:not([data-rendered]) {
+  color: var(--muted);
+}
+
+/* KaTeX math — enrich.js fills .math nodes. */
+.math-block {
+  margin: 8px 0;
+  overflow-x: auto;
+}
+.math:not([data-rendered]) {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.math-inline:not([data-rendered])::before { content: '$'; }
+.math-inline:not([data-rendered])::after { content: '$'; }
+.math-block:not([data-rendered])::before { content: '$$'; display: block; }
+.math-block:not([data-rendered])::after { content: '$$'; display: block; }
+
+/* GitHub callouts (`> [!NOTE]` etc.). */
+.callout {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  background: var(--bg-2);
+}
+.callout-title {
+  display: block;
+  font-weight: 650;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+.callout p:last-child { margin-bottom: 0; }
+.callout-note { border-left-color: #3b82f6; }
+.callout-tip { border-left-color: #22c55e; }
+.callout-important { border-left-color: #a855f7; }
+.callout-warning { border-left-color: #f59e0b; }
+.callout-caution { border-left-color: #ef4444; }
 
 code {
   font-family: var(--mono);
@@ -1334,12 +1403,15 @@ details.think .body {
   -webkit-overflow-scrolling: touch;
 }
 
-.plan-body table {
-  display: block;
+.plan-body .table-wrap {
   max-width: 100%;
   overflow-x: auto;
-  border-collapse: collapse;
+  -webkit-overflow-scrolling: touch;
   margin: 0 0 10px;
+}
+
+.plan-body .table-wrap table {
+  border-collapse: collapse;
   font-size: 13px;
 }
 
@@ -1348,6 +1420,9 @@ details.think .body {
   border: 1px solid var(--line-2);
   padding: 4px 9px;
   text-align: left;
+  max-width: 28em;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .plan-body th { background: var(--bg-3); font-weight: 600; }

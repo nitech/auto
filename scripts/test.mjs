@@ -1885,7 +1885,14 @@ if (existsSync(SRC)) {
     has('## Title', ['<h4>Title</h4>']);
     has('---', ['<hr>']);
     has('> quoted', ['<blockquote><p>quoted</p></blockquote>']);
-    has('| a | b |\n|---|---|\n| 1 | 2 |', ['<table>', '<th>a</th>', '<td>2</td>', '</table>']);
+    has('| a | b |\n|---|---|\n| 1 | 2 |', [
+      '<div class="table-wrap">',
+      '<table>',
+      '<th>a</th>',
+      '<td>2</td>',
+      '</table>',
+      '</div>',
+    ]);
     has('- one\n  - two', ['<ul><li>one<ul><li>two</li></ul></li></ul>']);
     has('- [x] done\n- [ ] todo', ['checkbox', 'checked']);
     has('1. first\n2. second', ['<ol><li>first</li><li>second</li></ol>']);
@@ -1893,6 +1900,20 @@ if (existsSync(SRC)) {
     // Emphasis must not reach inside code, inline or fenced.
     has('`**not bold**`', ['<code>**not bold**</code>']);
     has('```js\n**x**\n```', ['<pre><code data-lang="js">**x**</code></pre>']);
+    has('```mermaid\nflowchart TB\n  A --> B\n```', ['<div class="diagram diagram-mermaid">', 'flowchart TB']);
+    // Documenting fence syntax inline must not open a diagram block.
+    if (renderMarkdown('use ` ```mermaid ` in prose').includes('diagram-mermaid')) {
+      fail('a mid-line ``` must not start a fenced block');
+      failed = true;
+    }
+    // Math delimiters inside inline code are prose, not formulas.
+    if (renderMarkdown('the `$x$` variable').includes('math-inline')) {
+      fail('$…$ inside inline code must stay code');
+      failed = true;
+    }
+    has('$$E = mc^2$$', ['<div class="math math-block">', 'E = mc^2']);
+    has('see $x^2$ here', ['<span class="math math-inline">', 'x^2']);
+    has('> [!NOTE]\n> Remember this', ['<aside class="callout callout-note">', 'callout-title', 'NOTE']);
     // Identifiers are everywhere in agent prose; intraword `_` is not emphasis.
     if (renderMarkdown('foo_bar_baz').includes('<em>')) {
       fail('snake_case must not italicise');
@@ -1913,11 +1934,39 @@ if (existsSync(SRC)) {
       fail('user bubbles must turn urls into links without running markdown');
       failed = true;
     }
+    const css = readFileSync(join(ROOT, 'src/web/style.css'), 'utf8');
+    if (!css.includes('.table-wrap') || !css.includes('max-width: 28em')) {
+      fail('table cells must cap column width and wrap before scrolling');
+      failed = true;
+    }
 
     if (!failed) ok('v2 web: markdown — tables, quotes, nested lists, code, escaping');
   } catch (e) {
     fail(`v2 markdown: ${e.message}`);
   }
+}
+
+// Mermaid and KaTeX ship as vendor assets; enrich.js paints them after markdown.
+{
+  const server = readFileSync(join(ROOT, 'src/server/index.mjs'), 'utf8');
+  const html = readFileSync(join(ROOT, 'src/web/index.html'), 'utf8');
+  const app = readFileSync(join(ROOT, 'src/web/app.js'), 'utf8');
+  let failed = false;
+  for (const bit of ['/vendor/mermaid/', '/vendor/katex/']) {
+    if (!server.includes(bit)) {
+      fail(`server must vend ${bit}`);
+      failed = true;
+    }
+  }
+  if (!html.includes('/vendor/katex/katex.min.css')) {
+    fail('index.html must load katex.css');
+    failed = true;
+  }
+  if (!app.includes("from './enrich.js'") || !app.includes('enrichMarkdown')) {
+    fail('app.js must enrich markdown with diagrams and math');
+    failed = true;
+  }
+  if (!failed) ok('v2 web: mermaid + katex vendor + enrich hook');
 }
 
 // Long agent answers keep their markdown source on the bubble so a footer
@@ -2720,9 +2769,15 @@ if (existsSync(SRC)) {
     !js.includes('navigator.vibrate') ||
     !js.includes(".msg.user, .ask, .created-plan, .perm") ||
     !js.includes('scrubDriveRatio') ||
-    !js.includes('scrubPointer')
+    !js.includes('scrubPointer') ||
+    !js.includes('function activeScrubIndex') ||
+    !js.includes('getBoundingClientRect().top')
   ) {
     fail('app.js must drive the two-mode scrubber from transcript landmarks; labels follow the finger while chat snaps');
+    failed = true;
+  }
+  if (js.includes('clientHeight * 0.28')) {
+    fail('scrub landmarks must align to the viewport top, not a 28% reading line');
     failed = true;
   }
   if (!css.includes('opacity: 0.18') || !css.includes(".scroller:has(#chat-scrub[data-mode='scrub']) #transcript")) {

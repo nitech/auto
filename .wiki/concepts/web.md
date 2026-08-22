@@ -14,6 +14,12 @@ sources:
   - id: css
     resource: /src/web/style.css
     title: Chrome
+  - id: md
+    resource: /src/web/markdown.js
+    title: Markdown parser
+  - id: enrich
+    resource: /src/web/enrich.js
+    title: Diagram and math rendering
   - id: tools
     resource: /src/web/desktop-tool-ui.js
     title: Desktop tool lanes
@@ -23,7 +29,7 @@ sources:
   - id: icon
     resource: /src/web/icon.svg
     title: App icon
-generated: { by: agent, at: 2026-08-22T00:35:00Z }
+generated: { by: agent, at: 2026-08-22T15:40:00Z }
 ---
 
 # Web app
@@ -175,8 +181,9 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   text colour — now with a kind-coloured ring and brighter fill
   so the centre label reads as the focus. A radial veil anchored on the right
   edge sits behind the wheel so transcript text cannot wash out the pills.
-  Dragging moves freely and only snaps when the finger is a few pixels from a
-  landmark (with a haptic tick). Arrow keys step landmark-to-landmark. Release
+  Dragging scrolls the chat so the **active pill's landmark sits at the top
+  of the viewport** (labels still follow the finger on their own rail).
+  Arrow keys step landmark-to-landmark. Release
   collapses back to the handle, which docks into the right edge as a peek
   when idle (scroll or tap slides it out again). Short chats never
   show it. The ↓ jump-to-newest button is unchanged.
@@ -192,7 +199,14 @@ meta also asks for `interactive-widget=resizes-content` where supported.
   animations cancelled. The ↓ button still scrolls smoothly on its own.
   The live `.agent-body` also pins a `min-height` floor so incomplete
   markdown (open fence, half a table) cannot collapse the bubble and yank
-  the pane; the pin clears when the bubble finishes.
+  the pane; the pin clears when the bubble finishes. **Tables** sit in a
+  `.table-wrap` scroll strip (`overflow-x: auto`) with cells capped at
+  `28em` and `overflow-wrap: break-word` — prose wraps, short columns stay
+  narrow, many columns still scroll sideways. **Mermaid** (` ```mermaid `
+  fences), **KaTeX** math (`$…$`, `$$…$$`, and ` ```math ` fences), and
+  **GitHub callouts** (`> [!NOTE]` etc.) render like Cursor's chat — diagrams
+  and math load from `/vendor/` on demand via `enrich.js` after the HTML is
+  painted; Telegram still gets plain text.
 
 ## Composer
 

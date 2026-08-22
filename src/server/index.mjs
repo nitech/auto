@@ -482,12 +482,16 @@ const OPS = {
 const CONTENT_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.webmanifest': 'application/manifest+json',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
 };
 
 /** Third-party browser assets, served straight out of node_modules. */
@@ -495,6 +499,12 @@ const VENDOR = {
   '/vendor/xterm.js': 'node_modules/@xterm/xterm/lib/xterm.js',
   '/vendor/xterm.css': 'node_modules/@xterm/xterm/css/xterm.css',
   '/vendor/addon-fit.js': 'node_modules/@xterm/addon-fit/lib/addon-fit.js',
+};
+
+/** Trees whose relative imports must stay intact (Mermaid chunks, KaTeX fonts). */
+const VENDOR_DIRS = {
+  '/vendor/mermaid/': 'node_modules/mermaid/dist/',
+  '/vendor/katex/': 'node_modules/katex/dist/',
 };
 
 /**
@@ -514,12 +524,36 @@ const VENDOR = {
  * it instead of keeping the first stylesheet it ever saw.
  */
 function assetTag(urlPath) {
+  for (const [prefix, dir] of Object.entries(VENDOR_DIRS)) {
+    if (urlPath.startsWith(prefix)) {
+      const sub = urlPath.slice(prefix.length);
+      if (!sub.includes('..')) {
+        try {
+          return fileTag(join(ROOT, dir, sub));
+        } catch {
+          return '0';
+        }
+      }
+    }
+  }
   const file = VENDOR[urlPath] ? join(ROOT, VENDOR[urlPath]) : join(WEB, urlPath);
   try {
     return fileTag(file);
   } catch {
     return '0';
   }
+}
+
+function vendorFile(rel) {
+  if (VENDOR[rel]) return join(ROOT, VENDOR[rel]);
+  for (const [prefix, dir] of Object.entries(VENDOR_DIRS)) {
+    if (rel.startsWith(prefix)) {
+      const sub = rel.slice(prefix.length);
+      if (sub.includes('..')) return null;
+      return join(ROOT, dir, sub);
+    }
+  }
+  return null;
 }
 
 function serveStatic(req, res) {
@@ -529,7 +563,7 @@ function serveStatic(req, res) {
     res.writeHead(400).end('bad path');
     return;
   }
-  const file = VENDOR[rel] ? join(ROOT, VENDOR[rel]) : join(WEB, rel);
+  const file = vendorFile(rel) || join(WEB, rel);
   const ext = rel.slice(rel.lastIndexOf('.'));
   try {
     if (rel === '/index.html') {

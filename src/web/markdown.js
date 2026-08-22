@@ -4,8 +4,10 @@
  * Agent prose is untrusted markup, so the source is HTML-escaped before any
  * pattern is applied — formatting can only come from these rules, never from
  * the text itself. Covers what agent replies actually use: fenced code,
- * tables, blockquotes, nested and task lists, headings, rules, links and the
- * usual inline emphasis. A chat is not a book: single newlines stay breaks.
+ * Mermaid diagrams, math, GitHub callouts, tables, blockquotes, nested and
+ * task lists, headings, rules, links and the usual inline emphasis. Diagrams
+ * and math are plain containers here — enrich.js paints them in the browser.
+ * A chat is not a book: single newlines stay breaks.
  */
 
 const esc = (s) =>
@@ -111,6 +113,18 @@ function splitRow(line) {
   return r.split('|').map((c) => c.trim());
 }
 
+const ALERT_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*)$/i;
+
+/** GitHub-style `> [!NOTE]` callouts become asides, not plain quotes. */
+function renderAlert(quote) {
+  const first = (quote[0] || '').trim();
+  const m = ALERT_RE.exec(first);
+  if (!m) return null;
+  const kind = m[1].toLowerCase();
+  const body = [m[2], ...quote.slice(1)].filter((l) => l !== '').join('\n');
+  return `<aside class="callout callout-${kind}"><span class="callout-title">${m[1]}</span>${renderBlocks(body)}</aside>`;
+}
+
 /** The row of dashes that proves the line above it was a table header. */
 function isTableSep(line) {
   const cells = splitRow(line);
@@ -122,7 +136,7 @@ function renderTable(header, aligns, rows) {
   const cells = (row, tag) =>
     row.map((c, n) => `<${tag}${align(n)}>${inline(c)}</${tag}>`).join('');
   const body = rows.map((r) => `<tr>${cells(r, 'td')}</tr>`).join('');
-  return `<table><thead><tr>${cells(header, 'th')}</tr></thead><tbody>${body}</tbody></table>`;
+  return `<div class="table-wrap"><table><thead><tr>${cells(header, 'th')}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function renderBlocks(text) {
@@ -166,7 +180,8 @@ function renderBlocks(text) {
         quote.push(lines[i].replace(/^\s*&gt;\s?/, ''));
         i += 1;
       }
-      out.push(`<blockquote>${renderBlocks(quote.join('\n'))}</blockquote>`);
+      const alert = renderAlert(quote);
+      out.push(alert || `<blockquote>${renderBlocks(quote.join('\n'))}</blockquote>`);
       continue;
     }
 
@@ -209,14 +224,31 @@ function renderBlocks(text) {
   return out.join('');
 }
 
+function fencedBlock(lang, code, blocks) {
+  const body = code.replace(/\n$/, '');
+  const l = String(lang || '').toLowerCase();
+  if (l === 'mermaid') {
+    blocks.push(`<div class="diagram diagram-mermaid">${body}</div>`);
+    return;
+  }
+  if (l === 'math' || l === 'latex') {
+    blocks.push(`<div class="math math-block">${body}</div>`);
+    return;
+  }
+  blocks.push(`<pre><code data-lang="${lang}">${body}</code></pre>`);
+}
+
 export function renderMarkdown(src) {
   const blocks = []; // fenced code, set aside whole
   const inlines = []; // code spans, set aside so emphasis cannot reach inside
+  const maths = []; // $…$ / $$…$$, set aside before inline emphasis
 
   let text = esc(src);
 
-  text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
-    blocks.push(`<pre><code data-lang="${lang}">${code.replace(/\n$/, '')}</code></pre>`);
+  // Fences must start a line — otherwise `` ` ```mermaid ` `` in prose opens one.
+  text = text.replace(/^```([^\n`]*)\n([\s\S]*?)^```[ \t]*$/gm, (_, langLine, code) => {
+    const lang = String(langLine || '').trim().split(/\s+/)[0];
+    fencedBlock(lang, code, blocks);
     return `\u0000B${blocks.length - 1}\u0000`;
   });
 
@@ -225,7 +257,26 @@ export function renderMarkdown(src) {
     return `\u0000I${inlines.length - 1}\u0000`;
   });
 
+  // Block math before inline — $$ must not be read as two $ spans.
+  text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, tex) => {
+    maths.push(`<div class="math math-block">${tex}</div>`);
+    return `\u0000M${maths.length - 1}\u0000`;
+  });
+  text = text.replace(/\\\[([\s\S]+?)\\\]/g, (_, tex) => {
+    maths.push(`<div class="math math-block">${tex}</div>`);
+    return `\u0000M${maths.length - 1}\u0000`;
+  });
+  text = text.replace(/\$([^$\n]+?)\$/g, (_, tex) => {
+    maths.push(`<span class="math math-inline">${tex}</span>`);
+    return `\u0000M${maths.length - 1}\u0000`;
+  });
+  text = text.replace(/\\\(([^)]+?)\\\)/g, (_, tex) => {
+    maths.push(`<span class="math math-inline">${tex}</span>`);
+    return `\u0000M${maths.length - 1}\u0000`;
+  });
+
   return renderBlocks(text)
     .replace(/\u0000I(\d+)\u0000/g, (_, n) => inlines[Number(n)])
+    .replace(/\u0000M(\d+)\u0000/g, (_, n) => maths[Number(n)])
     .replace(/\u0000B(\d+)\u0000/g, (_, n) => blocks[Number(n)]);
 }
