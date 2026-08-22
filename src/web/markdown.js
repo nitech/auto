@@ -71,19 +71,56 @@ function taskBox(text) {
 
 const LIST_RE = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
 
+function lineIndent(line) {
+  return line.replace(/\t/g, '  ').match(/^ */)?.[0].length ?? 0;
+}
+
+/** Next non-empty line index, or lines.length. */
+function nextNonEmpty(lines, from) {
+  let i = from;
+  while (i < lines.length && !lines[i].trim()) i += 1;
+  return i;
+}
+
+/** Indented prose under a list marker belongs to that item, not a new block. */
+function isContinuation(line, lastItem) {
+  if (!lastItem || LIST_RE.test(line)) return false;
+  return lineIndent(line) > lastItem.indent;
+}
+
 /** Indentation is the nesting: two spaces (or a tab) per level. */
 function listBlock(lines, start) {
   const items = [];
   let i = start;
   while (i < lines.length) {
+    if (!lines[i].trim()) {
+      const next = nextNonEmpty(lines, i + 1);
+      if (next >= lines.length) break;
+      if (LIST_RE.test(lines[next]) || (items.length && isContinuation(lines[next], items.at(-1)))) {
+        i = next;
+        continue;
+      }
+      break;
+    }
+
     const m = LIST_RE.exec(lines[i]);
-    if (!m) break;
-    items.push({
-      indent: m[1].replace(/\t/g, '  ').length,
-      ol: /^\d/.test(m[2]),
-      text: m[3],
-    });
-    i += 1;
+    if (m) {
+      items.push({
+        indent: lineIndent(lines[i]),
+        ol: /^\d/.test(m[2]),
+        text: m[3],
+      });
+      i += 1;
+      continue;
+    }
+
+    if (items.length && isContinuation(lines[i], items.at(-1))) {
+      items[items.length - 1].text += `\n${lines[i].trim()}`;
+      i += 1;
+      continue;
+    }
+
+    break;
   }
   const root = { children: [], indent: -1 };
   const stack = [root];
@@ -99,8 +136,13 @@ function listBlock(lines, start) {
 function renderList(nodes) {
   if (!nodes.length) return '';
   const tag = nodes[0].ol ? 'ol' : 'ul';
+  const itemHtml = (text) =>
+    text
+      .split('\n')
+      .map((line) => inline(taskBox(line)))
+      .join('<br>');
   const body = nodes
-    .map((n) => `<li>${inline(taskBox(n.text))}${renderList(n.children)}</li>`)
+    .map((n) => `<li>${itemHtml(n.text)}${renderList(n.children)}</li>`)
     .join('');
   return `<${tag}>${body}</${tag}>`;
 }

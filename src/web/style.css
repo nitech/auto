@@ -847,6 +847,8 @@ details.think,
 .msg.agent p { margin: 0 0 10px; }
 .msg.agent p:last-child { margin-bottom: 0; }
 .msg.agent ul, .msg.agent ol { margin: 0 0 10px; padding-left: 22px; }
+.msg.agent ol { list-style-type: decimal; }
+.msg.agent ul { list-style-type: disc; }
 .msg.agent li { margin: 2px 0; }
 .msg.agent li > ul, .msg.agent li > ol { margin: 2px 0 0; }
 .msg.agent li input[type='checkbox'] { margin: 0 6px 0 0; vertical-align: -1px; }

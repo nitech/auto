@@ -1896,6 +1896,8 @@ if (existsSync(SRC)) {
     has('- one\n  - two', ['<ul><li>one<ul><li>two</li></ul></li></ul>']);
     has('- [x] done\n- [ ] todo', ['checkbox', 'checked']);
     has('1. first\n2. second', ['<ol><li>first</li><li>second</li></ol>']);
+    has('1. first\n\n2. second\n\n3. third', ['<ol><li>first</li><li>second</li><li>third</li></ol>']);
+    has('1. one\n   extra line\n2. two', ['<ol><li>one<br>extra line</li><li>two</li></ol>']);
 
     // Emphasis must not reach inside code, inline or fenced.
     has('`**not bold**`', ['<code>**not bold**</code>']);
