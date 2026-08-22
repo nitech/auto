@@ -591,13 +591,20 @@ html[data-standalone] #app {
   align-items: center;
   gap: 10px;
   padding: max(10px, env(safe-area-inset-top, 0px)) 16px 10px;
-  border-bottom: 1px solid var(--line);
   background: var(--bg);
 }
 
 /* The title outranks the pickers: it keeps a floor of its own so a long model
    name cannot squeeze it to nothing, which is what used to happen. */
-.titles { flex: 1 1 auto; min-width: 96px; overflow: hidden; }
+.titles {
+  flex: 1 1 auto;
+  min-width: 96px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
 
 .titles-path {
   display: flex;
@@ -606,13 +613,14 @@ html[data-standalone] #app {
   min-width: 0;
 }
 
-#topbar-controls { display: flex; gap: 8px; min-width: 0; }
+#topbar-controls { display: flex; align-items: center; gap: 8px; min-width: 0; flex-shrink: 0; }
 #topbar-controls select { flex: 0 1 auto; min-width: 0; max-width: 148px; }
 
 #session-title {
   margin: 0;
   font-size: 14.5px;
   font-weight: 600;
+  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -622,6 +630,7 @@ html[data-standalone] #app {
   flex: 1;
   min-width: 0;
   font-size: 11.5px;
+  line-height: 1.2;
   color: var(--faint);
   font-family: var(--mono);
   white-space: nowrap;
@@ -629,6 +638,12 @@ html[data-standalone] #app {
   text-overflow: ellipsis;
   direction: rtl;   /* a path matters most at its end */
   text-align: left;
+}
+
+#topbar > .icon,
+#new-chat {
+  align-self: center;
+  flex-shrink: 0;
 }
 
 select {
@@ -2028,11 +2043,6 @@ html[data-standalone] .composer-controls select {
  * rule does not cut through it. Drawn as a background gradient so overflow-x
  * cannot clip a cover shadow. Scrolls sideways when tabs overflow.
  */
-/* No rule between the title bar and the tab strip — they read as one chrome. */
-#main:has(#view-tabs:not([hidden])) #topbar {
-  border-bottom: none;
-}
-
 .view-tabs {
   display: flex;
   align-items: flex-end;
